@@ -78,6 +78,30 @@ public sealed class QueryEngineTests : IDisposable
         Assert.Contains(result.Session.Messages, message => message.Role == "tool_result" && message.IsError && message.ToolName == "file_write");
     }
 
+    [Fact]
+    public async Task Query_engine_records_lsp_tool_failures_as_tool_results()
+    {
+        var store = new JsonSessionStore(_dataRoot);
+        var client = new FakeAnthropicMessageClient(
+            new ModelResponse(
+                "claude-sonnet-4-5",
+                [new ToolUseContentBlock("tool-1", "lsp_hover", new JsonObject { ["path"] = "/tmp/a.cs", ["line"] = 0, ["character"] = 0 })],
+                "tool_use"),
+            new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("hover failed")], "end_turn"));
+        var lspClient = new FakeLspClient
+        {
+            HoverHandler = (_, _, _) => throw new InvalidOperationException("hover exploded")
+        };
+        var registry = new ToolRegistry([new LspHoverTool(lspClient)]);
+        var executor = new ToolExecutor(registry);
+        var engine = new QueryEngine(store, client, registry, executor, new DefaultPermissionService());
+
+        var result = await engine.AskAsync(new QueryRequest("hover"), CancellationToken.None);
+
+        Assert.Equal("hover failed", result.AssistantText);
+        Assert.Contains(result.Session.Messages, message => message.Role == "tool_result" && message.IsError && message.ToolName == "lsp_hover");
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dataRoot))

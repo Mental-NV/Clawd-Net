@@ -1,11 +1,19 @@
 using System.Text.Json.Nodes;
 using ClawdNet.Core.Abstractions;
 using ClawdNet.Core.Models;
+using ClawdNet.Runtime.Protocols;
 
 namespace ClawdNet.Runtime.Tools;
 
 public sealed class FileWriteTool : ITool
 {
+    private readonly ILspClient _lspClient;
+
+    public FileWriteTool(ILspClient? lspClient = null)
+    {
+        _lspClient = lspClient ?? new NullLspClient();
+    }
+
     public string Name => "file_write";
 
     public string Description => "Write UTF-8 text to a file.";
@@ -39,6 +47,14 @@ public sealed class FileWriteTool : ITool
         }
 
         await File.WriteAllTextAsync(path, content, cancellationToken);
-        return new ToolExecutionResult(true, $"Wrote {content.Length} chars to {path}");
+        try
+        {
+            await _lspClient.SyncFileAsync(path, content, cancellationToken);
+            return new ToolExecutionResult(true, $"Wrote {content.Length} chars to {path}");
+        }
+        catch (Exception ex)
+        {
+            return new ToolExecutionResult(true, $"Wrote {content.Length} chars to {path}{Environment.NewLine}LSP sync failed: {ex.Message}");
+        }
     }
 }

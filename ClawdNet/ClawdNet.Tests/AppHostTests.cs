@@ -166,6 +166,53 @@ public sealed class AppHostTests : IDisposable
         Assert.Equal("echo", mcpClient.Invocations[0].ToolName);
     }
 
+    [Fact]
+    public async Task Lsp_list_reports_server_state()
+    {
+        var lspClient = new FakeLspClient
+        {
+            Servers =
+            [
+                new LspServerState("csharp", true, true, [".cs"])
+            ]
+        };
+        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient(), lspClient: lspClient);
+
+        var result = await host.RunAsync(["lsp", "list"], CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("csharp", result.StdOut);
+        Assert.Contains(".cs", result.StdOut);
+    }
+
+    [Fact]
+    public async Task Ask_can_use_registered_lsp_tool()
+    {
+        var lspClient = new FakeLspClient
+        {
+            Servers =
+            [
+                new LspServerState("csharp", true, true, [".cs"])
+            ],
+            DefinitionsHandler = (path, line, character) =>
+            [
+                new LspLocation(path, line, character)
+            ]
+        };
+        var anthropicClient = new FakeAnthropicMessageClient(
+            new ModelResponse(
+                "claude-sonnet-4-5",
+                [new ToolUseContentBlock("tool-1", "lsp_definition", new JsonObject { ["path"] = "/tmp/a.cs", ["line"] = 1, ["character"] = 2 })],
+                "tool_use"),
+            new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("used lsp")], "end_turn"));
+        var host = new AppHost("1.0.0", _dataRoot, anthropicClient, lspClient: lspClient);
+
+        var result = await host.RunAsync(["ask", "use lsp"], CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("used lsp", result.StdOut);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dataRoot))

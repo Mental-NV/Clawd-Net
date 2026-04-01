@@ -23,8 +23,11 @@ public sealed class AppHost : IAsyncDisposable
     private readonly IReplHost _replHost;
     private readonly IToolRegistry _toolRegistry;
     private readonly IMcpClient _mcpClient;
+    private readonly ILspClient _lspClient;
     private readonly SemaphoreSlim _mcpInitializationLock = new(1, 1);
+    private readonly SemaphoreSlim _lspInitializationLock = new(1, 1);
     private bool _mcpInitialized;
+    private bool _lspInitialized;
 
     public AppHost(
         string version,
@@ -32,6 +35,7 @@ public sealed class AppHost : IAsyncDisposable
         IAnthropicMessageClient? anthropicMessageClient = null,
         IProcessRunner? processRunner = null,
         IMcpClient? mcpClient = null,
+        ILspClient? lspClient = null,
         IReplHost? replHost = null,
         ITerminalSession? terminalSession = null)
     {
@@ -43,7 +47,6 @@ public sealed class AppHost : IAsyncDisposable
             new FileReadTool(),
             new GlobTool(),
             new GrepTool(),
-            new FileWriteTool(),
             new ShellTool(processRunner)
         ]);
         IToolExecutor toolExecutor = new ToolExecutor(_toolRegistry);
@@ -51,15 +54,18 @@ public sealed class AppHost : IAsyncDisposable
         anthropicMessageClient ??= new HttpAnthropicMessageClient(new HttpClient());
         IPermissionService permissionService = new DefaultPermissionService();
         _mcpClient = mcpClient ?? new StdioMcpClient(dataRoot);
+        _lspClient = lspClient ?? new StdioLspClient(dataRoot);
+        _toolRegistry.Register(new FileWriteTool(_lspClient));
         IQueryEngine queryEngine = new QueryEngine(conversationStore, anthropicMessageClient, _toolRegistry, toolExecutor, permissionService);
         ITranscriptRenderer transcriptRenderer = new ConsoleTranscriptRenderer();
         terminalSession ??= new ConsoleTerminalSession();
         _replHost = replHost ?? new ReplHost(terminalSession, conversationStore, queryEngine, transcriptRenderer);
 
-        _context = new CommandContext(featureGate, toolExecutor, conversationStore, queryEngine, _mcpClient, permissionService, transcriptRenderer, version);
+        _context = new CommandContext(featureGate, toolExecutor, conversationStore, queryEngine, _mcpClient, _lspClient, permissionService, transcriptRenderer, version);
         _dispatcher = new CommandDispatcher(
         [
             new AskCommandHandler(),
+            new LspCommandHandler(),
             new McpCommandHandler(),
             new SessionCommandHandler(),
             new ToolCommandHandler(),
@@ -67,7 +73,7 @@ public sealed class AppHost : IAsyncDisposable
         ]);
 
         McpClient = _mcpClient;
-        LspClient = new NullLspClient();
+        LspClient = _lspClient;
     }
 
     public IMcpClient McpClient { get; }
@@ -77,6 +83,7 @@ public sealed class AppHost : IAsyncDisposable
     public async Task<CommandExecutionResult> RunAsync(IReadOnlyList<string> args, CancellationToken cancellationToken)
     {
         await EnsureMcpInitializedAsync(cancellationToken);
+        await EnsureLspInitializedAsync(cancellationToken);
         if (ShouldLaunchRepl(args))
         {
             return await _replHost.RunAsync(ParseReplLaunchOptions(args), cancellationToken);
@@ -88,7 +95,9 @@ public sealed class AppHost : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await _mcpClient.DisposeAsync();
+        await _lspClient.DisposeAsync();
         _mcpInitializationLock.Dispose();
+        _lspInitializationLock.Dispose();
     }
 
     private static bool ShouldLaunchRepl(IReadOnlyList<string> args)
@@ -177,6 +186,37 @@ public sealed class AppHost : IAsyncDisposable
         finally
         {
             _mcpInitializationLock.Release();
+        }
+    }
+
+    private async Task EnsureLspInitializedAsync(CancellationToken cancellationToken)
+    {
+        if (_lspInitialized)
+        {
+            return;
+        }
+
+        await _lspInitializationLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_lspInitialized)
+            {
+                return;
+            }
+
+            await _lspClient.InitializeAsync(cancellationToken);
+            _toolRegistry.RegisterRange(
+            [
+                new LspDefinitionTool(_lspClient),
+                new LspReferencesTool(_lspClient),
+                new LspHoverTool(_lspClient),
+                new LspDiagnosticsTool(_lspClient)
+            ]);
+            _lspInitialized = true;
+        }
+        finally
+        {
+            _lspInitializationLock.Release();
         }
     }
 }

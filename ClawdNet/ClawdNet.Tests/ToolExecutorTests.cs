@@ -84,4 +84,29 @@ public sealed class ToolExecutorTests
             Directory.Delete(root, true);
         }
     }
+
+    [Fact]
+    public async Task File_write_tool_syncs_with_lsp_client()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "clawdnet-write-lsp", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var path = Path.Combine(root, "note.cs");
+            var lspClient = new FakeLspClient();
+            var tool = new FileWriteTool(lspClient);
+
+            var result = await tool.ExecuteAsync(
+                new ToolExecutionRequest("file_write", new JsonObject { ["path"] = path, ["content"] = "class A {}" }),
+                CancellationToken.None);
+
+            Assert.True(result.Success);
+            Assert.Single(lspClient.SyncRequests);
+            Assert.Equal(path, lspClient.SyncRequests[0].Path);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
 }

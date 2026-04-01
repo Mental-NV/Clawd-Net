@@ -41,6 +41,9 @@ dotnet run --project ClawdNet/ClawdNet.App -- mcp list
 dotnet run --project ClawdNet/ClawdNet.App -- mcp ping <server-name>
 dotnet run --project ClawdNet/ClawdNet.App -- mcp tools
 dotnet run --project ClawdNet/ClawdNet.App -- mcp tools <server-name>
+dotnet run --project ClawdNet/ClawdNet.App -- lsp list
+dotnet run --project ClawdNet/ClawdNet.App -- lsp ping <server-name>
+dotnet run --project ClawdNet/ClawdNet.App -- lsp diagnostics <path>
 dotnet run --project ClawdNet/ClawdNet.App -- tool echo "hello world"
 ```
 
@@ -75,6 +78,9 @@ dotnet run --project ClawdNet.App -- --version
 - `mcp list`
 - `mcp ping <server>`
 - `mcp tools [server]`
+- `lsp list`
+- `lsp ping <server>`
+- `lsp diagnostics <path>`
 - `tool echo <text>`
 
 ## MCP Configuration
@@ -105,3 +111,33 @@ Example:
 ```
 
 Configured server tools are exposed to the model with names like `mcp.demo.echo`.
+
+## LSP Configuration
+
+Configure stdio language servers in:
+
+```text
+<LocalApplicationData>/ClawdNet/config/lsp.json
+```
+
+Example:
+
+```json
+{
+  "servers": [
+    {
+      "name": "csharp",
+      "command": "python3",
+      "arguments": ["/absolute/path/to/fake-or-real-lsp-server.py"],
+      "fileExtensions": [".cs", ".csx"],
+      "languageId": "csharp",
+      "enabled": true,
+      "environment": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  ]
+}
+```
+
+Built-in LSP tools are exposed to the model as `lsp_definition`, `lsp_references`, `lsp_hover`, and `lsp_diagnostics`.

@@ -8,6 +8,7 @@ public sealed record CommandContext(
     IConversationStore ConversationStore,
     IQueryEngine QueryEngine,
     IMcpClient McpClient,
+    ILspClient LspClient,
     IPermissionService PermissionService,
     ITranscriptRenderer TranscriptRenderer,
     string Version);
