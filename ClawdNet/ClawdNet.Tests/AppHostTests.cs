@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using ClawdNet.App;
 using ClawdNet.Core.Models;
 using ClawdNet.Tests.TestDoubles;
@@ -97,6 +98,72 @@ public sealed class AppHostTests : IDisposable
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("permission-mode", result.StdOut);
+    }
+
+    [Fact]
+    public async Task Mcp_list_reports_server_state()
+    {
+        var mcpClient = new FakeMcpClient
+        {
+            Servers =
+            [
+                new McpServerState("demo", true, true, 1)
+            ],
+            Tools =
+            [
+                new McpToolDefinition("demo", "echo", "Echo from MCP", new JsonObject(), true)
+            ]
+        };
+        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient(), mcpClient: mcpClient);
+
+        var result = await host.RunAsync(["mcp", "list"], CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("demo", result.StdOut);
+        Assert.Contains("connected=True", result.StdOut, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Ask_can_use_registered_mcp_tool()
+    {
+        var mcpClient = new FakeMcpClient
+        {
+            Servers =
+            [
+                new McpServerState("demo", true, true, 1)
+            ],
+            Tools =
+            [
+                new McpToolDefinition(
+                    "demo",
+                    "echo",
+                    "Echo from MCP",
+                    new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["text"] = new JsonObject { ["type"] = "string" }
+                        }
+                    },
+                    true)
+            ]
+        };
+        var anthropicClient = new FakeAnthropicMessageClient(
+            new ModelResponse(
+                "claude-sonnet-4-5",
+                [new ToolUseContentBlock("tool-1", "mcp.demo.echo", new JsonObject { ["text"] = "hello" })],
+                "tool_use"),
+            new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("used mcp")], "end_turn"));
+        var host = new AppHost("1.0.0", _dataRoot, anthropicClient, mcpClient: mcpClient);
+
+        var result = await host.RunAsync(["ask", "try mcp"], CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("used mcp", result.StdOut);
+        Assert.Single(mcpClient.Invocations);
+        Assert.Equal("demo", mcpClient.Invocations[0].ServerName);
+        Assert.Equal("echo", mcpClient.Invocations[0].ToolName);
     }
 
     public void Dispose()

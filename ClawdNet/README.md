@@ -37,6 +37,10 @@ dotnet run --project ClawdNet/ClawdNet.App -- ask --json "Summarize the current 
 dotnet run --project ClawdNet/ClawdNet.App -- ask --session <session-id> "Continue"
 dotnet run --project ClawdNet/ClawdNet.App -- session new "First Slice"
 dotnet run --project ClawdNet/ClawdNet.App -- session list
+dotnet run --project ClawdNet/ClawdNet.App -- mcp list
+dotnet run --project ClawdNet/ClawdNet.App -- mcp ping <server-name>
+dotnet run --project ClawdNet/ClawdNet.App -- mcp tools
+dotnet run --project ClawdNet/ClawdNet.App -- mcp tools <server-name>
 dotnet run --project ClawdNet/ClawdNet.App -- tool echo "hello world"
 ```
 
@@ -68,4 +72,36 @@ dotnet run --project ClawdNet.App -- --version
 - `ask --json <prompt>`
 - `session new [title]`
 - `session list`
+- `mcp list`
+- `mcp ping <server>`
+- `mcp tools [server]`
 - `tool echo <text>`
+
+## MCP Configuration
+
+Configure stdio MCP servers in:
+
+```text
+<LocalApplicationData>/ClawdNet/config/mcp.json
+```
+
+Example:
+
+```json
+{
+  "servers": [
+    {
+      "name": "demo",
+      "command": "python3",
+      "arguments": ["/absolute/path/to/server.py"],
+      "enabled": true,
+      "toolsReadOnly": true,
+      "environment": {
+        "DEMO_FLAG": "1"
+      }
+    }
+  ]
+}
+```
+
+Configured server tools are exposed to the model with names like `mcp.demo.echo`.

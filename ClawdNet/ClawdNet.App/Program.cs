@@ -5,7 +5,7 @@ var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalAppl
 var dataRoot = string.IsNullOrWhiteSpace(localAppData)
     ? Path.Combine(AppContext.BaseDirectory, ".clawdnet")
     : Path.Combine(localAppData, "ClawdNet");
-var host = new AppHost(version, dataRoot);
+await using var host = new AppHost(version, dataRoot);
 var result = await host.RunAsync(args, CancellationToken.None);
 
 if (!string.IsNullOrWhiteSpace(result.StdOut))

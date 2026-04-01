@@ -16,23 +16,28 @@ using ClawdNet.Terminal.Rendering;
 
 namespace ClawdNet.App;
 
-public sealed class AppHost
+public sealed class AppHost : IAsyncDisposable
 {
     private readonly CommandDispatcher _dispatcher;
     private readonly CommandContext _context;
     private readonly IReplHost _replHost;
+    private readonly IToolRegistry _toolRegistry;
+    private readonly IMcpClient _mcpClient;
+    private readonly SemaphoreSlim _mcpInitializationLock = new(1, 1);
+    private bool _mcpInitialized;
 
     public AppHost(
         string version,
         string dataRoot,
         IAnthropicMessageClient? anthropicMessageClient = null,
         IProcessRunner? processRunner = null,
+        IMcpClient? mcpClient = null,
         IReplHost? replHost = null,
         ITerminalSession? terminalSession = null)
     {
         IFeatureGate featureGate = new DictionaryFeatureGate();
         processRunner ??= new SystemProcessRunner();
-        IToolRegistry toolRegistry = new ToolRegistry(
+        _toolRegistry = new ToolRegistry(
         [
             new EchoTool(),
             new FileReadTool(),
@@ -41,25 +46,27 @@ public sealed class AppHost
             new FileWriteTool(),
             new ShellTool(processRunner)
         ]);
-        IToolExecutor toolExecutor = new ToolExecutor(toolRegistry);
+        IToolExecutor toolExecutor = new ToolExecutor(_toolRegistry);
         IConversationStore conversationStore = new JsonSessionStore(dataRoot);
         anthropicMessageClient ??= new HttpAnthropicMessageClient(new HttpClient());
         IPermissionService permissionService = new DefaultPermissionService();
-        IQueryEngine queryEngine = new QueryEngine(conversationStore, anthropicMessageClient, toolRegistry, toolExecutor, permissionService);
+        _mcpClient = mcpClient ?? new StdioMcpClient(dataRoot);
+        IQueryEngine queryEngine = new QueryEngine(conversationStore, anthropicMessageClient, _toolRegistry, toolExecutor, permissionService);
         ITranscriptRenderer transcriptRenderer = new ConsoleTranscriptRenderer();
         terminalSession ??= new ConsoleTerminalSession();
         _replHost = replHost ?? new ReplHost(terminalSession, conversationStore, queryEngine, transcriptRenderer);
 
-        _context = new CommandContext(featureGate, toolExecutor, conversationStore, queryEngine, permissionService, transcriptRenderer, version);
+        _context = new CommandContext(featureGate, toolExecutor, conversationStore, queryEngine, _mcpClient, permissionService, transcriptRenderer, version);
         _dispatcher = new CommandDispatcher(
         [
             new AskCommandHandler(),
+            new McpCommandHandler(),
             new SessionCommandHandler(),
             new ToolCommandHandler(),
             new VersionCommandHandler()
         ]);
 
-        McpClient = new NullMcpClient();
+        McpClient = _mcpClient;
         LspClient = new NullLspClient();
     }
 
@@ -67,14 +74,21 @@ public sealed class AppHost
 
     public ILspClient LspClient { get; }
 
-    public Task<CommandExecutionResult> RunAsync(IReadOnlyList<string> args, CancellationToken cancellationToken)
+    public async Task<CommandExecutionResult> RunAsync(IReadOnlyList<string> args, CancellationToken cancellationToken)
     {
+        await EnsureMcpInitializedAsync(cancellationToken);
         if (ShouldLaunchRepl(args))
         {
-            return _replHost.RunAsync(ParseReplLaunchOptions(args), cancellationToken);
+            return await _replHost.RunAsync(ParseReplLaunchOptions(args), cancellationToken);
         }
 
-        return _dispatcher.DispatchAsync(_context, new CommandRequest(args), cancellationToken);
+        return await _dispatcher.DispatchAsync(_context, new CommandRequest(args), cancellationToken);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _mcpClient.DisposeAsync();
+        _mcpInitializationLock.Dispose();
     }
 
     private static bool ShouldLaunchRepl(IReadOnlyList<string> args)
@@ -138,5 +152,31 @@ public sealed class AppHost
             "bypass" => PermissionMode.BypassPermissions,
             _ => throw new InvalidOperationException($"Unknown permission mode '{value}'.")
         };
+    }
+
+    private async Task EnsureMcpInitializedAsync(CancellationToken cancellationToken)
+    {
+        if (_mcpInitialized)
+        {
+            return;
+        }
+
+        await _mcpInitializationLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_mcpInitialized)
+            {
+                return;
+            }
+
+            await _mcpClient.InitializeAsync(cancellationToken);
+            var tools = await _mcpClient.GetToolsAsync(null, cancellationToken);
+            _toolRegistry.RegisterRange(tools.Select(tool => new McpToolAdapter(_mcpClient, tool)));
+            _mcpInitialized = true;
+        }
+        finally
+        {
+            _mcpInitializationLock.Release();
+        }
     }
 }

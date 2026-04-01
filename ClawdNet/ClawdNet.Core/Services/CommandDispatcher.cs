@@ -26,6 +26,6 @@ public sealed class CommandDispatcher
         }
 
         return CommandExecutionResult.Failure(
-            "Unknown command. Supported commands: --version, ask <prompt>, session new, session list, tool echo <text>.");
+            "Unknown command. Supported commands: --version, ask <prompt>, session new, session list, tool echo <text>, mcp list.");
     }
 }
