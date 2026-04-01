@@ -25,6 +25,14 @@ public sealed class CommandDispatcher
             }
         }
 
+        var pluginCommand = await context.PluginRuntime.TryExecuteCommandAsync(request, cancellationToken);
+        if (pluginCommand is not null)
+        {
+            return pluginCommand.Success
+                ? new CommandExecutionResult(pluginCommand.ExitCode, pluginCommand.StdOut, pluginCommand.StdErr)
+                : CommandExecutionResult.Failure(pluginCommand.StdErr, pluginCommand.ExitCode == 0 ? 1 : pluginCommand.ExitCode);
+        }
+
         return CommandExecutionResult.Failure(
             "Unknown command. Supported commands: --version, ask <prompt>, session new, session list, task list, tool echo <text>, mcp list, lsp list, plugin list.");
     }

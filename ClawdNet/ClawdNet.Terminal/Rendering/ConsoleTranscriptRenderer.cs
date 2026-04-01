@@ -118,6 +118,8 @@ public sealed class ConsoleTranscriptRenderer : ITranscriptRenderer
             "edit_preview" => $"{timestamp}Preview  {entry.ToolName} -> {entry.Content}",
             "edit_approved" => $"{timestamp}Apply    {entry.ToolName} -> {entry.Content}",
             "edit_rejected" => $"{timestamp}Reject   {entry.ToolName} -> {entry.Content}",
+            "plugin_hook" => $"{timestamp}Hook     {entry.ToolName} -> {entry.Content}",
+            "plugin_hook_error" => $"{timestamp}HookErr  {entry.ToolName} -> {entry.Content}",
             "task_started" => $"{timestamp}Task     {entry.ToolName} -> {entry.Content}",
             "task_updated" => $"{timestamp}Task     {entry.ToolName} -> {entry.Content}",
             "task_completed" => $"{timestamp}Task     {entry.ToolName} -> {entry.Content}",

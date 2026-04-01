@@ -12,13 +12,15 @@ public sealed class PluginCatalog : IPluginCatalog
     };
 
     private readonly string _pluginsRoot;
+    private readonly HashSet<string> _reservedCommandNames;
     private readonly SemaphoreSlim _reloadLock = new(1, 1);
     private IReadOnlyList<PluginDefinition> _plugins = [];
     private bool _loaded;
 
-    public PluginCatalog(string dataRoot)
+    public PluginCatalog(string dataRoot, IEnumerable<string>? reservedCommandNames = null)
     {
         _pluginsRoot = Path.Combine(dataRoot, "plugins");
+        _reservedCommandNames = new HashSet<string>(reservedCommandNames ?? [], StringComparer.OrdinalIgnoreCase);
     }
 
     public IReadOnlyList<PluginDefinition> Plugins => _plugins;
@@ -116,6 +118,61 @@ public sealed class PluginCatalog : IPluginCatalog
 
         var pluginName = payload.Name!.Trim();
         var enabled = payload.Enabled ?? true;
+        var commands = new List<PluginCommandDefinition>();
+        foreach (var command in payload.Commands ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(command.Name))
+            {
+                errors.Add(new PluginError("command-invalid", "Plugin command must include a non-empty 'name'."));
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(command.Command))
+            {
+                errors.Add(new PluginError("command-invalid", $"Plugin command '{command.Name}' must include a non-empty 'command'."));
+                continue;
+            }
+
+            if (_reservedCommandNames.Contains(command.Name))
+            {
+                errors.Add(new PluginError("command-conflict", $"Plugin command '{command.Name}' conflicts with a built-in command."));
+                continue;
+            }
+
+            commands.Add(new PluginCommandDefinition(
+                command.Name.Trim(),
+                command.Command!,
+                command.Arguments ?? [],
+                command.Environment ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                PluginExecutionMode.Subprocess,
+                command.Enabled ?? true));
+        }
+
+        var hooks = new List<PluginHookDefinition>();
+        foreach (var hook in payload.Hooks ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(hook.Kind) || !TryParseHookKind(hook.Kind, out var kind))
+            {
+                errors.Add(new PluginError("hook-invalid", "Plugin hook must include a supported 'kind'."));
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(hook.Command))
+            {
+                errors.Add(new PluginError("hook-invalid", $"Plugin hook '{hook.Kind}' must include a non-empty 'command'."));
+                continue;
+            }
+
+            hooks.Add(new PluginHookDefinition(
+                kind,
+                hook.Command!,
+                hook.Arguments ?? [],
+                hook.Environment ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                PluginExecutionMode.Subprocess,
+                hook.Enabled ?? true,
+                hook.Blocking ?? false));
+        }
+
         var mcpServers = (payload.McpServers ?? [])
             .Where(server => !string.IsNullOrWhiteSpace(server.Name) && !string.IsNullOrWhiteSpace(server.Command))
             .Select(server => new McpServerDefinition(
@@ -138,7 +195,7 @@ public sealed class PluginCatalog : IPluginCatalog
                 server.Enabled ?? true))
             .ToArray();
 
-        var manifest = new PluginManifest(pluginName, payload.Version, enabled, mcpServers, lspServers);
+        var manifest = new PluginManifest(pluginName, payload.Version, enabled, mcpServers, lspServers, commands, hooks);
         return new PluginDefinition(pluginId, pluginName, pluginDirectory, enabled, manifest, errors);
     }
 
@@ -159,6 +216,8 @@ public sealed class PluginCatalog : IPluginCatalog
         public bool? Enabled { get; init; }
         public List<McpServerDocument>? McpServers { get; init; }
         public List<LspServerDocument>? LspServers { get; init; }
+        public List<PluginCommandDocument>? Commands { get; init; }
+        public List<PluginHookDocument>? Hooks { get; init; }
     }
 
     private sealed class McpServerDocument
@@ -180,5 +239,50 @@ public sealed class PluginCatalog : IPluginCatalog
         public string[]? FileExtensions { get; init; }
         public string? LanguageId { get; init; }
         public bool? Enabled { get; init; }
+    }
+
+    private sealed class PluginCommandDocument
+    {
+        public string? Name { get; init; }
+        public string? Command { get; init; }
+        public string[]? Arguments { get; init; }
+        public Dictionary<string, string>? Environment { get; init; }
+        public bool? Enabled { get; init; }
+    }
+
+    private sealed class PluginHookDocument
+    {
+        public string? Kind { get; init; }
+        public string? Command { get; init; }
+        public string[]? Arguments { get; init; }
+        public Dictionary<string, string>? Environment { get; init; }
+        public bool? Enabled { get; init; }
+        public bool? Blocking { get; init; }
+    }
+
+    private static bool TryParseHookKind(string value, out PluginHookKind kind)
+    {
+        switch (value.Trim().ToLowerInvariant())
+        {
+            case "beforequery":
+            case "before-query":
+                kind = PluginHookKind.BeforeQuery;
+                return true;
+            case "afterquery":
+            case "after-query":
+                kind = PluginHookKind.AfterQuery;
+                return true;
+            case "aftertoolresult":
+            case "after-tool-result":
+                kind = PluginHookKind.AfterToolResult;
+                return true;
+            case "aftertaskcompletion":
+            case "after-task-completion":
+                kind = PluginHookKind.AfterTaskCompletion;
+                return true;
+            default:
+                kind = default;
+                return false;
+        }
     }
 }

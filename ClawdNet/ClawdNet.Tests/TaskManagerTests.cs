@@ -114,6 +114,45 @@ public sealed class TaskManagerTests : IDisposable
         Assert.Equal(ClawdTaskStatus.Canceled, canceled!.Status);
     }
 
+    [Fact]
+    public async Task Task_manager_records_plugin_hook_messages_after_completion()
+    {
+        var sessionStore = new JsonSessionStore(_dataRoot);
+        var taskStore = new JsonTaskStore(_dataRoot);
+        var engine = new FakeQueryEngine
+        {
+            Handler = _ => Task.FromResult(
+                new QueryExecutionResult(
+                    new ConversationSession("worker", "Worker", "claude-sonnet-4-5", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, []),
+                    "worker finished",
+                    1))
+        };
+        var pluginRuntime = new FakePluginRuntime
+        {
+            HookHandler = invocation =>
+            [
+                new PluginHookResult(
+                    new PluginDefinition("demo", "demo", "/tmp/demo", true, null, []),
+                    new PluginHookDefinition(PluginHookKind.AfterTaskCompletion, "python3", [], new Dictionary<string, string>(), PluginExecutionMode.Subprocess, true, false),
+                    true,
+                    "task hook ok",
+                    false)
+            ]
+        };
+        var manager = new TaskManager(taskStore, sessionStore, engine, pluginRuntime);
+        await manager.InitializeAsync(CancellationToken.None);
+        var parent = await sessionStore.CreateAsync("Parent", "claude-sonnet-4-5", CancellationToken.None);
+
+        var task = await manager.StartAsync(new TaskRequest("Index repo", "Scan files", parent.Id), CancellationToken.None);
+        var completed = await WaitForTaskAsync(taskStore, task.Id, ClawdTaskStatus.Completed);
+        var parentSession = await WaitForParentHookMessageAsync(sessionStore, parent.Id);
+
+        Assert.NotNull(completed);
+        Assert.Contains(pluginRuntime.HookInvocations, invocation => invocation.Kind == PluginHookKind.AfterTaskCompletion);
+        Assert.NotNull(parentSession);
+        Assert.Contains(parentSession!.Messages, message => message.Role == "plugin_hook" && message.Content == "task hook ok");
+    }
+
     private static async Task<TaskRecord?> WaitForTaskAsync(JsonTaskStore store, string taskId, ClawdTaskStatus expectedStatus)
     {
         for (var attempt = 0; attempt < 50; attempt++)
@@ -128,6 +167,22 @@ public sealed class TaskManagerTests : IDisposable
         }
 
         return await store.GetAsync(taskId, CancellationToken.None);
+    }
+
+    private static async Task<ConversationSession?> WaitForParentHookMessageAsync(JsonSessionStore store, string sessionId)
+    {
+        for (var attempt = 0; attempt < 50; attempt++)
+        {
+            var session = await store.GetAsync(sessionId, CancellationToken.None);
+            if (session?.Messages.Any(message => message.Role == "plugin_hook") == true)
+            {
+                return session;
+            }
+
+            await Task.Delay(20);
+        }
+
+        return await store.GetAsync(sessionId, CancellationToken.None);
     }
 
     public void Dispose()

@@ -216,6 +216,52 @@ public sealed class QueryEngineTests : IDisposable
         Assert.Equal("Index repo", tasks[0].Title);
     }
 
+    [Fact]
+    public async Task Query_engine_records_plugin_hook_messages_and_events()
+    {
+        var store = new JsonSessionStore(_dataRoot);
+        var client = new FakeAnthropicMessageClient(
+            new ModelResponse(
+                "claude-sonnet-4-5",
+                [new ToolUseContentBlock("tool-1", "echo", new JsonObject { ["text"] = "from-tool" })],
+                "tool_use"),
+            new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("done")], "end_turn"));
+        var registry = new ToolRegistry([new EchoTool()]);
+        var executor = new ToolExecutor(registry);
+        var pluginRuntime = new FakePluginRuntime
+        {
+            HookHandler = invocation =>
+            {
+                if (invocation.Kind == PluginHookKind.BeforeQuery)
+                {
+                    return
+                    [
+                        new PluginHookResult(
+                            new PluginDefinition("demo", "demo", "/tmp/demo", true, null, []),
+                            new PluginHookDefinition(PluginHookKind.BeforeQuery, "python3", [], new Dictionary<string, string>(), PluginExecutionMode.Subprocess, true, false),
+                            true,
+                            "before hook ok",
+                            false)
+                    ];
+                }
+
+                return [];
+            }
+        };
+        var engine = new QueryEngine(store, client, registry, executor, new DefaultPermissionService(), pluginRuntime);
+
+        var events = new List<QueryStreamEvent>();
+        await foreach (var streamEvent in engine.StreamAskAsync(new QueryRequest("hello"), CancellationToken.None))
+        {
+            events.Add(streamEvent);
+        }
+
+        Assert.Contains(pluginRuntime.HookInvocations, invocation => invocation.Kind == PluginHookKind.BeforeQuery);
+        Assert.Contains(events, streamEvent => streamEvent is PluginHookRecordedEvent hook && hook.Result.Message == "before hook ok");
+        var session = (await store.ListAsync(CancellationToken.None)).Single();
+        Assert.Contains(session.Messages, message => message.Role == "plugin_hook" && message.Content == "before hook ok");
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dataRoot))

@@ -15,19 +15,22 @@ public sealed class QueryEngine : IQueryEngine
     private readonly IToolRegistry _toolRegistry;
     private readonly IToolExecutor _toolExecutor;
     private readonly IPermissionService _permissionService;
+    private readonly IPluginRuntime _pluginRuntime;
 
     public QueryEngine(
         IConversationStore conversationStore,
         IAnthropicMessageClient anthropicMessageClient,
         IToolRegistry toolRegistry,
         IToolExecutor toolExecutor,
-        IPermissionService permissionService)
+        IPermissionService permissionService,
+        IPluginRuntime? pluginRuntime = null)
     {
         _conversationStore = conversationStore;
         _anthropicMessageClient = anthropicMessageClient;
         _toolRegistry = toolRegistry;
         _toolExecutor = toolExecutor;
         _permissionService = permissionService;
+        _pluginRuntime = pluginRuntime ?? new NoOpPluginRuntime();
     }
 
     public async Task<QueryExecutionResult> AskAsync(QueryRequest request, CancellationToken cancellationToken)
@@ -62,6 +65,30 @@ public sealed class QueryEngine : IQueryEngine
             UpdatedAtUtc = now,
             Messages = workingMessages.ToArray()
         };
+
+        var beforeQueryHooks = await EmitHookResultsAsync(
+            session,
+            workingMessages,
+            PluginHookKind.BeforeQuery,
+            new
+            {
+                prompt = request.Prompt,
+                model = session.Model,
+                permissionMode = request.PermissionMode.ToString(),
+                allowTaskTools = request.AllowTaskTools
+            },
+            cancellationToken);
+        session = beforeQueryHooks.Session;
+        foreach (var hookEvent in beforeQueryHooks.Events)
+        {
+            yield return hookEvent;
+        }
+
+        if (!string.IsNullOrWhiteSpace(beforeQueryHooks.BlockingFailure))
+        {
+            yield return new TurnFailedStreamEvent(beforeQueryHooks.BlockingFailure);
+            yield break;
+        }
 
         yield return new UserTurnAcceptedEvent(session);
 
@@ -153,8 +180,7 @@ public sealed class QueryEngine : IQueryEngine
             if (toolCalls.Count == 0)
             {
                 await _conversationStore.SaveAsync(session, cancellationToken);
-                yield return new TurnCompletedStreamEvent(new QueryExecutionResult(session, assistantText, turnsExecuted));
-                yield break;
+                break;
             }
 
             foreach (var toolCall in toolCalls)
@@ -364,6 +390,30 @@ public sealed class QueryEngine : IQueryEngine
                 };
                 await _conversationStore.SaveAsync(session, cancellationToken);
                 yield return new ToolResultCommittedEvent(session, toolCall, toolResponse);
+                var afterToolHooks = await EmitHookResultsAsync(
+                    session,
+                    workingMessages,
+                    PluginHookKind.AfterToolResult,
+                    new
+                    {
+                        tool = toolCall.Name,
+                        toolCallId = toolCall.Id,
+                        success = toolResponse.Success,
+                        output = toolResponse.Success ? toolResponse.Output : null,
+                        error = toolResponse.Success ? null : toolResponse.Error
+                    },
+                    cancellationToken);
+                session = afterToolHooks.Session;
+                foreach (var hookEvent in afterToolHooks.Events)
+                {
+                    yield return hookEvent;
+                }
+
+                if (!string.IsNullOrWhiteSpace(afterToolHooks.BlockingFailure))
+                {
+                    yield return new TurnFailedStreamEvent(afterToolHooks.BlockingFailure);
+                    yield break;
+                }
                 foreach (var taskEvent in ParseTaskStreamEvents(toolCall.Name, toolResponse, request.PermissionMode))
                 {
                     yield return taskEvent;
@@ -378,7 +428,86 @@ public sealed class QueryEngine : IQueryEngine
         }
 
         await _conversationStore.SaveAsync(session, cancellationToken);
+        var afterQueryHooks = await EmitHookResultsAsync(
+            session,
+            workingMessages,
+            PluginHookKind.AfterQuery,
+            new
+            {
+                assistantText,
+                turnsExecuted,
+                messageCount = session.Messages.Count
+            },
+            cancellationToken);
+        session = afterQueryHooks.Session;
+        foreach (var hookEvent in afterQueryHooks.Events)
+        {
+            yield return hookEvent;
+        }
+
+        if (!string.IsNullOrWhiteSpace(afterQueryHooks.BlockingFailure))
+        {
+            yield return new TurnFailedStreamEvent(afterQueryHooks.BlockingFailure);
+            yield break;
+        }
+
         yield return new TurnCompletedStreamEvent(new QueryExecutionResult(session, assistantText, turnsExecuted));
+    }
+
+    private async Task<HookEmissionResult> EmitHookResultsAsync(
+        ConversationSession session,
+        List<ConversationMessage> workingMessages,
+        PluginHookKind kind,
+        object payload,
+        CancellationToken cancellationToken)
+    {
+        var hookResults = await _pluginRuntime.InvokeHooksAsync(
+            new PluginHookInvocation(kind, session.Id, null, Environment.CurrentDirectory, payload),
+            cancellationToken);
+        var events = new List<QueryStreamEvent>();
+        string? blockingFailure = null;
+
+        foreach (var hookResult in hookResults)
+        {
+            var hookMessage = new ConversationMessage(
+                hookResult.Success ? "plugin_hook" : "plugin_hook_error",
+                hookResult.Message,
+                DateTimeOffset.UtcNow,
+                $"{hookResult.Plugin.Name}:{hookResult.Hook.Kind}",
+                null,
+                !hookResult.Success);
+            workingMessages.Add(hookMessage);
+            session = session with
+            {
+                UpdatedAtUtc = hookMessage.TimestampUtc,
+                Messages = workingMessages.ToArray()
+            };
+            await _conversationStore.SaveAsync(session, cancellationToken);
+            events.Add(new PluginHookRecordedEvent(session, hookResult));
+
+            if (!hookResult.Success && hookResult.Blocking && string.IsNullOrWhiteSpace(blockingFailure))
+            {
+                blockingFailure = $"Blocking plugin hook failed: {hookResult.Plugin.Name}/{hookResult.Hook.Kind} - {hookResult.Message}";
+            }
+        }
+
+        return new HookEmissionResult(session, events, blockingFailure);
+    }
+
+    private sealed record HookEmissionResult(
+        ConversationSession Session,
+        IReadOnlyList<QueryStreamEvent> Events,
+        string? BlockingFailure);
+
+    private sealed class NoOpPluginRuntime : IPluginRuntime
+    {
+        public Task ReloadAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<PluginCommandResult?> TryExecuteCommandAsync(CommandRequest request, CancellationToken cancellationToken)
+            => Task.FromResult<PluginCommandResult?>(null);
+
+        public Task<IReadOnlyList<PluginHookResult>> InvokeHooksAsync(PluginHookInvocation invocation, CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<PluginHookResult>>([]);
     }
 
     private async Task<ConversationSession> LoadOrCreateSessionAsync(QueryRequest request, CancellationToken cancellationToken)

@@ -13,6 +13,7 @@ public sealed record CommandContext(
     IMcpClient McpClient,
     ILspClient LspClient,
     IPluginCatalog PluginCatalog,
+    IPluginRuntime PluginRuntime,
     IPermissionService PermissionService,
     ITranscriptRenderer TranscriptRenderer,
     string Version);

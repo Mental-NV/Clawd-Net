@@ -29,6 +29,7 @@ public sealed class AppHost : IAsyncDisposable
     private readonly ITaskStore _taskStore;
     private readonly ITaskManager _taskManager;
     private readonly IPluginCatalog _pluginCatalog;
+    private readonly IPluginRuntime _pluginRuntime;
     private readonly IMcpClient _mcpClient;
     private readonly ILspClient _lspClient;
     private readonly IPtyManager _ptyManager;
@@ -47,6 +48,7 @@ public sealed class AppHost : IAsyncDisposable
         IAnthropicMessageClient? anthropicMessageClient = null,
         IProcessRunner? processRunner = null,
         IPluginCatalog? pluginCatalog = null,
+        IPluginRuntime? pluginRuntime = null,
         IMcpClient? mcpClient = null,
         ILspClient? lspClient = null,
         IPtyManager? ptyManager = null,
@@ -57,7 +59,22 @@ public sealed class AppHost : IAsyncDisposable
     {
         IFeatureGate featureGate = new DictionaryFeatureGate();
         processRunner ??= new SystemProcessRunner();
-        _pluginCatalog = pluginCatalog ?? new PluginCatalog(dataRoot);
+        var builtInCommands = new[]
+        {
+            "ask",
+            "task",
+            "plugin",
+            "lsp",
+            "mcp",
+            "session",
+            "tool",
+            "version",
+            "--version",
+            "-v",
+            "-V"
+        };
+        _pluginCatalog = pluginCatalog ?? new PluginCatalog(dataRoot, builtInCommands);
+        _pluginRuntime = pluginRuntime ?? new PluginRuntime(_pluginCatalog, processRunner, builtInCommands);
         _mcpClient = mcpClient ?? new StdioMcpClient(dataRoot, _pluginCatalog);
         _lspClient = lspClient ?? new StdioLspClient(dataRoot, _pluginCatalog);
         _ptyManager = ptyManager ?? new PtyManager();
@@ -82,8 +99,8 @@ public sealed class AppHost : IAsyncDisposable
         anthropicMessageClient ??= new HttpAnthropicMessageClient(new HttpClient());
         IPermissionService permissionService = new DefaultPermissionService();
         _toolRegistry.Register(new FileWriteTool(_lspClient));
-        IQueryEngine queryEngine = new QueryEngine(conversationStore, anthropicMessageClient, _toolRegistry, toolExecutor, permissionService);
-        _taskManager = taskManager ?? new TaskManager(_taskStore, conversationStore, queryEngine);
+        IQueryEngine queryEngine = new QueryEngine(conversationStore, anthropicMessageClient, _toolRegistry, toolExecutor, permissionService, _pluginRuntime);
+        _taskManager = taskManager ?? new TaskManager(_taskStore, conversationStore, queryEngine, _pluginRuntime);
         _toolRegistry.RegisterRange(
         [
             new TaskStartTool(_taskManager),
@@ -95,7 +112,7 @@ public sealed class AppHost : IAsyncDisposable
         terminalSession ??= new ConsoleTerminalSession();
         _replHost = replHost ?? new ReplHost(terminalSession, conversationStore, queryEngine, transcriptRenderer, _ptyManager, _taskManager);
 
-        _context = new CommandContext(featureGate, _toolRegistry, toolExecutor, conversationStore, _taskStore, _taskManager, queryEngine, _mcpClient, _lspClient, _pluginCatalog, permissionService, transcriptRenderer, version);
+        _context = new CommandContext(featureGate, _toolRegistry, toolExecutor, conversationStore, _taskStore, _taskManager, queryEngine, _mcpClient, _lspClient, _pluginCatalog, _pluginRuntime, permissionService, transcriptRenderer, version);
         _dispatcher = new CommandDispatcher(
         [
             new AskCommandHandler(),
@@ -302,6 +319,7 @@ public sealed class AppHost : IAsyncDisposable
             }
 
             await _pluginCatalog.ReloadAsync(cancellationToken);
+            await _pluginRuntime.ReloadAsync(cancellationToken);
             _pluginsInitialized = true;
         }
         finally

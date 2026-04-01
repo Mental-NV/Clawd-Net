@@ -1,25 +1,30 @@
 using System.Collections.Concurrent;
 using ClawdNet.Core.Abstractions;
 using ClawdNet.Core.Models;
+using ClawdNet.Runtime.Plugins;
 using ClawdTaskStatus = ClawdNet.Core.Models.TaskStatus;
 
 namespace ClawdNet.Runtime.Tasks;
 
 public sealed class TaskManager : ITaskManager
 {
+    private const int MaxHookSummaryLength = 240;
     private readonly ITaskStore _taskStore;
     private readonly IConversationStore _conversationStore;
     private readonly IQueryEngine _queryEngine;
+    private readonly IPluginRuntime _pluginRuntime;
     private readonly ConcurrentDictionary<string, RunningTaskHandle> _running = new(StringComparer.Ordinal);
 
     public TaskManager(
         ITaskStore taskStore,
         IConversationStore conversationStore,
-        IQueryEngine queryEngine)
+        IQueryEngine queryEngine,
+        IPluginRuntime? pluginRuntime = null)
     {
         _taskStore = taskStore;
         _conversationStore = conversationStore;
         _queryEngine = queryEngine;
+        _pluginRuntime = pluginRuntime ?? new NullPluginRuntime();
     }
 
     public event Action<TaskRecord, TaskEvent>? TaskChanged;
@@ -165,6 +170,7 @@ public sealed class TaskManager : ITaskManager
             await _taskStore.SaveAsync(updated, cancellationToken);
             await AppendParentMessageAsync(task.ParentSessionId, "task_completed", task.Id, $"{summary}", false, cancellationToken);
             TaskChanged?.Invoke(updated, completedEvent);
+            await InvokeCompletionHooksAsync(updated, taskResult, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -182,6 +188,7 @@ public sealed class TaskManager : ITaskManager
             await _taskStore.SaveAsync(updated, CancellationToken.None);
             await AppendParentMessageAsync(task.ParentSessionId, "task_canceled", task.Id, canceledEvent.Message, true, CancellationToken.None);
             TaskChanged?.Invoke(updated, canceledEvent);
+            await InvokeCompletionHooksAsync(updated, updated.Result, CancellationToken.None);
         }
         catch (Exception ex)
         {
@@ -200,6 +207,7 @@ public sealed class TaskManager : ITaskManager
             await _taskStore.SaveAsync(updated, CancellationToken.None);
             await AppendParentMessageAsync(task.ParentSessionId, "task_failed", task.Id, summary, true, CancellationToken.None);
             TaskChanged?.Invoke(updated, failedEvent);
+            await InvokeCompletionHooksAsync(updated, updated.Result, CancellationToken.None);
         }
         finally
         {
@@ -237,6 +245,60 @@ public sealed class TaskManager : ITaskManager
         await _conversationStore.SaveAsync(updated, cancellationToken);
     }
 
+    private async Task InvokeCompletionHooksAsync(
+        TaskRecord task,
+        TaskResult? result,
+        CancellationToken cancellationToken)
+    {
+        var hookResults = await _pluginRuntime.InvokeHooksAsync(
+            new PluginHookInvocation(
+                PluginHookKind.AfterTaskCompletion,
+                task.ParentSessionId,
+                task.Id,
+                task.WorkingDirectory,
+                new
+                {
+                    taskId = task.Id,
+                    title = task.Title,
+                    status = task.Status.ToString(),
+                    summary = result?.Summary,
+                    error = result?.Error,
+                    workerSessionId = task.WorkerSessionId
+                }),
+            cancellationToken);
+
+        foreach (var hookResult in hookResults)
+        {
+            await AppendParentMessageAsync(
+                task.ParentSessionId,
+                hookResult.Success ? "plugin_hook" : "plugin_hook_error",
+                $"{hookResult.Plugin.Name}:{hookResult.Hook.Kind}",
+                hookResult.Message,
+                !hookResult.Success,
+                cancellationToken);
+
+            if (!hookResult.Success && hookResult.Blocking && task.Status == ClawdTaskStatus.Completed)
+            {
+                var failedAt = DateTimeOffset.UtcNow;
+                var failureMessage = Summarize($"Plugin hook failed: {hookResult.Plugin.Name}/{hookResult.Hook.Kind} - {hookResult.Message}", MaxHookSummaryLength);
+                var failureEvent = new TaskEvent(ClawdTaskStatus.Failed, failureMessage, failedAt, true);
+                var failedTask = task with
+                {
+                    Status = ClawdTaskStatus.Failed,
+                    UpdatedAtUtc = failedAt,
+                    CompletedAtUtc = failedAt,
+                    LastStatusMessage = failureMessage,
+                    Result = new TaskResult(false, failureMessage, hookResult.Message),
+                    Events = [.. task.Events ?? [], failureEvent]
+                };
+                await _taskStore.SaveAsync(failedTask, cancellationToken);
+                await AppendParentMessageAsync(task.ParentSessionId, "task_failed", task.Id, failureMessage, true, cancellationToken);
+                TaskChanged?.Invoke(failedTask, failureEvent);
+                task = failedTask;
+            }
+        }
+    }
+
     private static string BuildWorkerPrompt(TaskRequest request)
     {
         var lines = new List<string>
@@ -257,6 +319,19 @@ public sealed class TaskManager : ITaskManager
 
         lines.Add("Complete this task independently and return a concise completion summary.");
         return string.Join(Environment.NewLine, lines);
+    }
+
+    private static string Summarize(string text, int maxLength = 120)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return "No summary available.";
+        }
+
+        var normalized = text.Replace(Environment.NewLine, " ", StringComparison.Ordinal).Trim();
+        return normalized.Length <= maxLength
+            ? normalized
+            : $"{normalized[..(maxLength - 3)]}...";
     }
 
     private static string Summarize(string text)

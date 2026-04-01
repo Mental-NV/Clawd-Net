@@ -18,6 +18,8 @@ public sealed record EditApprovalRecordedEvent(ConversationSession Session, Tool
 
 public sealed record ToolResultCommittedEvent(ConversationSession Session, ToolCall ToolCall, ToolExecutionResult Result) : QueryStreamEvent;
 
+public sealed record PluginHookRecordedEvent(ConversationSession Session, PluginHookResult Result) : QueryStreamEvent;
+
 public sealed record TaskStartedStreamEvent(TaskRecord Task) : QueryStreamEvent;
 
 public sealed record TaskUpdatedStreamEvent(TaskRecord Task, TaskEvent Event) : QueryStreamEvent;

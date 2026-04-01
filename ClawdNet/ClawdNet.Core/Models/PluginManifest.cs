@@ -5,4 +5,6 @@ public sealed record PluginManifest(
     string? Version,
     bool Enabled,
     IReadOnlyList<McpServerDefinition> McpServers,
-    IReadOnlyList<LspServerDefinition> LspServers);
+    IReadOnlyList<LspServerDefinition> LspServers,
+    IReadOnlyList<PluginCommandDefinition> Commands,
+    IReadOnlyList<PluginHookDefinition> Hooks);

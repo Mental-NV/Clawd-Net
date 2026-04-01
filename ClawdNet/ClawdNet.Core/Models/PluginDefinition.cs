@@ -8,9 +8,18 @@ public sealed record PluginDefinition(
     PluginManifest? Manifest,
     IReadOnlyList<PluginError> Errors)
 {
-    public bool IsValid => Errors.Count == 0 && Manifest is not null;
+    public bool IsValid => Manifest is not null && !Errors.Any(IsFatalError);
 
     public IReadOnlyList<McpServerDefinition> McpServers => Manifest?.McpServers ?? [];
 
     public IReadOnlyList<LspServerDefinition> LspServers => Manifest?.LspServers ?? [];
+
+    public IReadOnlyList<PluginCommandDefinition> Commands => Manifest?.Commands ?? [];
+
+    public IReadOnlyList<PluginHookDefinition> Hooks => Manifest?.Hooks ?? [];
+
+    private static bool IsFatalError(PluginError error)
+    {
+        return error.Code.StartsWith("manifest-", StringComparison.OrdinalIgnoreCase);
+    }
 }

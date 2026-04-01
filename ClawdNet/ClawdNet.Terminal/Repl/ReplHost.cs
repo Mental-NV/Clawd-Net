@@ -265,6 +265,15 @@ public sealed class ReplHost : IReplHost
                                         : $"Tool {committedTool.ToolCall.Name} failed.");
                                 Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
                                 break;
+                            case PluginHookRecordedEvent hookRecorded:
+                                session = hookRecorded.Session;
+                                _currentSession = session;
+                                MarkLiveUpdate();
+                                SetActivity(
+                                    hookRecorded.Result.Success ? TerminalActivityState.RunningTool : TerminalActivityState.Error,
+                                    $"{hookRecorded.Result.Plugin.Name}:{hookRecorded.Result.Hook.Kind} -> {hookRecorded.Result.Message}");
+                                Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                                break;
                             case TaskStartedStreamEvent taskStarted:
                                 MarkLiveUpdate();
                                 SetActivity(TerminalActivityState.RunningTool, $"Task {taskStarted.Task.Id} started: {taskStarted.Task.Title}");
