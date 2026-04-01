@@ -8,6 +8,7 @@ public sealed class FakeQueryEngine : IQueryEngine
 {
     public List<QueryRequest> Requests { get; } = [];
     public Func<QueryRequest, IAsyncEnumerable<QueryStreamEvent>>? StreamHandler { get; set; }
+    public Func<QueryRequest, CancellationToken, Task<QueryExecutionResult>>? HandlerWithCancellation { get; set; }
 
     public Func<QueryRequest, Task<QueryExecutionResult>> Handler { get; set; }
         = request => Task.FromResult(
@@ -27,6 +28,11 @@ public sealed class FakeQueryEngine : IQueryEngine
     public Task<QueryExecutionResult> AskAsync(QueryRequest request, CancellationToken cancellationToken)
     {
         Requests.Add(request);
+        if (HandlerWithCancellation is not null)
+        {
+            return HandlerWithCancellation(request, cancellationToken);
+        }
+
         return Handler(request);
     }
 

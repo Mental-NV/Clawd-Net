@@ -18,6 +18,16 @@ public sealed record EditApprovalRecordedEvent(ConversationSession Session, Tool
 
 public sealed record ToolResultCommittedEvent(ConversationSession Session, ToolCall ToolCall, ToolExecutionResult Result) : QueryStreamEvent;
 
+public sealed record TaskStartedStreamEvent(TaskRecord Task) : QueryStreamEvent;
+
+public sealed record TaskUpdatedStreamEvent(TaskRecord Task, TaskEvent Event) : QueryStreamEvent;
+
+public sealed record TaskCompletedStreamEvent(TaskRecord Task, TaskResult Result) : QueryStreamEvent;
+
+public sealed record TaskFailedStreamEvent(TaskRecord Task, TaskResult Result) : QueryStreamEvent;
+
+public sealed record TaskCanceledStreamEvent(TaskRecord Task, TaskEvent Event) : QueryStreamEvent;
+
 public sealed record TurnCompletedStreamEvent(QueryExecutionResult Result) : QueryStreamEvent;
 
 public sealed record TurnFailedStreamEvent(string Message) : QueryStreamEvent;

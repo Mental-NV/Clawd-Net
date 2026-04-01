@@ -7,6 +7,8 @@ public sealed record CommandContext(
     IToolRegistry ToolRegistry,
     IToolExecutor ToolExecutor,
     IConversationStore ConversationStore,
+    ITaskStore TaskStore,
+    ITaskManager TaskManager,
     IQueryEngine QueryEngine,
     IMcpClient McpClient,
     ILspClient LspClient,

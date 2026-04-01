@@ -1,6 +1,7 @@
 using ClawdNet.Core.Abstractions;
 using ClawdNet.Core.Exceptions;
 using ClawdNet.Core.Models;
+using System.Text.Json;
 
 namespace ClawdNet.Core.Services;
 
@@ -76,7 +77,10 @@ public sealed class QueryEngine : IQueryEngine
                 session.Model,
                 DefaultSystemPrompt,
                 session.Messages.Select(ToModelMessage).ToArray(),
-                _toolRegistry.Tools.Select(tool => new ToolDefinition(tool.Name, tool.Description, tool.InputSchema)).ToArray());
+                _toolRegistry.Tools
+                    .Where(tool => request.AllowTaskTools || !IsTaskToolName(tool.Name))
+                    .Select(tool => new ToolDefinition(tool.Name, tool.Description, tool.InputSchema))
+                    .ToArray());
 
             var toolCalls = new List<ToolCall>();
             var assistantDraft = string.Empty;
@@ -156,7 +160,8 @@ public sealed class QueryEngine : IQueryEngine
             foreach (var toolCall in toolCalls)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!_toolRegistry.TryGet(toolCall.Name, out var tool) || tool is null)
+                if ((!request.AllowTaskTools && IsTaskToolName(toolCall.Name)) ||
+                    !_toolRegistry.TryGet(toolCall.Name, out var tool) || tool is null)
                 {
                     var unknownMessage = new ConversationMessage(
                         "tool_result",
@@ -199,7 +204,7 @@ public sealed class QueryEngine : IQueryEngine
                 if (tool.RequiresEditReview && tool is IReviewableEditTool reviewableEditTool)
                 {
                     var preview = await reviewableEditTool.PreviewAsync(
-                        new ToolExecutionRequest(toolCall.Name, toolCall.Input),
+                        new ToolExecutionRequest(toolCall.Name, toolCall.Input, null, session.Id, request.PermissionMode),
                         cancellationToken);
                     var previewMessage = new ConversationMessage(
                         "edit_preview",
@@ -273,7 +278,7 @@ public sealed class QueryEngine : IQueryEngine
                         else
                         {
                             var applyResult = await reviewableEditTool.ApplyAsync(
-                                new ToolExecutionRequest(toolCall.Name, toolCall.Input),
+                                new ToolExecutionRequest(toolCall.Name, toolCall.Input, null, session.Id, request.PermissionMode),
                                 cancellationToken);
                             toolResponse = applyResult.Success
                                 ? new ToolExecutionResult(true, $"{applyResult.Summary}{Environment.NewLine}{applyResult.Diff}".TrimEnd())
@@ -299,7 +304,7 @@ public sealed class QueryEngine : IQueryEngine
                         yield return new EditApprovalRecordedEvent(session, toolCall, true, approvalMessage.Content);
 
                         var applyResult = await reviewableEditTool.ApplyAsync(
-                            new ToolExecutionRequest(toolCall.Name, toolCall.Input),
+                            new ToolExecutionRequest(toolCall.Name, toolCall.Input, null, session.Id, request.PermissionMode),
                             cancellationToken);
                         toolResponse = applyResult.Success
                             ? new ToolExecutionResult(true, $"{applyResult.Summary}{Environment.NewLine}{applyResult.Diff}".TrimEnd())
@@ -334,13 +339,13 @@ public sealed class QueryEngine : IQueryEngine
                             : new PermissionDecision(PermissionDecisionKind.Deny, "User denied tool execution."));
 
                     toolResponse = approved
-                        ? await _toolExecutor.ExecuteAsync(new ToolExecutionRequest(toolCall.Name, toolCall.Input), cancellationToken)
+                        ? await _toolExecutor.ExecuteAsync(new ToolExecutionRequest(toolCall.Name, toolCall.Input, null, session.Id, request.PermissionMode), cancellationToken)
                         : new ToolExecutionResult(false, string.Empty, $"Permission denied for tool '{toolCall.Name}'.");
                 }
                 else
                 {
                     toolResponse = await _toolExecutor.ExecuteAsync(
-                        new ToolExecutionRequest(toolCall.Name, toolCall.Input),
+                        new ToolExecutionRequest(toolCall.Name, toolCall.Input, null, session.Id, request.PermissionMode),
                         cancellationToken);
                 }
 
@@ -359,6 +364,10 @@ public sealed class QueryEngine : IQueryEngine
                 };
                 await _conversationStore.SaveAsync(session, cancellationToken);
                 yield return new ToolResultCommittedEvent(session, toolCall, toolResponse);
+                foreach (var taskEvent in ParseTaskStreamEvents(toolCall.Name, toolResponse, request.PermissionMode))
+                {
+                    yield return taskEvent;
+                }
             }
 
             session = session with
@@ -416,5 +425,109 @@ public sealed class QueryEngine : IQueryEngine
         {
             return null;
         }
+    }
+
+    private static bool IsTaskToolName(string toolName)
+    {
+        return toolName.StartsWith("task_", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static IEnumerable<QueryStreamEvent> ParseTaskStreamEvents(
+        string toolName,
+        ToolExecutionResult toolResponse,
+        PermissionMode permissionMode)
+    {
+        if (!toolResponse.Success || !IsTaskToolName(toolName) || string.IsNullOrWhiteSpace(toolResponse.Output))
+        {
+            return [];
+        }
+
+        JsonDocument? document = null;
+        var events = new List<QueryStreamEvent>();
+        try
+        {
+            document = JsonDocument.Parse(toolResponse.Output);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return [];
+            }
+
+            var task = ParseTaskRecord(root, permissionMode);
+            var summary = root.TryGetProperty("summary", out var summaryElement)
+                ? summaryElement.GetString()
+                : root.TryGetProperty("lastStatusMessage", out var lastStatus)
+                    ? lastStatus.GetString()
+                    : null;
+
+            switch (toolName.ToLowerInvariant())
+            {
+                case "task_start":
+                    events.Add(new TaskStartedStreamEvent(task));
+                    break;
+                case "task_status":
+                    events.Add(new TaskUpdatedStreamEvent(
+                        task,
+                        new TaskEvent(task.Status, summary ?? task.LastStatusMessage ?? "Task status read.", DateTimeOffset.UtcNow, task.Status == ClawdNet.Core.Models.TaskStatus.Failed)));
+                    break;
+                case "task_cancel":
+                    events.Add(new TaskCanceledStreamEvent(
+                        task,
+                        new TaskEvent(ClawdNet.Core.Models.TaskStatus.Canceled, summary ?? task.LastStatusMessage ?? "Task canceled.", DateTimeOffset.UtcNow, true)));
+                    break;
+            }
+        }
+        catch
+        {
+            return [];
+        }
+        finally
+        {
+            document?.Dispose();
+        }
+
+        return events;
+    }
+
+    private static TaskRecord ParseTaskRecord(JsonElement root, PermissionMode permissionMode)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var taskId = root.TryGetProperty("taskId", out var taskIdElement)
+            ? taskIdElement.GetString() ?? Guid.NewGuid().ToString("N")
+            : Guid.NewGuid().ToString("N");
+        var title = root.TryGetProperty("title", out var titleElement)
+            ? titleElement.GetString() ?? "Background task"
+            : "Background task";
+        var workerSessionId = root.TryGetProperty("workerSessionId", out var workerElement)
+            ? workerElement.GetString() ?? "worker"
+            : "worker";
+        var status = root.TryGetProperty("status", out var statusElement) &&
+                     Enum.TryParse<ClawdNet.Core.Models.TaskStatus>(statusElement.GetString(), true, out var parsedStatus)
+            ? parsedStatus
+            : ClawdNet.Core.Models.TaskStatus.Running;
+        var summary = root.TryGetProperty("summary", out var summaryElement)
+            ? summaryElement.GetString()
+            : root.TryGetProperty("lastStatusMessage", out var lastStatus)
+                ? lastStatus.GetString()
+                : null;
+
+        return new TaskRecord(
+            taskId,
+            TaskKind.Worker,
+            title,
+            summary ?? title,
+            string.Empty,
+            workerSessionId,
+            root.TryGetProperty("model", out var modelElement) ? modelElement.GetString() ?? DefaultModel : DefaultModel,
+            permissionMode,
+            status,
+            now,
+            now,
+            status is ClawdNet.Core.Models.TaskStatus.Completed or ClawdNet.Core.Models.TaskStatus.Canceled or ClawdNet.Core.Models.TaskStatus.Failed or ClawdNet.Core.Models.TaskStatus.Interrupted ? now : null,
+            null,
+            null,
+            summary,
+            summary is null ? null : new TaskResult(status == ClawdNet.Core.Models.TaskStatus.Completed, summary, status == ClawdNet.Core.Models.TaskStatus.Completed ? null : summary),
+            []);
     }
 }

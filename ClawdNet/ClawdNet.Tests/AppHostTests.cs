@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using ClawdNet.App;
 using ClawdNet.Core.Models;
 using ClawdNet.Tests.TestDoubles;
+using ClawdTaskStatus = ClawdNet.Core.Models.TaskStatus;
 
 namespace ClawdNet.Tests;
 
@@ -219,6 +220,73 @@ public sealed class AppHostTests : IDisposable
         Assert.Contains("used pty", result.StdOut);
         Assert.Single(ptyManager.Starts);
         Assert.Contains("hello from pty", ptyManager.CurrentState?.RecentOutput);
+    }
+
+    [Fact]
+    public async Task Task_commands_list_show_and_cancel_use_task_manager()
+    {
+        var timestamp = DateTimeOffset.UtcNow;
+        var taskManager = new FakeTaskManager();
+        var task = new TaskRecord(
+            "task-1",
+            TaskKind.Worker,
+            "Index repo",
+            "Scan files",
+            "parent-1",
+            "worker-1",
+            "claude-sonnet-4-5",
+            PermissionMode.Default,
+            ClawdTaskStatus.Running,
+            timestamp,
+            timestamp,
+            null,
+            null,
+            null,
+            "Task started.",
+            null,
+            [new TaskEvent(ClawdTaskStatus.Running, "Task started.", timestamp)]);
+        taskManager.Publish(task, task.Events!.Last());
+        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient(), taskManager: taskManager);
+
+        var list = await host.RunAsync(["task", "list"], CancellationToken.None);
+        var show = await host.RunAsync(["task", "show", "task-1"], CancellationToken.None);
+        var cancel = await host.RunAsync(["task", "cancel", "task-1"], CancellationToken.None);
+
+        Assert.Equal(0, list.ExitCode);
+        Assert.Contains("Index repo", list.StdOut);
+        Assert.Equal(0, show.ExitCode);
+        Assert.Contains("worker-1", show.StdOut);
+        Assert.Equal(0, cancel.ExitCode);
+        Assert.Contains("task-1", cancel.StdOut);
+    }
+
+    [Fact]
+    public async Task Ask_can_start_background_task_via_query_engine()
+    {
+        var taskManager = new FakeTaskManager();
+        var client = new FakeAnthropicMessageClient(
+            new ModelResponse(
+                "claude-sonnet-4-5",
+                [
+                    new ToolUseContentBlock(
+                        "tool-1",
+                        "task_start",
+                        new JsonObject
+                        {
+                            ["title"] = "Index repo",
+                            ["goal"] = "Scan files"
+                        })
+                ],
+                "tool_use"),
+            new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("task started")], "end_turn"));
+        var host = new AppHost("1.0.0", _dataRoot, client, taskManager: taskManager);
+
+        var result = await host.RunAsync(["ask", "--permission-mode", "bypass-permissions", "start a background task"], CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("task started", result.StdOut);
+        Assert.Single(taskManager.Starts);
+        Assert.Equal("Index repo", taskManager.Starts[0].Title);
     }
 
     [Fact]

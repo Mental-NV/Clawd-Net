@@ -5,6 +5,7 @@ using ClawdNet.Terminal.Models;
 using ClawdNet.Terminal.Rendering;
 using ClawdNet.Terminal.Repl;
 using ClawdNet.Tests.TestDoubles;
+using ClawdTaskStatus = ClawdNet.Core.Models.TaskStatus;
 
 namespace ClawdNet.Tests;
 
@@ -37,7 +38,7 @@ public sealed class ReplHostTests : IDisposable
                 return new QueryExecutionResult(updated, "hi there", 1);
             }
         };
-        var host = new ReplHost(terminal, store, queryEngine, new ConsoleTranscriptRenderer(), new FakePtyManager());
+        var host = new ReplHost(terminal, store, queryEngine, new ConsoleTranscriptRenderer(), new FakePtyManager(), new FakeTaskManager());
 
         var result = await host.RunAsync(new ReplLaunchOptions(), CancellationToken.None);
         var sessions = await store.ListAsync(CancellationToken.None);
@@ -57,7 +58,7 @@ public sealed class ReplHostTests : IDisposable
         var existing = await store.CreateAsync("Resume me", "claude-sonnet-4-5", CancellationToken.None);
         var terminal = new FakeTerminalSession(["quit"]);
         var queryEngine = new FakeQueryEngine();
-        var host = new ReplHost(terminal, store, queryEngine, new ConsoleTranscriptRenderer(), new FakePtyManager());
+        var host = new ReplHost(terminal, store, queryEngine, new ConsoleTranscriptRenderer(), new FakePtyManager(), new FakeTaskManager());
 
         var result = await host.RunAsync(new ReplLaunchOptions(existing.Id), CancellationToken.None);
 
@@ -72,7 +73,7 @@ public sealed class ReplHostTests : IDisposable
         var store = new JsonSessionStore(_dataRoot);
         var terminal = new FakeTerminalSession([]);
         var queryEngine = new FakeQueryEngine();
-        var host = new ReplHost(terminal, store, queryEngine, new ConsoleTranscriptRenderer(), new FakePtyManager());
+        var host = new ReplHost(terminal, store, queryEngine, new ConsoleTranscriptRenderer(), new FakePtyManager(), new FakeTaskManager());
 
         var result = await host.RunAsync(new ReplLaunchOptions("missing"), CancellationToken.None);
 
@@ -111,7 +112,7 @@ public sealed class ReplHostTests : IDisposable
                 return new QueryExecutionResult(updated, allowed ? "approved" : "denied", 1);
             }
         };
-        var host = new ReplHost(terminal, store, queryEngine, new ConsoleTranscriptRenderer(), new FakePtyManager());
+        var host = new ReplHost(terminal, store, queryEngine, new ConsoleTranscriptRenderer(), new FakePtyManager(), new FakeTaskManager());
 
         var result = await host.RunAsync(new ReplLaunchOptions(session.Id), CancellationToken.None);
         var updatedSession = await store.GetAsync(session.Id, CancellationToken.None);
@@ -130,7 +131,7 @@ public sealed class ReplHostTests : IDisposable
         var store = new JsonSessionStore(_dataRoot);
         var session = await store.CreateAsync("Session info", "claude-sonnet-4-5", CancellationToken.None);
         var terminal = new FakeTerminalSession(["/help", "/session", "/quit"]);
-        var host = new ReplHost(terminal, store, new FakeQueryEngine(), new ConsoleTranscriptRenderer(), new FakePtyManager());
+        var host = new ReplHost(terminal, store, new FakeQueryEngine(), new ConsoleTranscriptRenderer(), new FakePtyManager(), new FakeTaskManager());
 
         var result = await host.RunAsync(new ReplLaunchOptions(session.Id), CancellationToken.None);
 
@@ -167,7 +168,7 @@ public sealed class ReplHostTests : IDisposable
                 return new QueryExecutionResult(updated, "done", 1);
             }
         };
-        var host = new ReplHost(terminal, store, queryEngine, new ConsoleTranscriptRenderer(), new FakePtyManager());
+        var host = new ReplHost(terminal, store, queryEngine, new ConsoleTranscriptRenderer(), new FakePtyManager(), new FakeTaskManager());
 
         var result = await host.RunAsync(new ReplLaunchOptions(), CancellationToken.None);
 
@@ -189,7 +190,7 @@ public sealed class ReplHostTests : IDisposable
         };
         await store.SaveAsync(saved, CancellationToken.None);
         var terminal = new FakeTerminalSession(["/clear", "quit"]);
-        var host = new ReplHost(terminal, store, new FakeQueryEngine(), new ConsoleTranscriptRenderer(), new FakePtyManager());
+        var host = new ReplHost(terminal, store, new FakeQueryEngine(), new ConsoleTranscriptRenderer(), new FakePtyManager(), new FakeTaskManager());
 
         var result = await host.RunAsync(new ReplLaunchOptions(session.Id), CancellationToken.None);
         var reloaded = await store.GetAsync(session.Id, CancellationToken.None);
@@ -206,7 +207,7 @@ public sealed class ReplHostTests : IDisposable
     {
         var store = new JsonSessionStore(_dataRoot);
         var terminal = new FakeTerminalSession(["/exit"]);
-        var host = new ReplHost(terminal, store, new FakeQueryEngine(), new ConsoleTranscriptRenderer(), new FakePtyManager());
+        var host = new ReplHost(terminal, store, new FakeQueryEngine(), new ConsoleTranscriptRenderer(), new FakePtyManager(), new FakeTaskManager());
 
         var result = await host.RunAsync(new ReplLaunchOptions(), CancellationToken.None);
 
@@ -223,7 +224,7 @@ public sealed class ReplHostTests : IDisposable
         {
             StreamHandler = request => StreamReplyAsync(request)
         };
-        var host = new ReplHost(terminal, store, queryEngine, new ConsoleTranscriptRenderer(), new FakePtyManager());
+        var host = new ReplHost(terminal, store, queryEngine, new ConsoleTranscriptRenderer(), new FakePtyManager(), new FakeTaskManager());
 
         var result = await host.RunAsync(new ReplLaunchOptions(), CancellationToken.None);
 
@@ -242,7 +243,7 @@ public sealed class ReplHostTests : IDisposable
         {
             StreamHandler = request => InterruptibleStreamAsync(request, terminal)
         };
-        var host = new ReplHost(terminal, store, queryEngine, new ConsoleTranscriptRenderer(), new FakePtyManager());
+        var host = new ReplHost(terminal, store, queryEngine, new ConsoleTranscriptRenderer(), new FakePtyManager(), new FakeTaskManager());
 
         var result = await host.RunAsync(new ReplLaunchOptions(), CancellationToken.None);
 
@@ -262,7 +263,7 @@ public sealed class ReplHostTests : IDisposable
         {
             StreamHandler = _ => StreamEditPreviewAsync(session, preview)
         };
-        var host = new ReplHost(terminal, store, queryEngine, new ConsoleTranscriptRenderer(), new FakePtyManager());
+        var host = new ReplHost(terminal, store, queryEngine, new ConsoleTranscriptRenderer(), new FakePtyManager(), new FakeTaskManager());
 
         var result = await host.RunAsync(new ReplLaunchOptions(session.Id), CancellationToken.None);
 
@@ -279,13 +280,33 @@ public sealed class ReplHostTests : IDisposable
         var terminal = new FakeTerminalSession(["/pty", "exit"]);
         var ptyManager = new FakePtyManager();
         ptyManager.Publish(FakePtyManager.NewState("cat", Environment.CurrentDirectory, "pty output", true, null, false));
-        var host = new ReplHost(terminal, store, new FakeQueryEngine(), new ConsoleTranscriptRenderer(), ptyManager);
+        var host = new ReplHost(terminal, store, new FakeQueryEngine(), new ConsoleTranscriptRenderer(), ptyManager, new FakeTaskManager());
 
         var result = await host.RunAsync(new ReplLaunchOptions(session.Id), CancellationToken.None);
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains(terminal.RenderedViews, view => view.Activity?.Contains("PTY", StringComparison.OrdinalIgnoreCase) == true);
         Assert.Contains(terminal.RenderedViews, view => view.Pty?.Contains("pty output", StringComparison.OrdinalIgnoreCase) == true);
+    }
+
+    [Fact]
+    public async Task Repl_supports_tasks_slash_command()
+    {
+        var store = new JsonSessionStore(_dataRoot);
+        var session = await store.CreateAsync("Interactive session", "claude-sonnet-4-5", CancellationToken.None);
+        var terminal = new FakeTerminalSession(["/tasks", "exit"]);
+        var taskManager = new FakeTaskManager();
+        var task = FakeTaskManager.NewTask(
+            new TaskRequest("Index repo", "Scan the repository", session.Id),
+            ClawdTaskStatus.Running,
+            "Task started.");
+        taskManager.Publish(task, task.Events!.Last());
+        var host = new ReplHost(terminal, store, new FakeQueryEngine(), new ConsoleTranscriptRenderer(), new FakePtyManager(), taskManager);
+
+        var result = await host.RunAsync(new ReplLaunchOptions(session.Id), CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains(terminal.RenderedViews, view => view.Activity?.Contains("Index repo", StringComparison.OrdinalIgnoreCase) == true);
     }
 
     [Fact]
@@ -305,7 +326,7 @@ public sealed class ReplHostTests : IDisposable
         terminal.EnqueuePromptEvent(PromptInputResult.ScrollPageUp());
         terminal.EnqueuePromptEvent(PromptInputResult.ScrollPageDown());
         terminal.EnqueuePromptEvent(PromptInputResult.Submit("exit"));
-        var host = new ReplHost(terminal, store, new FakeQueryEngine(), new ConsoleTranscriptRenderer(), new FakePtyManager());
+        var host = new ReplHost(terminal, store, new FakeQueryEngine(), new ConsoleTranscriptRenderer(), new FakePtyManager(), new FakeTaskManager());
 
         var result = await host.RunAsync(new ReplLaunchOptions(session.Id), CancellationToken.None);
 
@@ -334,12 +355,63 @@ public sealed class ReplHostTests : IDisposable
         await store.SaveAsync(saved, CancellationToken.None);
         var terminal = new FakeTerminalSession(["/bottom", "exit"]);
         terminal.EnqueuePromptEvent(PromptInputResult.ScrollPageUp());
-        var host = new ReplHost(terminal, store, new FakeQueryEngine(), new ConsoleTranscriptRenderer(), new FakePtyManager());
+        var host = new ReplHost(terminal, store, new FakeQueryEngine(), new ConsoleTranscriptRenderer(), new FakePtyManager(), new FakeTaskManager());
 
         var result = await host.RunAsync(new ReplLaunchOptions(session.Id), CancellationToken.None);
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains(terminal.RenderedViews, view => view.Activity?.Contains("Returned to live output", StringComparison.OrdinalIgnoreCase) == true);
+    }
+
+    [Fact]
+    public async Task Repl_renders_live_task_updates_for_current_parent_session()
+    {
+        var store = new JsonSessionStore(_dataRoot);
+        var session = await store.CreateAsync("Parent", "claude-sonnet-4-5", CancellationToken.None);
+        var terminal = new FakeTerminalSession(["exit"])
+        {
+            ReadLineDelayMs = 100
+        };
+        var taskManager = new FakeTaskManager();
+        var host = new ReplHost(terminal, store, new FakeQueryEngine(), new ConsoleTranscriptRenderer(), new FakePtyManager(), taskManager);
+
+        var runTask = host.RunAsync(new ReplLaunchOptions(session.Id), CancellationToken.None);
+        await Task.Delay(10);
+        var timestamp = DateTimeOffset.UtcNow;
+        var updatedSession = session with
+        {
+            UpdatedAtUtc = timestamp,
+            Messages =
+            [
+                .. session.Messages,
+                new ConversationMessage("task_completed", "Worker finished successfully.", timestamp, "task-1", "task-1")
+            ]
+        };
+        await store.SaveAsync(updatedSession, CancellationToken.None);
+        var task = new TaskRecord(
+            "task-1",
+            TaskKind.Worker,
+            "Worker",
+            "Goal",
+            session.Id,
+            "worker-session",
+            "claude-sonnet-4-5",
+            PermissionMode.Default,
+            ClawdTaskStatus.Completed,
+            timestamp,
+            timestamp,
+            timestamp,
+            null,
+            null,
+            "Worker finished successfully.",
+            new TaskResult(true, "Worker finished successfully."),
+            [new TaskEvent(ClawdTaskStatus.Completed, "Worker finished successfully.", timestamp)]);
+        taskManager.Publish(task, task.Events!.Last());
+        var result = await runTask;
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains(terminal.RenderedViews, view => view.Transcript.Contains("Worker finished successfully.", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(terminal.RenderedViews, view => view.Activity?.Contains("task-1", StringComparison.OrdinalIgnoreCase) == true);
     }
 
     [Fact]
@@ -352,7 +424,7 @@ public sealed class ReplHostTests : IDisposable
         };
         var ptyManager = new FakePtyManager();
         ptyManager.Publish(FakePtyManager.NewState("cat", Environment.CurrentDirectory, string.Empty, true, null, false));
-        var host = new ReplHost(terminal, store, new FakeQueryEngine(), new ConsoleTranscriptRenderer(), ptyManager);
+        var host = new ReplHost(terminal, store, new FakeQueryEngine(), new ConsoleTranscriptRenderer(), ptyManager, new FakeTaskManager());
 
         var runTask = host.RunAsync(new ReplLaunchOptions(), CancellationToken.None);
         for (var attempt = 0; attempt < 50 && terminal.InterruptHandler is null; attempt++)

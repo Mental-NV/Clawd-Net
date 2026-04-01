@@ -14,6 +14,7 @@ public sealed class ReplHost : IReplHost
     private readonly ITranscriptRenderer _transcriptRenderer;
     private readonly IToolApprovalHandler _approvalHandler;
     private readonly IPtyManager _ptyManager;
+    private readonly ITaskManager _taskManager;
     private readonly PromptHistoryBuffer _promptHistory = new();
     private TerminalActivityState _activityState = TerminalActivityState.Ready;
     private string? _activityDetail;
@@ -30,13 +31,15 @@ public sealed class ReplHost : IReplHost
         IConversationStore conversationStore,
         IQueryEngine queryEngine,
         ITranscriptRenderer transcriptRenderer,
-        IPtyManager ptyManager)
+        IPtyManager ptyManager,
+        ITaskManager taskManager)
     {
         _terminalSession = terminalSession;
         _conversationStore = conversationStore;
         _queryEngine = queryEngine;
         _transcriptRenderer = transcriptRenderer;
         _ptyManager = ptyManager;
+        _taskManager = taskManager;
         _approvalHandler = new TerminalApprovalHandler(terminalSession, HandleActivityChange);
     }
 
@@ -59,6 +62,7 @@ public sealed class ReplHost : IReplHost
         _promptBuffer = string.Empty;
         _promptHistory.ResetNavigation();
         _ptyManager.SessionChanged += HandlePtySessionChanged;
+        _taskManager.TaskChanged += HandleTaskChanged;
         try
         {
             Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
@@ -139,7 +143,7 @@ public sealed class ReplHost : IReplHost
                     return CommandExecutionResult.Success();
                 }
 
-                if (TryHandleSlashCommand(prompt, session, options, ref _visibleStartIndex))
+                if (await TryHandleSlashCommandAsync(prompt, session, options, cancellationToken))
                 {
                     _promptBuffer = string.Empty;
                     _promptHistory.ResetNavigation();
@@ -261,6 +265,31 @@ public sealed class ReplHost : IReplHost
                                         : $"Tool {committedTool.ToolCall.Name} failed.");
                                 Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
                                 break;
+                            case TaskStartedStreamEvent taskStarted:
+                                MarkLiveUpdate();
+                                SetActivity(TerminalActivityState.RunningTool, $"Task {taskStarted.Task.Id} started: {taskStarted.Task.Title}");
+                                Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                                break;
+                            case TaskUpdatedStreamEvent taskUpdated:
+                                MarkLiveUpdate();
+                                SetActivity(TerminalActivityState.RunningTool, $"Task {taskUpdated.Task.Id}: {taskUpdated.Event.Message}");
+                                Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                                break;
+                            case TaskCompletedStreamEvent taskCompleted:
+                                MarkLiveUpdate();
+                                SetActivity(TerminalActivityState.RunningTool, $"Task {taskCompleted.Task.Id} completed: {taskCompleted.Result.Summary}");
+                                Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                                break;
+                            case TaskFailedStreamEvent taskFailed:
+                                MarkLiveUpdate();
+                                SetActivity(TerminalActivityState.Error, $"Task {taskFailed.Task.Id} failed: {taskFailed.Result.Error ?? taskFailed.Result.Summary}");
+                                Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                                break;
+                            case TaskCanceledStreamEvent taskCanceled:
+                                MarkLiveUpdate();
+                                SetActivity(TerminalActivityState.Interrupted, $"Task {taskCanceled.Task.Id} canceled: {taskCanceled.Event.Message}");
+                                Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                                break;
                             case TurnCompletedStreamEvent completed:
                                 result = completed.Result;
                                 session = completed.Result.Session;
@@ -318,21 +347,22 @@ public sealed class ReplHost : IReplHost
         finally
         {
             _ptyManager.SessionChanged -= HandlePtySessionChanged;
+            _taskManager.TaskChanged -= HandleTaskChanged;
         }
     }
 
-    private bool TryHandleSlashCommand(
+    private async Task<bool> TryHandleSlashCommandAsync(
         string prompt,
         ConversationSession session,
         ReplLaunchOptions options,
-        ref int visibleStartIndex)
+        CancellationToken cancellationToken)
     {
         switch (prompt)
         {
             case "/help":
                 SetActivity(
                     TerminalActivityState.ShowingHelp,
-                    "Commands: /help, /session, /pty, /clear, /bottom, /exit. Keys: Up/Down history, PgUp/PgDn scroll, End bottom.");
+                    "Commands: /help, /session, /tasks, /pty, /clear, /bottom, /exit. Keys: Up/Down history, PgUp/PgDn scroll, End bottom.");
                 return true;
             case "/session":
                 SetActivity(
@@ -340,7 +370,7 @@ public sealed class ReplHost : IReplHost
                     $"Session {session.Id} | model={session.Model} | permission={FormatPermissionMode(options.PermissionMode)} | messages={session.Messages.Count}");
                 return true;
             case "/clear":
-                visibleStartIndex = session.Messages.Count;
+                _visibleStartIndex = session.Messages.Count;
                 _terminalSession.ClearVisible();
                 _viewport = new TerminalViewportState();
                 SetActivity(TerminalActivityState.Cleared, "Screen cleared. Session history is preserved.");
@@ -352,6 +382,15 @@ public sealed class ReplHost : IReplHost
                     ptyState is null
                         ? "No active PTY session."
                         : $"PTY {ptyState.SessionId} | running={ptyState.IsRunning} | command={ptyState.Command}");
+                return true;
+            case "/tasks":
+                var tasks = await _taskManager.ListAsync(cancellationToken);
+                var taskSummary = tasks.Count == 0
+                    ? "No tasks found."
+                    : string.Join(
+                        Environment.NewLine,
+                        tasks.Take(5).Select(task => $"{task.Id} | {task.Status} | {task.Title}"));
+                SetActivity(TerminalActivityState.ShowingSession, taskSummary);
                 return true;
             case "/bottom":
                 ScrollBottom();
@@ -429,6 +468,34 @@ public sealed class ReplHost : IReplHost
         }
 
         Render(_currentSession, _currentPermissionMode, _visibleStartIndex, clearScreen: true);
+    }
+
+    private async void HandleTaskChanged(TaskRecord task, TaskEvent taskEvent)
+    {
+        try
+        {
+            if (_currentSession is null || !string.Equals(_currentSession.Id, task.ParentSessionId, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            var reloaded = await _conversationStore.GetAsync(task.ParentSessionId, CancellationToken.None);
+            if (reloaded is not null)
+            {
+                _currentSession = reloaded;
+            }
+
+            MarkLiveUpdate();
+            SetActivity(TerminalActivityState.RunningTool, $"Task {task.Id} | {task.Status} | {taskEvent.Message}");
+            if (_currentSession is not null)
+            {
+                Render(_currentSession, _currentPermissionMode, _visibleStartIndex, clearScreen: true);
+            }
+        }
+        catch
+        {
+            // ignore event handler failures
+        }
     }
 
     private IReadOnlyList<ConversationMessage> GetViewportMessages(ConversationSession session, int visibleStartIndex)

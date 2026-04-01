@@ -59,4 +59,26 @@ public sealed class PermissionServiceTests
 
         Assert.Equal(PermissionDecisionKind.Allow, decision.Kind);
     }
+
+    [Fact]
+    public void Default_mode_requires_approval_for_task_start()
+    {
+        var service = new DefaultPermissionService();
+        var tool = new TaskStartTool(new FakeTaskManager());
+
+        var decision = service.Evaluate(tool, PermissionMode.Default);
+
+        Assert.Equal(PermissionDecisionKind.Ask, decision.Kind);
+    }
+
+    [Fact]
+    public void Accept_edits_still_requires_approval_for_task_start()
+    {
+        var service = new DefaultPermissionService();
+        var tool = new TaskStartTool(new FakeTaskManager());
+
+        var decision = service.Evaluate(tool, PermissionMode.AcceptEdits);
+
+        Assert.Equal(PermissionDecisionKind.Ask, decision.Kind);
+    }
 }

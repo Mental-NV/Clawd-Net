@@ -37,7 +37,7 @@ public sealed class PtyManagerTests : IDisposable
         var largeText = new string('x', 5000) + "\n";
 
         await _ptyManager.WriteAsync(largeText, CancellationToken.None);
-        var state = await WaitForOutputAsync("x");
+        var state = await WaitForConditionAsync(state => state?.IsOutputClipped == true);
 
         Assert.NotNull(state);
         Assert.True(state!.IsOutputClipped);
@@ -56,10 +56,15 @@ public sealed class PtyManagerTests : IDisposable
 
     private async Task<Core.Models.PtySessionState?> WaitForOutputAsync(string expected)
     {
+        return await WaitForConditionAsync(state => state?.RecentOutput.Contains(expected, StringComparison.Ordinal) == true);
+    }
+
+    private async Task<Core.Models.PtySessionState?> WaitForConditionAsync(Func<Core.Models.PtySessionState?, bool> predicate)
+    {
         for (var attempt = 0; attempt < 50; attempt++)
         {
             var state = await _ptyManager.ReadAsync(CancellationToken.None);
-            if (state?.RecentOutput.Contains(expected, StringComparison.Ordinal) == true)
+            if (predicate(state))
             {
                 return state;
             }

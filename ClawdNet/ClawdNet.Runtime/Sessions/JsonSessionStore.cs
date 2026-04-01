@@ -8,6 +8,7 @@ namespace ClawdNet.Runtime.Sessions;
 public sealed class JsonSessionStore : IConversationStore
 {
     private readonly string _storePath;
+    private readonly SemaphoreSlim _sync = new(1, 1);
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true
@@ -21,47 +22,79 @@ public sealed class JsonSessionStore : IConversationStore
 
     public async Task<ConversationSession> CreateAsync(string? title, string model, CancellationToken cancellationToken)
     {
-        var sessions = await ReadSessionsAsync(cancellationToken);
-        var timestamp = DateTimeOffset.UtcNow;
-        var session = new ConversationSession(
-            Guid.NewGuid().ToString("N"),
-            string.IsNullOrWhiteSpace(title) ? "Untitled session" : title.Trim(),
-            model,
-            timestamp,
-            timestamp,
-            [
-                new ConversationMessage("system", "ClawdNet session initialized.", timestamp)
-            ]);
-        sessions.Add(session);
-        await WriteSessionsAsync(sessions, cancellationToken);
-        return session;
+        await _sync.WaitAsync(cancellationToken);
+        try
+        {
+            var sessions = await ReadSessionsAsync(cancellationToken);
+            var timestamp = DateTimeOffset.UtcNow;
+            var session = new ConversationSession(
+                Guid.NewGuid().ToString("N"),
+                string.IsNullOrWhiteSpace(title) ? "Untitled session" : title.Trim(),
+                model,
+                timestamp,
+                timestamp,
+                [
+                    new ConversationMessage("system", "ClawdNet session initialized.", timestamp)
+                ]);
+            sessions.Add(session);
+            await WriteSessionsAsync(sessions, cancellationToken);
+            return session;
+        }
+        finally
+        {
+            _sync.Release();
+        }
     }
 
     public async Task<ConversationSession?> GetAsync(string sessionId, CancellationToken cancellationToken)
     {
-        var sessions = await ReadSessionsAsync(cancellationToken);
-        return sessions.FirstOrDefault(session => string.Equals(session.Id, sessionId, StringComparison.Ordinal));
+        await _sync.WaitAsync(cancellationToken);
+        try
+        {
+            var sessions = await ReadSessionsAsync(cancellationToken);
+            return sessions.FirstOrDefault(session => string.Equals(session.Id, sessionId, StringComparison.Ordinal));
+        }
+        finally
+        {
+            _sync.Release();
+        }
     }
 
     public async Task<IReadOnlyList<ConversationSession>> ListAsync(CancellationToken cancellationToken)
     {
-        var sessions = await ReadSessionsAsync(cancellationToken);
-        return sessions
-            .OrderByDescending(session => session.UpdatedAtUtc)
-            .ToArray();
+        await _sync.WaitAsync(cancellationToken);
+        try
+        {
+            var sessions = await ReadSessionsAsync(cancellationToken);
+            return sessions
+                .OrderByDescending(session => session.UpdatedAtUtc)
+                .ToArray();
+        }
+        finally
+        {
+            _sync.Release();
+        }
     }
 
     public async Task SaveAsync(ConversationSession session, CancellationToken cancellationToken)
     {
-        var sessions = await ReadSessionsAsync(cancellationToken);
-        var index = sessions.FindIndex(existing => string.Equals(existing.Id, session.Id, StringComparison.Ordinal));
-        if (index < 0)
+        await _sync.WaitAsync(cancellationToken);
+        try
         {
-            throw new ConversationStoreException($"Session '{session.Id}' was not found.");
-        }
+            var sessions = await ReadSessionsAsync(cancellationToken);
+            var index = sessions.FindIndex(existing => string.Equals(existing.Id, session.Id, StringComparison.Ordinal));
+            if (index < 0)
+            {
+                throw new ConversationStoreException($"Session '{session.Id}' was not found.");
+            }
 
-        sessions[index] = session;
-        await WriteSessionsAsync(sessions, cancellationToken);
+            sessions[index] = session;
+            await WriteSessionsAsync(sessions, cancellationToken);
+        }
+        finally
+        {
+            _sync.Release();
+        }
     }
 
     private async Task<List<ConversationSession>> ReadSessionsAsync(CancellationToken cancellationToken)

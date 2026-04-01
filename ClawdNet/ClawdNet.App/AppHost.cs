@@ -11,6 +11,7 @@ using ClawdNet.Runtime.Plugins;
 using ClawdNet.Runtime.Protocols;
 using ClawdNet.Runtime.Processes;
 using ClawdNet.Runtime.Sessions;
+using ClawdNet.Runtime.Tasks;
 using ClawdNet.Runtime.Tools;
 using ClawdNet.Terminal.Abstractions;
 using ClawdNet.Terminal.Console;
@@ -25,14 +26,18 @@ public sealed class AppHost : IAsyncDisposable
     private readonly CommandContext _context;
     private readonly IReplHost _replHost;
     private readonly IToolRegistry _toolRegistry;
+    private readonly ITaskStore _taskStore;
+    private readonly ITaskManager _taskManager;
     private readonly IPluginCatalog _pluginCatalog;
     private readonly IMcpClient _mcpClient;
     private readonly ILspClient _lspClient;
     private readonly IPtyManager _ptyManager;
     private readonly SemaphoreSlim _pluginInitializationLock = new(1, 1);
+    private readonly SemaphoreSlim _taskInitializationLock = new(1, 1);
     private readonly SemaphoreSlim _mcpInitializationLock = new(1, 1);
     private readonly SemaphoreSlim _lspInitializationLock = new(1, 1);
     private bool _pluginsInitialized;
+    private bool _tasksInitialized;
     private bool _mcpInitialized;
     private bool _lspInitialized;
 
@@ -45,6 +50,8 @@ public sealed class AppHost : IAsyncDisposable
         IMcpClient? mcpClient = null,
         ILspClient? lspClient = null,
         IPtyManager? ptyManager = null,
+        ITaskStore? taskStore = null,
+        ITaskManager? taskManager = null,
         IReplHost? replHost = null,
         ITerminalSession? terminalSession = null)
     {
@@ -56,6 +63,8 @@ public sealed class AppHost : IAsyncDisposable
         _ptyManager = ptyManager ?? new PtyManager();
         IEditPreviewService editPreviewService = new EditPreviewService();
         IEditApplier editApplier = new EditApplier(_lspClient);
+        IConversationStore conversationStore = new JsonSessionStore(dataRoot);
+        _taskStore = taskStore ?? new JsonTaskStore(dataRoot);
         _toolRegistry = new ToolRegistry(
         [
             new EchoTool(),
@@ -70,19 +79,27 @@ public sealed class AppHost : IAsyncDisposable
             new ApplyPatchTool(editPreviewService, editApplier)
         ]);
         IToolExecutor toolExecutor = new ToolExecutor(_toolRegistry);
-        IConversationStore conversationStore = new JsonSessionStore(dataRoot);
         anthropicMessageClient ??= new HttpAnthropicMessageClient(new HttpClient());
         IPermissionService permissionService = new DefaultPermissionService();
         _toolRegistry.Register(new FileWriteTool(_lspClient));
         IQueryEngine queryEngine = new QueryEngine(conversationStore, anthropicMessageClient, _toolRegistry, toolExecutor, permissionService);
+        _taskManager = taskManager ?? new TaskManager(_taskStore, conversationStore, queryEngine);
+        _toolRegistry.RegisterRange(
+        [
+            new TaskStartTool(_taskManager),
+            new TaskStatusTool(_taskManager),
+            new TaskListTool(_taskManager),
+            new TaskCancelTool(_taskManager)
+        ]);
         ITranscriptRenderer transcriptRenderer = new ConsoleTranscriptRenderer();
         terminalSession ??= new ConsoleTerminalSession();
-        _replHost = replHost ?? new ReplHost(terminalSession, conversationStore, queryEngine, transcriptRenderer, _ptyManager);
+        _replHost = replHost ?? new ReplHost(terminalSession, conversationStore, queryEngine, transcriptRenderer, _ptyManager, _taskManager);
 
-        _context = new CommandContext(featureGate, _toolRegistry, toolExecutor, conversationStore, queryEngine, _mcpClient, _lspClient, _pluginCatalog, permissionService, transcriptRenderer, version);
+        _context = new CommandContext(featureGate, _toolRegistry, toolExecutor, conversationStore, _taskStore, _taskManager, queryEngine, _mcpClient, _lspClient, _pluginCatalog, permissionService, transcriptRenderer, version);
         _dispatcher = new CommandDispatcher(
         [
             new AskCommandHandler(),
+            new TaskCommandHandler(),
             new PluginCommandHandler(),
             new LspCommandHandler(),
             new McpCommandHandler(),
@@ -102,6 +119,7 @@ public sealed class AppHost : IAsyncDisposable
     public async Task<CommandExecutionResult> RunAsync(IReadOnlyList<string> args, CancellationToken cancellationToken)
     {
         await EnsurePluginsInitializedAsync(cancellationToken);
+        await EnsureTasksInitializedAsync(cancellationToken);
         await EnsureMcpInitializedAsync(cancellationToken);
         await EnsureLspInitializedAsync(cancellationToken);
         if (ShouldLaunchRepl(args))
@@ -114,12 +132,38 @@ public sealed class AppHost : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        await _taskManager.DisposeAsync();
         await _mcpClient.DisposeAsync();
         await _lspClient.DisposeAsync();
         await _ptyManager.DisposeAsync();
         _pluginInitializationLock.Dispose();
+        _taskInitializationLock.Dispose();
         _mcpInitializationLock.Dispose();
         _lspInitializationLock.Dispose();
+    }
+
+    private async Task EnsureTasksInitializedAsync(CancellationToken cancellationToken)
+    {
+        if (_tasksInitialized)
+        {
+            return;
+        }
+
+        await _taskInitializationLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_tasksInitialized)
+            {
+                return;
+            }
+
+            await _taskManager.InitializeAsync(cancellationToken);
+            _tasksInitialized = true;
+        }
+        finally
+        {
+            _taskInitializationLock.Release();
+        }
     }
 
     private static bool ShouldLaunchRepl(IReadOnlyList<string> args)

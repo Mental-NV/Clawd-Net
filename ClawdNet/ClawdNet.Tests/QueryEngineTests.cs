@@ -159,6 +159,63 @@ public sealed class QueryEngineTests : IDisposable
         Assert.DoesNotContain(session.Messages, message => message.Role == "assistant" && message.Content == "partial");
     }
 
+    [Fact]
+    public async Task Query_engine_can_start_background_task_and_emit_task_started_event()
+    {
+        var store = new JsonSessionStore(_dataRoot);
+        var taskStore = new JsonTaskStore(_dataRoot);
+        var backgroundEngine = new FakeQueryEngine
+        {
+            Handler = async request =>
+            {
+                var workerSession = await store.GetAsync(request.SessionId!, CancellationToken.None)
+                    ?? throw new InvalidOperationException("Expected worker session.");
+                var updated = workerSession with
+                {
+                    UpdatedAtUtc = DateTimeOffset.UtcNow,
+                    Messages =
+                    [
+                        .. workerSession.Messages,
+                        new ConversationMessage("assistant", "worker done", DateTimeOffset.UtcNow)
+                    ]
+                };
+                await store.SaveAsync(updated, CancellationToken.None);
+                return new QueryExecutionResult(updated, "worker done", 1);
+            }
+        };
+        var taskManager = new Runtime.Tasks.TaskManager(taskStore, store, backgroundEngine);
+        await taskManager.InitializeAsync(CancellationToken.None);
+        var client = new FakeAnthropicMessageClient(
+            new ModelResponse(
+                "claude-sonnet-4-5",
+                [
+                    new ToolUseContentBlock(
+                        "tool-1",
+                        "task_start",
+                        new JsonObject
+                        {
+                            ["title"] = "Index repo",
+                            ["goal"] = "Scan the repository"
+                        })
+                ],
+                "tool_use"),
+            new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("task queued")], "end_turn"));
+        var registry = new ToolRegistry([new TaskStartTool(taskManager)]);
+        var executor = new ToolExecutor(registry);
+        var engine = new QueryEngine(store, client, registry, executor, new DefaultPermissionService());
+
+        var events = new List<QueryStreamEvent>();
+        await foreach (var streamEvent in engine.StreamAskAsync(new QueryRequest("start task", null, null, 8, PermissionMode.BypassPermissions), CancellationToken.None))
+        {
+            events.Add(streamEvent);
+        }
+
+        Assert.Contains(events, streamEvent => streamEvent is TaskStartedStreamEvent started && started.Task.Title == "Index repo");
+        var tasks = await taskStore.ListAsync(CancellationToken.None);
+        Assert.Single(tasks);
+        Assert.Equal("Index repo", tasks[0].Title);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dataRoot))
