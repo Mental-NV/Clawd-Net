@@ -13,3 +13,17 @@ coverage/
 .idea/
 .vscode/
 vendor/image-processor.node
+
+# .NET / ClawdNet
+bin/
+obj/
+TestResults/
+*.user
+*.rsuser
+*.suo
+*.cache
+*.nupkg
+*.snupkg
+ClawdNet/**/bin/
+ClawdNet/**/obj/
+ClawdNet/**/.clawdnet/
