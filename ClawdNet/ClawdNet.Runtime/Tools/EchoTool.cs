@@ -10,6 +10,8 @@ public sealed class EchoTool : ITool
 
     public string Description => "Echo text back to the caller.";
 
+    public ToolCategory Category => ToolCategory.ReadOnly;
+
     public JsonObject InputSchema => new()
     {
         ["type"] = "object",

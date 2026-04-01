@@ -9,6 +9,8 @@ public interface ITool
 
     string Description { get; }
 
+    ToolCategory Category { get; }
+
     JsonObject InputSchema { get; }
 
     Task<ToolExecutionResult> ExecuteAsync(ToolExecutionRequest request, CancellationToken cancellationToken);

@@ -24,7 +24,7 @@ public sealed class AskCommandHandler : ICommandHandler
         {
             var options = Parse(request.Arguments.Skip(1).ToArray());
             var result = await context.QueryEngine.AskAsync(
-                new QueryRequest(options.Prompt, options.SessionId, options.Model),
+                new QueryRequest(options.Prompt, options.SessionId, options.Model, 8, options.PermissionMode),
                 cancellationToken);
 
             if (options.Json)
@@ -64,6 +64,7 @@ public sealed class AskCommandHandler : ICommandHandler
     {
         string? sessionId = null;
         string? model = null;
+        var permissionMode = PermissionMode.Default;
         var json = false;
         var promptParts = new List<string>();
 
@@ -76,6 +77,9 @@ public sealed class AskCommandHandler : ICommandHandler
                     break;
                 case "--model" when index + 1 < args.Length:
                     model = args[++index];
+                    break;
+                case "--permission-mode" when index + 1 < args.Length:
+                    permissionMode = ParsePermissionMode(args[++index]);
                     break;
                 case "--json":
                     json = true;
@@ -92,8 +96,22 @@ public sealed class AskCommandHandler : ICommandHandler
             throw new ConversationStoreException("ask requires a prompt.");
         }
 
-        return new AskOptions(prompt, sessionId, model, json);
+        return new AskOptions(prompt, sessionId, model, permissionMode, json);
     }
 
-    private sealed record AskOptions(string Prompt, string? SessionId, string? Model, bool Json);
+    private static PermissionMode ParsePermissionMode(string value)
+    {
+        return value.ToLowerInvariant() switch
+        {
+            "default" => PermissionMode.Default,
+            "acceptedits" => PermissionMode.AcceptEdits,
+            "accept-edits" => PermissionMode.AcceptEdits,
+            "bypasspermissions" => PermissionMode.BypassPermissions,
+            "bypass-permissions" => PermissionMode.BypassPermissions,
+            "bypass" => PermissionMode.BypassPermissions,
+            _ => throw new ConversationStoreException($"Unknown permission mode '{value}'.")
+        };
+    }
+
+    private sealed record AskOptions(string Prompt, string? SessionId, string? Model, PermissionMode PermissionMode, bool Json);
 }

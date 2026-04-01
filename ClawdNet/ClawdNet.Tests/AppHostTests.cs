@@ -86,6 +86,19 @@ public sealed class AppHostTests : IDisposable
         Assert.Contains("was not found", result.StdErr);
     }
 
+    [Fact]
+    public async Task Ask_accepts_permission_mode_flag()
+    {
+        var client = new FakeAnthropicMessageClient(
+            new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("permission-mode")], "end_turn"));
+        var host = new AppHost("1.0.0", _dataRoot, client);
+
+        var result = await host.RunAsync(["ask", "--permission-mode", "bypass-permissions", "hello"], CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("permission-mode", result.StdOut);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dataRoot))

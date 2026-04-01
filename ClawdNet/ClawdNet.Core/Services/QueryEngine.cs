@@ -13,17 +13,20 @@ public sealed class QueryEngine : IQueryEngine
     private readonly IAnthropicMessageClient _anthropicMessageClient;
     private readonly IToolRegistry _toolRegistry;
     private readonly IToolExecutor _toolExecutor;
+    private readonly IPermissionService _permissionService;
 
     public QueryEngine(
         IConversationStore conversationStore,
         IAnthropicMessageClient anthropicMessageClient,
         IToolRegistry toolRegistry,
-        IToolExecutor toolExecutor)
+        IToolExecutor toolExecutor,
+        IPermissionService permissionService)
     {
         _conversationStore = conversationStore;
         _anthropicMessageClient = anthropicMessageClient;
         _toolRegistry = toolRegistry;
         _toolExecutor = toolExecutor;
+        _permissionService = permissionService;
     }
 
     public async Task<QueryExecutionResult> AskAsync(QueryRequest request, CancellationToken cancellationToken)
@@ -93,9 +96,54 @@ public sealed class QueryEngine : IQueryEngine
             foreach (var toolCall in toolCalls)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var toolResponse = await _toolExecutor.ExecuteAsync(
-                    new ToolExecutionRequest(toolCall.Name, toolCall.Input),
-                    cancellationToken);
+                if (!_toolRegistry.TryGet(toolCall.Name, out var tool) || tool is null)
+                {
+                    workingMessages.Add(new ConversationMessage(
+                        "tool_result",
+                        $"Unknown tool '{toolCall.Name}'.",
+                        DateTimeOffset.UtcNow,
+                        toolCall.Name,
+                        toolCall.Id,
+                        true));
+                    continue;
+                }
+
+                var permissionDecision = _permissionService.Evaluate(tool, request.PermissionMode);
+                workingMessages.Add(new ConversationMessage(
+                    "permission",
+                    $"{permissionDecision.Kind}: {permissionDecision.Reason}",
+                    DateTimeOffset.UtcNow,
+                    toolCall.Name,
+                    toolCall.Id,
+                    permissionDecision.Kind == PermissionDecisionKind.Deny));
+
+                ToolExecutionResult toolResponse;
+                if (permissionDecision.Kind == PermissionDecisionKind.Deny)
+                {
+                    toolResponse = new ToolExecutionResult(false, string.Empty, $"Permission denied for tool '{toolCall.Name}'.");
+                }
+                else if (permissionDecision.Kind == PermissionDecisionKind.Ask)
+                {
+                    var approved = request.ApprovalHandler is not null &&
+                                   await request.ApprovalHandler.ApproveAsync(tool, toolCall, permissionDecision, cancellationToken);
+                    workingMessages.Add(new ConversationMessage(
+                        "permission",
+                        approved ? "Allow: user approved tool execution." : "Deny: user denied tool execution.",
+                        DateTimeOffset.UtcNow,
+                        toolCall.Name,
+                        toolCall.Id,
+                        !approved));
+
+                    toolResponse = approved
+                        ? await _toolExecutor.ExecuteAsync(new ToolExecutionRequest(toolCall.Name, toolCall.Input), cancellationToken)
+                        : new ToolExecutionResult(false, string.Empty, $"Permission denied for tool '{toolCall.Name}'.");
+                }
+                else
+                {
+                    toolResponse = await _toolExecutor.ExecuteAsync(
+                        new ToolExecutionRequest(toolCall.Name, toolCall.Input),
+                        cancellationToken);
+                }
 
                 workingMessages.Add(new ConversationMessage(
                     "tool_result",

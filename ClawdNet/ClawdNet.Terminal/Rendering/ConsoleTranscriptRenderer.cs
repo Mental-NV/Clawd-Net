@@ -39,6 +39,8 @@ public sealed class ConsoleTranscriptRenderer : ITranscriptRenderer
             "user" => $"{timestamp}You: {entry.Content}",
             "assistant" => $"{timestamp}ClawdNet: {entry.Content}",
             "tool_use" => $"{timestamp}[tool use: {entry.ToolName}] {entry.Content}",
+            "permission" when entry.IsError => $"{timestamp}[permission denied: {entry.ToolName}] {entry.Content}",
+            "permission" => $"{timestamp}[permission: {entry.ToolName}] {entry.Content}",
             "tool_result" when entry.IsError => $"{timestamp}[tool error: {entry.ToolName}] {entry.Content}",
             "tool_result" => $"{timestamp}[tool result: {entry.ToolName}] {entry.Content}",
             _ => $"{timestamp}{entry.Role}: {entry.Content}"

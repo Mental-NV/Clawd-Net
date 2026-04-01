@@ -7,5 +7,6 @@ public sealed record CommandContext(
     IToolExecutor ToolExecutor,
     IConversationStore ConversationStore,
     IQueryEngine QueryEngine,
+    IPermissionService PermissionService,
     ITranscriptRenderer TranscriptRenderer,
     string Version);

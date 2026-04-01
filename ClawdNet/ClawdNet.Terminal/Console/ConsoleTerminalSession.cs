@@ -10,6 +10,13 @@ public sealed class ConsoleTerminalSession : ITerminalSession
         return Task.FromResult(System.Console.ReadLine());
     }
 
+    public async Task<bool> ConfirmAsync(string prompt, CancellationToken cancellationToken)
+    {
+        var response = await ReadLineAsync($"{prompt} [y/N] ", cancellationToken);
+        return string.Equals(response?.Trim(), "y", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(response?.Trim(), "yes", StringComparison.OrdinalIgnoreCase);
+    }
+
     public void WriteLine(string text)
     {
         System.Console.WriteLine(text);

@@ -4,6 +4,8 @@ public interface ITerminalSession
 {
     Task<string?> ReadLineAsync(string prompt, CancellationToken cancellationToken);
 
+    Task<bool> ConfirmAsync(string prompt, CancellationToken cancellationToken);
+
     void WriteLine(string text);
 
     void WriteErrorLine(string text);

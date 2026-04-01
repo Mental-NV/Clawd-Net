@@ -36,4 +36,52 @@ public sealed class ToolExecutorTests
         Assert.True(result.Success);
         Assert.Equal("/tmp", result.Output);
     }
+
+    [Fact]
+    public async Task Glob_tool_lists_matching_files()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "clawdnet-glob", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(root, "a.txt"), "a");
+            await File.WriteAllTextAsync(Path.Combine(root, "b.cs"), "b");
+            var tool = new GlobTool();
+
+            var result = await tool.ExecuteAsync(
+                new ToolExecutionRequest("glob", new JsonObject { ["path"] = root, ["pattern"] = "*.txt" }),
+                CancellationToken.None);
+
+            Assert.True(result.Success);
+            Assert.Contains("a.txt", result.Output);
+            Assert.DoesNotContain("b.cs", result.Output);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public async Task File_write_tool_persists_content()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "clawdnet-write", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var path = Path.Combine(root, "note.txt");
+            var tool = new FileWriteTool();
+
+            var result = await tool.ExecuteAsync(
+                new ToolExecutionRequest("file_write", new JsonObject { ["path"] = path, ["content"] = "hello" }),
+                CancellationToken.None);
+
+            Assert.True(result.Success);
+            Assert.Equal("hello", await File.ReadAllTextAsync(path));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
 }

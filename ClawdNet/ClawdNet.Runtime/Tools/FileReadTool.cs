@@ -10,6 +10,8 @@ public sealed class FileReadTool : ITool
 
     public string Description => "Read a UTF-8 text file from disk.";
 
+    public ToolCategory Category => ToolCategory.ReadOnly;
+
     public JsonObject InputSchema => new()
     {
         ["type"] = "object",

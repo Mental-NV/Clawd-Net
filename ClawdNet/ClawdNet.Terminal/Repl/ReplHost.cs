@@ -11,6 +11,7 @@ public sealed class ReplHost : IReplHost
     private readonly IConversationStore _conversationStore;
     private readonly IQueryEngine _queryEngine;
     private readonly ITranscriptRenderer _transcriptRenderer;
+    private readonly IToolApprovalHandler _approvalHandler;
 
     public ReplHost(
         ITerminalSession terminalSession,
@@ -22,6 +23,7 @@ public sealed class ReplHost : IReplHost
         _conversationStore = conversationStore;
         _queryEngine = queryEngine;
         _transcriptRenderer = transcriptRenderer;
+        _approvalHandler = new TerminalApprovalHandler(terminalSession);
     }
 
     public async Task<CommandExecutionResult> RunAsync(ReplLaunchOptions options, CancellationToken cancellationToken)
@@ -72,7 +74,7 @@ public sealed class ReplHost : IReplHost
             try
             {
                 var result = await _queryEngine.AskAsync(
-                    new QueryRequest(prompt, session.Id, session.Model),
+                    new QueryRequest(prompt, session.Id, session.Model, 8, options.PermissionMode, _approvalHandler),
                     cancellationToken);
                 session = result.Session;
                 var delta = session.Messages.Skip(renderedCount).ToArray();

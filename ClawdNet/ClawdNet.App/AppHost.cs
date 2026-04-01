@@ -4,6 +4,7 @@ using ClawdNet.Core.Models;
 using ClawdNet.Core.Services;
 using ClawdNet.Runtime.Anthropic;
 using ClawdNet.Runtime.FeatureGates;
+using ClawdNet.Runtime.Permissions;
 using ClawdNet.Runtime.Protocols;
 using ClawdNet.Runtime.Processes;
 using ClawdNet.Runtime.Sessions;
@@ -35,17 +36,21 @@ public sealed class AppHost
         [
             new EchoTool(),
             new FileReadTool(),
+            new GlobTool(),
+            new GrepTool(),
+            new FileWriteTool(),
             new ShellTool(processRunner)
         ]);
         IToolExecutor toolExecutor = new ToolExecutor(toolRegistry);
         IConversationStore conversationStore = new JsonSessionStore(dataRoot);
         anthropicMessageClient ??= new HttpAnthropicMessageClient(new HttpClient());
-        IQueryEngine queryEngine = new QueryEngine(conversationStore, anthropicMessageClient, toolRegistry, toolExecutor);
+        IPermissionService permissionService = new DefaultPermissionService();
+        IQueryEngine queryEngine = new QueryEngine(conversationStore, anthropicMessageClient, toolRegistry, toolExecutor, permissionService);
         ITranscriptRenderer transcriptRenderer = new ConsoleTranscriptRenderer();
         terminalSession ??= new ConsoleTerminalSession();
         _replHost = replHost ?? new ReplHost(terminalSession, conversationStore, queryEngine, transcriptRenderer);
 
-        _context = new CommandContext(featureGate, toolExecutor, conversationStore, queryEngine, transcriptRenderer, version);
+        _context = new CommandContext(featureGate, toolExecutor, conversationStore, queryEngine, permissionService, transcriptRenderer, version);
         _dispatcher = new CommandDispatcher(
         [
             new AskCommandHandler(),
@@ -96,6 +101,7 @@ public sealed class AppHost
     {
         string? sessionId = null;
         string? model = null;
+        var permissionMode = PermissionMode.Default;
 
         for (var index = 0; index < args.Count; index++)
         {
@@ -107,13 +113,30 @@ public sealed class AppHost
                 case "--model" when index + 1 < args.Count:
                     model = args[++index];
                     break;
+                case "--permission-mode" when index + 1 < args.Count:
+                    permissionMode = ParsePermissionMode(args[++index]);
+                    break;
                 default:
                     options = new ReplLaunchOptions();
                     return false;
             }
         }
 
-        options = new ReplLaunchOptions(sessionId, model);
+        options = new ReplLaunchOptions(sessionId, model, permissionMode);
         return true;
+    }
+
+    private static PermissionMode ParsePermissionMode(string value)
+    {
+        return value.ToLowerInvariant() switch
+        {
+            "default" => PermissionMode.Default,
+            "acceptedits" => PermissionMode.AcceptEdits,
+            "accept-edits" => PermissionMode.AcceptEdits,
+            "bypasspermissions" => PermissionMode.BypassPermissions,
+            "bypass-permissions" => PermissionMode.BypassPermissions,
+            "bypass" => PermissionMode.BypassPermissions,
+            _ => throw new InvalidOperationException($"Unknown permission mode '{value}'.")
+        };
     }
 }

@@ -24,6 +24,8 @@ public sealed class ShellTool : ITool
 
     public string Description => "Run a small allowlisted shell command.";
 
+    public ToolCategory Category => ToolCategory.Execute;
+
     public JsonObject InputSchema => new()
     {
         ["type"] = "object",
