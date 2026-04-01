@@ -37,4 +37,26 @@ public sealed class PermissionServiceTests
 
         Assert.Equal(PermissionDecisionKind.Allow, decision.Kind);
     }
+
+    [Fact]
+    public void Default_mode_requires_approval_for_pty_start()
+    {
+        var service = new DefaultPermissionService();
+        var tool = new PtyStartTool(new FakePtyManager());
+
+        var decision = service.Evaluate(tool, PermissionMode.Default);
+
+        Assert.Equal(PermissionDecisionKind.Ask, decision.Kind);
+    }
+
+    [Fact]
+    public void Default_mode_allows_pty_read()
+    {
+        var service = new DefaultPermissionService();
+        var tool = new PtyReadTool(new FakePtyManager());
+
+        var decision = service.Evaluate(tool, PermissionMode.Default);
+
+        Assert.Equal(PermissionDecisionKind.Allow, decision.Kind);
+    }
 }

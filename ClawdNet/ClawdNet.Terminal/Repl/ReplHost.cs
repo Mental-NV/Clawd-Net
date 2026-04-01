@@ -13,6 +13,7 @@ public sealed class ReplHost : IReplHost
     private readonly IQueryEngine _queryEngine;
     private readonly ITranscriptRenderer _transcriptRenderer;
     private readonly IToolApprovalHandler _approvalHandler;
+    private readonly IPtyManager _ptyManager;
     private TerminalActivityState _activityState = TerminalActivityState.Ready;
     private string? _activityDetail;
     private ConversationSession? _currentSession;
@@ -25,12 +26,14 @@ public sealed class ReplHost : IReplHost
         ITerminalSession terminalSession,
         IConversationStore conversationStore,
         IQueryEngine queryEngine,
-        ITranscriptRenderer transcriptRenderer)
+        ITranscriptRenderer transcriptRenderer,
+        IPtyManager ptyManager)
     {
         _terminalSession = terminalSession;
         _conversationStore = conversationStore;
         _queryEngine = queryEngine;
         _transcriptRenderer = transcriptRenderer;
+        _ptyManager = ptyManager;
         _approvalHandler = new TerminalApprovalHandler(terminalSession, HandleActivityChange);
     }
 
@@ -49,211 +52,225 @@ public sealed class ReplHost : IReplHost
         _currentSession = session;
         _currentPermissionMode = options.PermissionMode;
         _visibleStartIndex = 0;
-        Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
-
-        using var interruptRegistration = _terminalSession.RegisterInterruptHandler(() =>
+        _ptyManager.SessionChanged += HandlePtySessionChanged;
+        try
         {
-            if (_activeTurnCancellation is null)
-            {
-                return;
-            }
+            Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
 
-            _activeTurnCancellation.Cancel();
-            SetActivity(TerminalActivityState.Interrupted, "Interrupted active turn.");
-            _draft = null;
-            if (_currentSession is not null)
+            using var interruptRegistration = _terminalSession.RegisterInterruptHandler(() =>
             {
-                Render(_currentSession, _currentPermissionMode, _visibleStartIndex, clearScreen: true);
-            }
-        });
-
-        while (true)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var input = await _terminalSession.ReadLineAsync("> ", cancellationToken);
-            if (input is null)
-            {
-                SetActivity(TerminalActivityState.Exiting, "Exiting ClawdNet.");
-                Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
-                return CommandExecutionResult.Success();
-            }
-
-            var prompt = input.Trim();
-            if (string.IsNullOrWhiteSpace(prompt))
-            {
-                continue;
-            }
-
-            if (string.Equals(prompt, "exit", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(prompt, "quit", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(prompt, "/exit", StringComparison.OrdinalIgnoreCase))
-            {
-                SetActivity(TerminalActivityState.Exiting, "Exiting ClawdNet.");
-                Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
-                return CommandExecutionResult.Success();
-            }
-
-            if (TryHandleSlashCommand(prompt, session, options, ref _visibleStartIndex))
-            {
-                Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
-                continue;
-            }
-
-            try
-            {
-                SetActivity(TerminalActivityState.WaitingForModel, "Waiting for model response...");
-                _draft = new StreamingAssistantDraft(string.Empty, true, null, "Submitting prompt...");
-                Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
-                QueryExecutionResult? result = null;
-                using var turnCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                _activeTurnCancellation = turnCancellation;
-
-                await foreach (var streamEvent in _queryEngine.StreamAskAsync(
-                                   new QueryRequest(prompt, session.Id, session.Model, 8, options.PermissionMode, _approvalHandler),
-                                   turnCancellation.Token))
+                if (_ptyManager.CurrentState?.IsRunning == true)
                 {
-                    switch (streamEvent)
-                    {
-                        case UserTurnAcceptedEvent accepted:
-                            session = accepted.Session;
-                            _currentSession = session;
-                            SetActivity(TerminalActivityState.WaitingForModel, "Waiting for model response...");
-                            _draft = new StreamingAssistantDraft(string.Empty, true, null, "Waiting for model response...");
-                            Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
-                            break;
-                        case AssistantTextDeltaStreamEvent delta:
-                            var currentText = _draft?.Text ?? string.Empty;
-                            _draft = new StreamingAssistantDraft(
-                                $"{currentText}{delta.DeltaText}",
-                                true,
-                                null,
-                                "Streaming assistant response...");
-                            SetActivity(TerminalActivityState.StreamingResponse, "Streaming assistant response...");
-                            Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
-                            break;
-                        case AssistantMessageCommittedEvent committed:
-                            session = committed.Session;
-                            _currentSession = session;
-                            _draft = null;
-                            SetActivity(TerminalActivityState.Ready, null);
-                            Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
-                            break;
-                        case ToolCallRequestedEvent toolCallRequested:
-                            _draft = new StreamingAssistantDraft(
-                                string.Empty,
-                                true,
-                                toolCallRequested.ToolCall.Name,
-                                $"Preparing tool {toolCallRequested.ToolCall.Name}...");
-                            SetActivity(TerminalActivityState.RunningTool, $"Preparing tool {toolCallRequested.ToolCall.Name}...");
-                            Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
-                            break;
-                        case PermissionDecisionStreamEvent permissionEvent:
-                            _draft = new StreamingAssistantDraft(
-                                string.Empty,
-                                true,
-                                permissionEvent.ToolCall.Name,
-                                permissionEvent.Decision.Kind == PermissionDecisionKind.Ask
-                                    ? "Awaiting approval..."
-                                    : permissionEvent.Decision.Reason);
-                            SetActivity(
-                                permissionEvent.Decision.Kind == PermissionDecisionKind.Ask
-                                    ? TerminalActivityState.AwaitingApproval
-                                    : TerminalActivityState.RunningTool,
-                                permissionEvent.Decision.Reason);
-                            Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
-                            break;
-                        case EditPreviewGeneratedEvent previewEvent:
-                            session = previewEvent.Session;
-                            _currentSession = session;
-                            _draft = new StreamingAssistantDraft(
-                                string.Empty,
-                                true,
-                                previewEvent.ToolCall.Name,
-                                previewEvent.Preview.Diff);
-                            SetActivity(
-                                TerminalActivityState.ReviewingEdits,
-                                previewEvent.Preview.Success
-                                    ? previewEvent.Preview.Summary
-                                    : previewEvent.Preview.Error ?? "Edit preview failed.");
-                            Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
-                            break;
-                        case EditApprovalRecordedEvent editApproval:
-                            session = editApproval.Session;
-                            _currentSession = session;
-                            _draft = editApproval.Approved
-                                ? new StreamingAssistantDraft(string.Empty, true, editApproval.ToolCall.Name, "Applying approved edit batch...")
-                                : null;
-                            SetActivity(
-                                editApproval.Approved ? TerminalActivityState.RunningTool : TerminalActivityState.ReviewingEdits,
-                                editApproval.Summary);
-                            Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
-                            break;
-                        case ToolResultCommittedEvent committedTool:
-                            session = committedTool.Session;
-                            _currentSession = session;
-                            _draft = new StreamingAssistantDraft(
-                                string.Empty,
-                                true,
-                                committedTool.ToolCall.Name,
-                                committedTool.Result.Success ? "Tool completed." : "Tool failed.");
-                            SetActivity(
-                                TerminalActivityState.RunningTool,
-                                committedTool.Result.Success
-                                    ? $"Tool {committedTool.ToolCall.Name} completed."
-                                    : $"Tool {committedTool.ToolCall.Name} failed.");
-                            Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
-                            break;
-                        case TurnCompletedStreamEvent completed:
-                            result = completed.Result;
-                            session = completed.Result.Session;
-                            _currentSession = session;
-                            _draft = null;
-                            SetActivity(TerminalActivityState.Ready, null);
-                            Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
-                            break;
-                        case TurnFailedStreamEvent failed:
-                            _draft = null;
-                            SetActivity(TerminalActivityState.Error, failed.Message);
-                            Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true, failed.Message);
-                            _terminalSession.WriteErrorLine(failed.Message);
-                            break;
-                    }
+                    _ = _ptyManager.CloseAsync(CancellationToken.None);
+                    return;
                 }
 
-                _activeTurnCancellation = null;
-                if (result is null)
+                if (_activeTurnCancellation is null)
                 {
-                    SetActivity(TerminalActivityState.Ready, null);
+                    return;
                 }
 
-                SetActivity(TerminalActivityState.Ready, null);
-                _draft = null;
-                Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
-            }
-            catch (OperationCanceledException) when (_activeTurnCancellation?.IsCancellationRequested == true && !cancellationToken.IsCancellationRequested)
-            {
-                _activeTurnCancellation = null;
-                _draft = null;
                 SetActivity(TerminalActivityState.Interrupted, "Interrupted active turn.");
-                Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
-            }
-            catch (AnthropicConfigurationException ex)
-            {
-                _activeTurnCancellation = null;
                 _draft = null;
-                SetActivity(TerminalActivityState.Error, ex.Message);
-                Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true, ex.Message);
-                _terminalSession.WriteErrorLine(ex.Message);
-            }
-            catch (ConversationStoreException ex)
+                _activeTurnCancellation.Cancel();
+                if (_currentSession is not null)
+                {
+                    Render(_currentSession, _currentPermissionMode, _visibleStartIndex, clearScreen: true);
+                }
+            });
+
+            while (true)
             {
-                _activeTurnCancellation = null;
-                _draft = null;
-                SetActivity(TerminalActivityState.Error, ex.Message);
-                Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true, ex.Message);
-                _terminalSession.WriteErrorLine(ex.Message);
-                return CommandExecutionResult.Failure(ex.Message, 3);
+                cancellationToken.ThrowIfCancellationRequested();
+                var input = await _terminalSession.ReadLineAsync("> ", cancellationToken);
+                if (input is null)
+                {
+                    SetActivity(TerminalActivityState.Exiting, "Exiting ClawdNet.");
+                    Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                    return CommandExecutionResult.Success();
+                }
+
+                var prompt = input.Trim();
+                if (string.IsNullOrWhiteSpace(prompt))
+                {
+                    continue;
+                }
+
+                if (string.Equals(prompt, "exit", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(prompt, "quit", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(prompt, "/exit", StringComparison.OrdinalIgnoreCase))
+                {
+                    SetActivity(TerminalActivityState.Exiting, "Exiting ClawdNet.");
+                    Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                    return CommandExecutionResult.Success();
+                }
+
+                if (TryHandleSlashCommand(prompt, session, options, ref _visibleStartIndex))
+                {
+                    Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                    continue;
+                }
+
+                try
+                {
+                    SetActivity(TerminalActivityState.WaitingForModel, "Waiting for model response...");
+                    _draft = new StreamingAssistantDraft(string.Empty, true, null, "Submitting prompt...");
+                    Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                    QueryExecutionResult? result = null;
+                    using var turnCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    _activeTurnCancellation = turnCancellation;
+
+                    await foreach (var streamEvent in _queryEngine.StreamAskAsync(
+                                       new QueryRequest(prompt, session.Id, session.Model, 8, options.PermissionMode, _approvalHandler),
+                                       turnCancellation.Token))
+                    {
+                        switch (streamEvent)
+                        {
+                            case UserTurnAcceptedEvent accepted:
+                                session = accepted.Session;
+                                _currentSession = session;
+                                SetActivity(TerminalActivityState.WaitingForModel, "Waiting for model response...");
+                                _draft = new StreamingAssistantDraft(string.Empty, true, null, "Waiting for model response...");
+                                Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                                break;
+                            case AssistantTextDeltaStreamEvent delta:
+                                var currentText = _draft?.Text ?? string.Empty;
+                                _draft = new StreamingAssistantDraft(
+                                    $"{currentText}{delta.DeltaText}",
+                                    true,
+                                    null,
+                                    "Streaming assistant response...");
+                                SetActivity(TerminalActivityState.StreamingResponse, "Streaming assistant response...");
+                                Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                                break;
+                            case AssistantMessageCommittedEvent committed:
+                                session = committed.Session;
+                                _currentSession = session;
+                                _draft = null;
+                                SetActivity(TerminalActivityState.Ready, null);
+                                Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                                break;
+                            case ToolCallRequestedEvent toolCallRequested:
+                                _draft = new StreamingAssistantDraft(
+                                    string.Empty,
+                                    true,
+                                    toolCallRequested.ToolCall.Name,
+                                    $"Preparing tool {toolCallRequested.ToolCall.Name}...");
+                                SetActivity(TerminalActivityState.RunningTool, $"Preparing tool {toolCallRequested.ToolCall.Name}...");
+                                Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                                break;
+                            case PermissionDecisionStreamEvent permissionEvent:
+                                _draft = new StreamingAssistantDraft(
+                                    string.Empty,
+                                    true,
+                                    permissionEvent.ToolCall.Name,
+                                    permissionEvent.Decision.Kind == PermissionDecisionKind.Ask
+                                        ? "Awaiting approval..."
+                                        : permissionEvent.Decision.Reason);
+                                SetActivity(
+                                    permissionEvent.Decision.Kind == PermissionDecisionKind.Ask
+                                        ? TerminalActivityState.AwaitingApproval
+                                        : TerminalActivityState.RunningTool,
+                                    permissionEvent.Decision.Reason);
+                                Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                                break;
+                            case EditPreviewGeneratedEvent previewEvent:
+                                session = previewEvent.Session;
+                                _currentSession = session;
+                                _draft = new StreamingAssistantDraft(
+                                    string.Empty,
+                                    true,
+                                    previewEvent.ToolCall.Name,
+                                    previewEvent.Preview.Diff);
+                                SetActivity(
+                                    TerminalActivityState.ReviewingEdits,
+                                    previewEvent.Preview.Success
+                                        ? previewEvent.Preview.Summary
+                                        : previewEvent.Preview.Error ?? "Edit preview failed.");
+                                Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                                break;
+                            case EditApprovalRecordedEvent editApproval:
+                                session = editApproval.Session;
+                                _currentSession = session;
+                                _draft = editApproval.Approved
+                                    ? new StreamingAssistantDraft(string.Empty, true, editApproval.ToolCall.Name, "Applying approved edit batch...")
+                                    : null;
+                                SetActivity(
+                                    editApproval.Approved ? TerminalActivityState.RunningTool : TerminalActivityState.ReviewingEdits,
+                                    editApproval.Summary);
+                                Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                                break;
+                            case ToolResultCommittedEvent committedTool:
+                                session = committedTool.Session;
+                                _currentSession = session;
+                                _draft = new StreamingAssistantDraft(
+                                    string.Empty,
+                                    true,
+                                    committedTool.ToolCall.Name,
+                                    committedTool.Result.Success ? "Tool completed." : "Tool failed.");
+                                SetActivity(
+                                    TerminalActivityState.RunningTool,
+                                    committedTool.Result.Success
+                                        ? $"Tool {committedTool.ToolCall.Name} completed."
+                                        : $"Tool {committedTool.ToolCall.Name} failed.");
+                                Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                                break;
+                            case TurnCompletedStreamEvent completed:
+                                result = completed.Result;
+                                session = completed.Result.Session;
+                                _currentSession = session;
+                                _draft = null;
+                                SetActivity(TerminalActivityState.Ready, null);
+                                Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                                break;
+                            case TurnFailedStreamEvent failed:
+                                _draft = null;
+                                SetActivity(TerminalActivityState.Error, failed.Message);
+                                Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true, failed.Message);
+                                _terminalSession.WriteErrorLine(failed.Message);
+                                break;
+                        }
+                    }
+
+                    _activeTurnCancellation = null;
+                    if (result is null)
+                    {
+                        SetActivity(TerminalActivityState.Ready, null);
+                    }
+
+                    SetActivity(TerminalActivityState.Ready, null);
+                    _draft = null;
+                    Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                }
+                catch (OperationCanceledException) when (_activeTurnCancellation?.IsCancellationRequested == true && !cancellationToken.IsCancellationRequested)
+                {
+                    _activeTurnCancellation = null;
+                    _draft = null;
+                    SetActivity(TerminalActivityState.Interrupted, "Interrupted active turn.");
+                    Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                }
+                catch (AnthropicConfigurationException ex)
+                {
+                    _activeTurnCancellation = null;
+                    _draft = null;
+                    SetActivity(TerminalActivityState.Error, ex.Message);
+                    Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true, ex.Message);
+                    _terminalSession.WriteErrorLine(ex.Message);
+                }
+                catch (ConversationStoreException ex)
+                {
+                    _activeTurnCancellation = null;
+                    _draft = null;
+                    SetActivity(TerminalActivityState.Error, ex.Message);
+                    Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true, ex.Message);
+                    _terminalSession.WriteErrorLine(ex.Message);
+                    return CommandExecutionResult.Failure(ex.Message, 3);
+                }
             }
+        }
+        finally
+        {
+            _ptyManager.SessionChanged -= HandlePtySessionChanged;
         }
     }
 
@@ -279,6 +296,14 @@ public sealed class ReplHost : IReplHost
                 visibleStartIndex = session.Messages.Count;
                 _terminalSession.ClearVisible();
                 SetActivity(TerminalActivityState.Cleared, "Screen cleared. Session history is preserved.");
+                return true;
+            case "/pty":
+                var ptyState = _ptyManager.CurrentState;
+                SetActivity(
+                    TerminalActivityState.ShowingSession,
+                    ptyState is null
+                        ? "No active PTY session."
+                        : $"PTY {ptyState.SessionId} | running={ptyState.IsRunning} | command={ptyState.Command}");
                 return true;
             default:
                 return false;
@@ -312,8 +337,9 @@ public sealed class ReplHost : IReplHost
         var transcript = _transcriptRenderer.Render(visibleMessages);
         var footer = _transcriptRenderer.RenderFooter(session, permissionMode, error);
         var draft = _transcriptRenderer.RenderDraft(_draft);
+        var pty = _transcriptRenderer.RenderPty(_ptyManager.CurrentState);
         var activity = _transcriptRenderer.RenderActivity(_activityState, _activityDetail);
-        _terminalSession.Render(new TerminalViewState("ClawdNet interactive mode", transcript, footer, draft, activity, clearScreen));
+        _terminalSession.Render(new TerminalViewState("ClawdNet interactive mode", transcript, footer, draft, pty, activity, clearScreen));
     }
 
     private void SetActivity(TerminalActivityState state, string? detail)
@@ -329,6 +355,21 @@ public sealed class ReplHost : IReplHost
         {
             Render(_currentSession, _currentPermissionMode, _visibleStartIndex, clearScreen: true);
         }
+    }
+
+    private void HandlePtySessionChanged(PtySessionState? state)
+    {
+        if (_currentSession is null)
+        {
+            return;
+        }
+
+        if (state is not null && state.IsRunning)
+        {
+            SetActivity(TerminalActivityState.RunningTool, $"PTY session active: {state.Command}");
+        }
+
+        Render(_currentSession, _currentPermissionMode, _visibleStartIndex, clearScreen: true);
     }
 
     private static string FormatPermissionMode(PermissionMode permissionMode)

@@ -46,6 +46,19 @@ public sealed class ConsoleTranscriptRenderer : ITranscriptRenderer
             : $"[live] {draft.Detail}";
     }
 
+    public string? RenderPty(PtySessionState? state)
+    {
+        if (state is null)
+        {
+            return null;
+        }
+
+        var header = $"[pty] {state.Command} | running={state.IsRunning} | exitCode={(state.ExitCode.HasValue ? state.ExitCode.Value.ToString() : "n/a")}";
+        var output = string.IsNullOrWhiteSpace(state.RecentOutput) ? "(no output yet)" : state.RecentOutput.TrimEnd();
+        var clipped = state.IsOutputClipped ? $"{Environment.NewLine}[pty] output clipped to recent buffer" : string.Empty;
+        return $"{header}{Environment.NewLine}{output}{clipped}".TrimEnd();
+    }
+
     public string RenderFooter(
         ConversationSession session,
         PermissionMode permissionMode,

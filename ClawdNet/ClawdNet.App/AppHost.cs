@@ -28,6 +28,7 @@ public sealed class AppHost : IAsyncDisposable
     private readonly IPluginCatalog _pluginCatalog;
     private readonly IMcpClient _mcpClient;
     private readonly ILspClient _lspClient;
+    private readonly IPtyManager _ptyManager;
     private readonly SemaphoreSlim _pluginInitializationLock = new(1, 1);
     private readonly SemaphoreSlim _mcpInitializationLock = new(1, 1);
     private readonly SemaphoreSlim _lspInitializationLock = new(1, 1);
@@ -43,6 +44,7 @@ public sealed class AppHost : IAsyncDisposable
         IPluginCatalog? pluginCatalog = null,
         IMcpClient? mcpClient = null,
         ILspClient? lspClient = null,
+        IPtyManager? ptyManager = null,
         IReplHost? replHost = null,
         ITerminalSession? terminalSession = null)
     {
@@ -51,6 +53,7 @@ public sealed class AppHost : IAsyncDisposable
         _pluginCatalog = pluginCatalog ?? new PluginCatalog(dataRoot);
         _mcpClient = mcpClient ?? new StdioMcpClient(dataRoot, _pluginCatalog);
         _lspClient = lspClient ?? new StdioLspClient(dataRoot, _pluginCatalog);
+        _ptyManager = ptyManager ?? new PtyManager();
         IEditPreviewService editPreviewService = new EditPreviewService();
         IEditApplier editApplier = new EditApplier(_lspClient);
         _toolRegistry = new ToolRegistry(
@@ -60,6 +63,10 @@ public sealed class AppHost : IAsyncDisposable
             new GlobTool(),
             new GrepTool(),
             new ShellTool(processRunner),
+            new PtyStartTool(_ptyManager),
+            new PtyWriteTool(_ptyManager),
+            new PtyReadTool(_ptyManager),
+            new PtyCloseTool(_ptyManager),
             new ApplyPatchTool(editPreviewService, editApplier)
         ]);
         IToolExecutor toolExecutor = new ToolExecutor(_toolRegistry);
@@ -70,7 +77,7 @@ public sealed class AppHost : IAsyncDisposable
         IQueryEngine queryEngine = new QueryEngine(conversationStore, anthropicMessageClient, _toolRegistry, toolExecutor, permissionService);
         ITranscriptRenderer transcriptRenderer = new ConsoleTranscriptRenderer();
         terminalSession ??= new ConsoleTerminalSession();
-        _replHost = replHost ?? new ReplHost(terminalSession, conversationStore, queryEngine, transcriptRenderer);
+        _replHost = replHost ?? new ReplHost(terminalSession, conversationStore, queryEngine, transcriptRenderer, _ptyManager);
 
         _context = new CommandContext(featureGate, _toolRegistry, toolExecutor, conversationStore, queryEngine, _mcpClient, _lspClient, _pluginCatalog, permissionService, transcriptRenderer, version);
         _dispatcher = new CommandDispatcher(
@@ -109,6 +116,7 @@ public sealed class AppHost : IAsyncDisposable
     {
         await _mcpClient.DisposeAsync();
         await _lspClient.DisposeAsync();
+        await _ptyManager.DisposeAsync();
         _pluginInitializationLock.Dispose();
         _mcpInitializationLock.Dispose();
         _lspInitializationLock.Dispose();

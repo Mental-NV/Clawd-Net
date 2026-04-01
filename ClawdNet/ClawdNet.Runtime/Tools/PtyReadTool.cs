@@ -1,0 +1,67 @@
+using System.Text.Json.Nodes;
+using ClawdNet.Core.Abstractions;
+using ClawdNet.Core.Models;
+
+namespace ClawdNet.Runtime.Tools;
+
+public sealed class PtyReadTool : ITool
+{
+    private readonly IPtyManager _ptyManager;
+
+    public PtyReadTool(IPtyManager ptyManager)
+    {
+        _ptyManager = ptyManager;
+    }
+
+    public string Name => "pty_read";
+
+    public string Description => "Read the active PTY session state and recent output.";
+
+    public ToolCategory Category => ToolCategory.ReadOnly;
+
+    public JsonObject InputSchema => new()
+    {
+        ["type"] = "object",
+        ["properties"] = new JsonObject()
+    };
+
+    public async Task<ToolExecutionResult> ExecuteAsync(ToolExecutionRequest request, CancellationToken cancellationToken)
+    {
+        PtySessionState? state;
+        try
+        {
+            state = await _ptyManager.ReadAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return new ToolExecutionResult(false, string.Empty, ex.Message);
+        }
+
+        if (state is null)
+        {
+            return new ToolExecutionResult(false, string.Empty, "No active PTY session.");
+        }
+
+        return new ToolExecutionResult(true, FormatState(state));
+    }
+
+    public static string FormatState(PtySessionState state)
+    {
+        var lines = new List<string>
+        {
+            $"session={state.SessionId}",
+            $"command={state.Command}",
+            $"cwd={state.WorkingDirectory}",
+            $"running={state.IsRunning}",
+            $"exitCode={(state.ExitCode.HasValue ? state.ExitCode.Value.ToString() : "n/a")}"
+        };
+        if (state.IsOutputClipped)
+        {
+            lines.Add("outputClipped=true");
+        }
+
+        lines.Add(string.Empty);
+        lines.Add(string.IsNullOrWhiteSpace(state.RecentOutput) ? "(no output yet)" : state.RecentOutput.TrimEnd());
+        return string.Join(Environment.NewLine, lines).TrimEnd();
+    }
+}

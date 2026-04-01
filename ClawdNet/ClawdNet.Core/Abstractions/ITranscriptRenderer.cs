@@ -8,6 +8,8 @@ public interface ITranscriptRenderer
 
     string? RenderDraft(StreamingAssistantDraft? draft);
 
+    string? RenderPty(PtySessionState? state);
+
     string RenderFooter(
         ConversationSession session,
         PermissionMode permissionMode,

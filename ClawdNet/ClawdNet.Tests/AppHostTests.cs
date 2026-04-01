@@ -194,6 +194,34 @@ public sealed class AppHostTests : IDisposable
     }
 
     [Fact]
+    public async Task Ask_can_round_trip_pty_tools_via_query_engine()
+    {
+        var ptyManager = new FakePtyManager();
+        var client = new FakeAnthropicMessageClient(
+            new ModelResponse(
+                "claude-sonnet-4-5",
+                [new ToolUseContentBlock("tool-1", "pty_start", new JsonObject { ["command"] = "cat" })],
+                "tool_use"),
+            new ModelResponse(
+                "claude-sonnet-4-5",
+                [new ToolUseContentBlock("tool-2", "pty_write", new JsonObject { ["text"] = "hello from pty\n" })],
+                "tool_use"),
+            new ModelResponse(
+                "claude-sonnet-4-5",
+                [new ToolUseContentBlock("tool-3", "pty_read", new JsonObject())],
+                "tool_use"),
+            new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("used pty")], "end_turn"));
+        var host = new AppHost("1.0.0", _dataRoot, client, ptyManager: ptyManager);
+
+        var result = await host.RunAsync(["ask", "--permission-mode", "bypass-permissions", "use pty"], CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("used pty", result.StdOut);
+        Assert.Single(ptyManager.Starts);
+        Assert.Contains("hello from pty", ptyManager.CurrentState?.RecentOutput);
+    }
+
+    [Fact]
     public async Task Mcp_list_reports_server_state()
     {
         var mcpClient = new FakeMcpClient

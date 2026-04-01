@@ -109,4 +109,37 @@ public sealed class ToolExecutorTests
             Directory.Delete(root, true);
         }
     }
+
+    [Fact]
+    public async Task Pty_tools_round_trip_against_fake_manager()
+    {
+        var manager = new FakePtyManager();
+        var registry = new ToolRegistry(
+        [
+            new PtyStartTool(manager),
+            new PtyWriteTool(manager),
+            new PtyReadTool(manager),
+            new PtyCloseTool(manager)
+        ]);
+        var executor = new ToolExecutor(registry);
+
+        var start = await executor.ExecuteAsync(
+            new ToolExecutionRequest("pty_start", new JsonObject { ["command"] = "cat" }),
+            CancellationToken.None);
+        var write = await executor.ExecuteAsync(
+            new ToolExecutionRequest("pty_write", new JsonObject { ["text"] = "hello\n" }),
+            CancellationToken.None);
+        var read = await executor.ExecuteAsync(
+            new ToolExecutionRequest("pty_read", new JsonObject()),
+            CancellationToken.None);
+        var close = await executor.ExecuteAsync(
+            new ToolExecutionRequest("pty_close", new JsonObject()),
+            CancellationToken.None);
+
+        Assert.True(start.Success);
+        Assert.True(write.Success);
+        Assert.True(read.Success);
+        Assert.Contains("hello", read.Output);
+        Assert.True(close.Success);
+    }
 }

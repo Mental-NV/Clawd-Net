@@ -35,6 +35,12 @@ public sealed class ConsoleTerminalSession : ITerminalSession
             System.Console.WriteLine();
         }
 
+        if (!string.IsNullOrWhiteSpace(viewState.Pty))
+        {
+            System.Console.WriteLine(viewState.Pty);
+            System.Console.WriteLine();
+        }
+
         if (!string.IsNullOrWhiteSpace(viewState.Activity))
         {
             System.Console.WriteLine(viewState.Activity);

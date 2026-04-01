@@ -24,10 +24,17 @@ public sealed class FakeTerminalSession : ITerminalSession
 
     public Action? InterruptHandler { get; private set; }
 
-    public Task<string?> ReadLineAsync(string prompt, CancellationToken cancellationToken)
+    public int ReadLineDelayMs { get; set; }
+
+    public async Task<string?> ReadLineAsync(string prompt, CancellationToken cancellationToken)
     {
         Prompts.Add(prompt);
-        return Task.FromResult(_inputs.Count > 0 ? _inputs.Dequeue() : (string?)null);
+        if (ReadLineDelayMs > 0)
+        {
+            await Task.Delay(ReadLineDelayMs, cancellationToken);
+        }
+
+        return _inputs.Count > 0 ? _inputs.Dequeue() : null;
     }
 
     public Task<bool> ConfirmAsync(string prompt, CancellationToken cancellationToken)

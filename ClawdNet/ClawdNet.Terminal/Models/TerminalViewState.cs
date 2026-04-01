@@ -5,5 +5,6 @@ public sealed record TerminalViewState(
     string Transcript,
     string Footer,
     string? Draft = null,
+    string? Pty = null,
     string? Activity = null,
     bool ClearScreen = true);
