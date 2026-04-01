@@ -9,4 +9,6 @@ public interface IToolRegistry
     void Register(ITool tool);
 
     void RegisterRange(IEnumerable<ITool> tools);
+
+    void UnregisterWhere(Func<ITool, bool> predicate);
 }

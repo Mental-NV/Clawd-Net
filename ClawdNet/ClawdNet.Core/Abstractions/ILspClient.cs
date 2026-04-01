@@ -8,6 +8,8 @@ public interface ILspClient : IAsyncDisposable
 
     Task InitializeAsync(CancellationToken cancellationToken);
 
+    Task ReloadAsync(CancellationToken cancellationToken);
+
     Task<LspServerState?> PingAsync(string serverName, CancellationToken cancellationToken);
 
     Task SyncFileAsync(string path, string content, CancellationToken cancellationToken);

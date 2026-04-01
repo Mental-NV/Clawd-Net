@@ -37,6 +37,8 @@ dotnet run --project ClawdNet/ClawdNet.App -- ask --json "Summarize the current 
 dotnet run --project ClawdNet/ClawdNet.App -- ask --session <session-id> "Continue"
 dotnet run --project ClawdNet/ClawdNet.App -- session new "First Slice"
 dotnet run --project ClawdNet/ClawdNet.App -- session list
+dotnet run --project ClawdNet/ClawdNet.App -- plugin list
+dotnet run --project ClawdNet/ClawdNet.App -- plugin reload
 dotnet run --project ClawdNet/ClawdNet.App -- mcp list
 dotnet run --project ClawdNet/ClawdNet.App -- mcp ping <server-name>
 dotnet run --project ClawdNet/ClawdNet.App -- mcp tools
@@ -75,6 +77,8 @@ dotnet run --project ClawdNet.App -- --version
 - `ask --json <prompt>`
 - `session new [title]`
 - `session list`
+- `plugin list`
+- `plugin reload`
 - `mcp list`
 - `mcp ping <server>`
 - `mcp tools [server]`
@@ -141,3 +145,40 @@ Example:
 ```
 
 Built-in LSP tools are exposed to the model as `lsp_definition`, `lsp_references`, `lsp_hover`, and `lsp_diagnostics`.
+
+## Plugin Configuration
+
+Discover local plugins in:
+
+```text
+<LocalApplicationData>/ClawdNet/plugins/<plugin-id>/plugin.json
+```
+
+Example:
+
+```json
+{
+  "name": "demo",
+  "version": "1.0.0",
+  "enabled": true,
+  "mcpServers": [
+    {
+      "name": "echo",
+      "command": "python3",
+      "arguments": ["/absolute/path/to/mcp_server.py"],
+      "toolsReadOnly": true
+    }
+  ],
+  "lspServers": [
+    {
+      "name": "csharp",
+      "command": "python3",
+      "arguments": ["/absolute/path/to/lsp_server.py"],
+      "fileExtensions": [".cs"],
+      "languageId": "csharp"
+    }
+  ]
+}
+```
+
+Plugin-provided server names are scoped automatically, so the example above contributes `demo.echo` and `demo.csharp`.

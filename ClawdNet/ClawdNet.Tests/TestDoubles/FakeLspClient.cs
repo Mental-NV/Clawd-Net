@@ -5,7 +5,7 @@ namespace ClawdNet.Tests.TestDoubles;
 
 public sealed class FakeLspClient : ILspClient
 {
-    public IReadOnlyCollection<LspServerState> Servers { get; init; } = [];
+    public IReadOnlyCollection<LspServerState> Servers { get; set; } = [];
 
     public List<(string Path, string Content)> SyncRequests { get; } = [];
 
@@ -16,7 +16,20 @@ public sealed class FakeLspClient : ILspClient
     public Func<string, IReadOnlyList<LspDiagnostic>> DiagnosticsHandler { get; set; } = _ => [];
     public Func<string, string, Exception?> SyncHandler { get; set; } = (_, _) => null;
 
+    public int ReloadCount { get; private set; }
+
+    public Func<FakeLspClient, Task>? ReloadHandler { get; set; }
+
     public Task InitializeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public async Task ReloadAsync(CancellationToken cancellationToken)
+    {
+        ReloadCount++;
+        if (ReloadHandler is not null)
+        {
+            await ReloadHandler(this);
+        }
+    }
 
     public Task<LspServerState?> PingAsync(string serverName, CancellationToken cancellationToken)
         => Task.FromResult(PingHandler(serverName));

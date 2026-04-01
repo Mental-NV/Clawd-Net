@@ -9,6 +9,8 @@ public interface IMcpClient : IAsyncDisposable
 
     Task InitializeAsync(CancellationToken cancellationToken);
 
+    Task ReloadAsync(CancellationToken cancellationToken);
+
     Task<McpServerState?> PingAsync(string serverName, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<McpToolDefinition>> GetToolsAsync(string? serverName, CancellationToken cancellationToken);

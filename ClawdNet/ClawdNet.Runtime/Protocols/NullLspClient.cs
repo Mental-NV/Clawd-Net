@@ -9,6 +9,8 @@ public sealed class NullLspClient : ILspClient
 
     public Task InitializeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
+    public Task ReloadAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
     public Task<LspServerState?> PingAsync(string serverName, CancellationToken cancellationToken)
         => Task.FromResult<LspServerState?>(null);
 

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ClawdNet.Core.Abstractions;
 using ClawdNet.Core.Models;
 
 namespace ClawdNet.Runtime.Protocols;
@@ -11,40 +12,43 @@ public sealed class McpConfigurationLoader
     };
 
     private readonly string _dataRoot;
+    private readonly IPluginCatalog? _pluginCatalog;
 
-    public McpConfigurationLoader(string dataRoot)
+    public McpConfigurationLoader(string dataRoot, IPluginCatalog? pluginCatalog = null)
     {
         _dataRoot = dataRoot;
+        _pluginCatalog = pluginCatalog;
     }
 
     public string ConfigurationPath => Path.Combine(_dataRoot, "config", "mcp.json");
 
     public async Task<McpConfiguration> LoadAsync(CancellationToken cancellationToken)
     {
-        if (!File.Exists(ConfigurationPath))
+        var servers = new List<McpServerDefinition>();
+        if (File.Exists(ConfigurationPath))
         {
-            return new McpConfiguration([]);
+            await using var stream = File.OpenRead(ConfigurationPath);
+            var payload = await JsonSerializer.DeserializeAsync<McpConfigurationDocument>(stream, JsonOptions, cancellationToken);
+            if (payload?.Servers is not null)
+            {
+                servers.AddRange(payload.Servers
+                    .Where(server => !string.IsNullOrWhiteSpace(server.Name) && !string.IsNullOrWhiteSpace(server.Command))
+                    .Select(server => new McpServerDefinition(
+                        server.Name!,
+                        server.Command!,
+                        server.Arguments ?? [],
+                        server.Environment ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                        server.Enabled ?? true,
+                        server.ToolsReadOnly ?? false)));
+            }
         }
 
-        await using var stream = File.OpenRead(ConfigurationPath);
-        var payload = await JsonSerializer.DeserializeAsync<McpConfigurationDocument>(stream, JsonOptions, cancellationToken);
-        if (payload?.Servers is null)
+        if (_pluginCatalog is not null)
         {
-            return new McpConfiguration([]);
+            servers.AddRange(await _pluginCatalog.GetMcpServerDefinitionsAsync(cancellationToken));
         }
 
-        var servers = payload.Servers
-            .Where(server => !string.IsNullOrWhiteSpace(server.Name) && !string.IsNullOrWhiteSpace(server.Command))
-            .Select(server => new McpServerDefinition(
-                server.Name!,
-                server.Command!,
-                server.Arguments ?? [],
-                server.Environment ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
-                server.Enabled ?? true,
-                server.ToolsReadOnly ?? false))
-            .ToArray();
-
-        return new McpConfiguration(servers);
+        return new McpConfiguration(servers.ToArray());
     }
 
     private sealed class McpConfigurationDocument

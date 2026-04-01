@@ -53,4 +53,21 @@ public sealed class ToolRegistry : IToolRegistry
             }
         }
     }
+
+    public void UnregisterWhere(Func<ITool, bool> predicate)
+    {
+        ArgumentNullException.ThrowIfNull(predicate);
+
+        lock (_syncRoot)
+        {
+            var names = _tools.Values
+                .Where(predicate)
+                .Select(tool => tool.Name)
+                .ToArray();
+            foreach (var name in names)
+            {
+                _tools.Remove(name);
+            }
+        }
+    }
 }

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ClawdNet.Core.Abstractions;
 using ClawdNet.Core.Models;
 
 namespace ClawdNet.Runtime.Protocols;
@@ -11,41 +12,44 @@ public sealed class LspConfigurationLoader
     };
 
     private readonly string _dataRoot;
+    private readonly IPluginCatalog? _pluginCatalog;
 
-    public LspConfigurationLoader(string dataRoot)
+    public LspConfigurationLoader(string dataRoot, IPluginCatalog? pluginCatalog = null)
     {
         _dataRoot = dataRoot;
+        _pluginCatalog = pluginCatalog;
     }
 
     public string ConfigurationPath => Path.Combine(_dataRoot, "config", "lsp.json");
 
     public async Task<LspConfiguration> LoadAsync(CancellationToken cancellationToken)
     {
-        if (!File.Exists(ConfigurationPath))
+        var servers = new List<LspServerDefinition>();
+        if (File.Exists(ConfigurationPath))
         {
-            return new LspConfiguration([]);
+            await using var stream = File.OpenRead(ConfigurationPath);
+            var payload = await JsonSerializer.DeserializeAsync<LspConfigurationDocument>(stream, JsonOptions, cancellationToken);
+            if (payload?.Servers is not null)
+            {
+                servers.AddRange(payload.Servers
+                    .Where(server => !string.IsNullOrWhiteSpace(server.Name) && !string.IsNullOrWhiteSpace(server.Command))
+                    .Select(server => new LspServerDefinition(
+                        server.Name!,
+                        server.Command!,
+                        server.Arguments ?? [],
+                        server.Environment ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                        (server.FileExtensions ?? []).Select(NormalizeExtension).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                        server.LanguageId,
+                        server.Enabled ?? true)));
+            }
         }
 
-        await using var stream = File.OpenRead(ConfigurationPath);
-        var payload = await JsonSerializer.DeserializeAsync<LspConfigurationDocument>(stream, JsonOptions, cancellationToken);
-        if (payload?.Servers is null)
+        if (_pluginCatalog is not null)
         {
-            return new LspConfiguration([]);
+            servers.AddRange(await _pluginCatalog.GetLspServerDefinitionsAsync(cancellationToken));
         }
 
-        var servers = payload.Servers
-            .Where(server => !string.IsNullOrWhiteSpace(server.Name) && !string.IsNullOrWhiteSpace(server.Command))
-            .Select(server => new LspServerDefinition(
-                server.Name!,
-                server.Command!,
-                server.Arguments ?? [],
-                server.Environment ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
-                (server.FileExtensions ?? []).Select(NormalizeExtension).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
-                server.LanguageId,
-                server.Enabled ?? true))
-            .ToArray();
-
-        return new LspConfiguration(servers);
+        return new LspConfiguration(servers.ToArray());
     }
 
     private static string NormalizeExtension(string extension)

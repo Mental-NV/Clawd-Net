@@ -213,6 +213,105 @@ public sealed class AppHostTests : IDisposable
         Assert.Contains("used lsp", result.StdOut);
     }
 
+    [Fact]
+    public async Task Plugin_list_reports_loaded_and_invalid_plugins()
+    {
+        var pluginCatalog = new FakePluginCatalog
+        {
+            Plugins =
+            [
+                new PluginDefinition(
+                    "demo",
+                    "demo",
+                    "/tmp/demo",
+                    true,
+                    new PluginManifest("demo", "1.0.0", true, [], []),
+                    []),
+                new PluginDefinition(
+                    "broken",
+                    "broken",
+                    "/tmp/broken",
+                    false,
+                    null,
+                    [new PluginError("manifest-invalid", "bad json")])
+            ]
+        };
+        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient(), pluginCatalog: pluginCatalog);
+
+        var result = await host.RunAsync(["plugin", "list"], CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("demo", result.StdOut);
+        Assert.Contains("broken", result.StdOut);
+        Assert.Contains("manifest-invalid", result.StdOut);
+    }
+
+    [Fact]
+    public async Task Plugin_reload_refreshes_catalog_and_dynamic_mcp_tools()
+    {
+        var pluginCatalog = new FakePluginCatalog
+        {
+            Plugins =
+            [
+                new PluginDefinition(
+                    "demo",
+                    "demo",
+                    "/tmp/demo",
+                    true,
+                    new PluginManifest("demo", "1.0.0", true, [], []),
+                    [])
+            ]
+        };
+        var mcpClient = new FakeMcpClient
+        {
+            Servers = [],
+            Tools = []
+        };
+        var lspClient = new FakeLspClient();
+        pluginCatalog.ReloadHandler = _ =>
+        {
+            mcpClient.Servers =
+            [
+                new McpServerState("demo.echo", true, true, 1)
+            ];
+            mcpClient.Tools =
+            [
+                new McpToolDefinition(
+                    "demo.echo",
+                    "echo",
+                    "Echo from plugin",
+                    new JsonObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JsonObject
+                        {
+                            ["text"] = new JsonObject { ["type"] = "string" }
+                        }
+                    },
+                    true)
+            ];
+            return Task.CompletedTask;
+        };
+        var anthropicClient = new FakeAnthropicMessageClient(
+            new ModelResponse(
+                "claude-sonnet-4-5",
+                [new ToolUseContentBlock("tool-1", "mcp.demo.echo.echo", new JsonObject { ["text"] = "hello" })],
+                "tool_use"),
+            new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("reloaded plugin tool")], "end_turn"));
+        var host = new AppHost("1.0.0", _dataRoot, anthropicClient, pluginCatalog: pluginCatalog, mcpClient: mcpClient, lspClient: lspClient);
+
+        var reloadResult = await host.RunAsync(["plugin", "reload"], CancellationToken.None);
+        var askResult = await host.RunAsync(["ask", "use reloaded plugin"], CancellationToken.None);
+
+        Assert.Equal(0, reloadResult.ExitCode);
+        Assert.Contains("Reloaded 1 plugin", reloadResult.StdOut);
+        Assert.Equal(0, askResult.ExitCode);
+        Assert.Contains("reloaded plugin tool", askResult.StdOut);
+        Assert.Equal(2, pluginCatalog.ReloadCount);
+        Assert.Equal(1, mcpClient.ReloadCount);
+        Assert.Equal(1, lspClient.ReloadCount);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dataRoot))

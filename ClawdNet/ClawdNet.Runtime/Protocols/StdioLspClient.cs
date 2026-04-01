@@ -16,9 +16,9 @@ public sealed class StdioLspClient : ILspClient
     private readonly SemaphoreSlim _initializeLock = new(1, 1);
     private bool _initialized;
 
-    public StdioLspClient(string dataRoot)
+    public StdioLspClient(string dataRoot, IPluginCatalog? pluginCatalog = null)
     {
-        _configurationLoader = new LspConfigurationLoader(dataRoot);
+        _configurationLoader = new LspConfigurationLoader(dataRoot, pluginCatalog);
     }
 
     public IReadOnlyCollection<LspServerState> Servers => _states.Values.OrderBy(server => server.Name, StringComparer.OrdinalIgnoreCase).ToArray();
@@ -69,6 +69,20 @@ public sealed class StdioLspClient : ILspClient
         {
             _initializeLock.Release();
         }
+    }
+
+    public async Task ReloadAsync(CancellationToken cancellationToken)
+    {
+        foreach (var session in _sessions.Values)
+        {
+            await session.DisposeAsync();
+        }
+
+        _sessions.Clear();
+        _states.Clear();
+        _extensionToServer.Clear();
+        _initialized = false;
+        await InitializeAsync(cancellationToken);
     }
 
     public async Task<LspServerState?> PingAsync(string serverName, CancellationToken cancellationToken)

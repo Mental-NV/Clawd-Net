@@ -2,9 +2,11 @@ using ClawdNet.Core.Abstractions;
 using ClawdNet.Core.Commands;
 using ClawdNet.Core.Models;
 using ClawdNet.Core.Services;
+using ClawdNet.Core.Tools;
 using ClawdNet.Runtime.Anthropic;
 using ClawdNet.Runtime.FeatureGates;
 using ClawdNet.Runtime.Permissions;
+using ClawdNet.Runtime.Plugins;
 using ClawdNet.Runtime.Protocols;
 using ClawdNet.Runtime.Processes;
 using ClawdNet.Runtime.Sessions;
@@ -22,10 +24,13 @@ public sealed class AppHost : IAsyncDisposable
     private readonly CommandContext _context;
     private readonly IReplHost _replHost;
     private readonly IToolRegistry _toolRegistry;
+    private readonly IPluginCatalog _pluginCatalog;
     private readonly IMcpClient _mcpClient;
     private readonly ILspClient _lspClient;
+    private readonly SemaphoreSlim _pluginInitializationLock = new(1, 1);
     private readonly SemaphoreSlim _mcpInitializationLock = new(1, 1);
     private readonly SemaphoreSlim _lspInitializationLock = new(1, 1);
+    private bool _pluginsInitialized;
     private bool _mcpInitialized;
     private bool _lspInitialized;
 
@@ -34,6 +39,7 @@ public sealed class AppHost : IAsyncDisposable
         string dataRoot,
         IAnthropicMessageClient? anthropicMessageClient = null,
         IProcessRunner? processRunner = null,
+        IPluginCatalog? pluginCatalog = null,
         IMcpClient? mcpClient = null,
         ILspClient? lspClient = null,
         IReplHost? replHost = null,
@@ -53,18 +59,20 @@ public sealed class AppHost : IAsyncDisposable
         IConversationStore conversationStore = new JsonSessionStore(dataRoot);
         anthropicMessageClient ??= new HttpAnthropicMessageClient(new HttpClient());
         IPermissionService permissionService = new DefaultPermissionService();
-        _mcpClient = mcpClient ?? new StdioMcpClient(dataRoot);
-        _lspClient = lspClient ?? new StdioLspClient(dataRoot);
+        _pluginCatalog = pluginCatalog ?? new PluginCatalog(dataRoot);
+        _mcpClient = mcpClient ?? new StdioMcpClient(dataRoot, _pluginCatalog);
+        _lspClient = lspClient ?? new StdioLspClient(dataRoot, _pluginCatalog);
         _toolRegistry.Register(new FileWriteTool(_lspClient));
         IQueryEngine queryEngine = new QueryEngine(conversationStore, anthropicMessageClient, _toolRegistry, toolExecutor, permissionService);
         ITranscriptRenderer transcriptRenderer = new ConsoleTranscriptRenderer();
         terminalSession ??= new ConsoleTerminalSession();
         _replHost = replHost ?? new ReplHost(terminalSession, conversationStore, queryEngine, transcriptRenderer);
 
-        _context = new CommandContext(featureGate, toolExecutor, conversationStore, queryEngine, _mcpClient, _lspClient, permissionService, transcriptRenderer, version);
+        _context = new CommandContext(featureGate, _toolRegistry, toolExecutor, conversationStore, queryEngine, _mcpClient, _lspClient, _pluginCatalog, permissionService, transcriptRenderer, version);
         _dispatcher = new CommandDispatcher(
         [
             new AskCommandHandler(),
+            new PluginCommandHandler(),
             new LspCommandHandler(),
             new McpCommandHandler(),
             new SessionCommandHandler(),
@@ -82,6 +90,7 @@ public sealed class AppHost : IAsyncDisposable
 
     public async Task<CommandExecutionResult> RunAsync(IReadOnlyList<string> args, CancellationToken cancellationToken)
     {
+        await EnsurePluginsInitializedAsync(cancellationToken);
         await EnsureMcpInitializedAsync(cancellationToken);
         await EnsureLspInitializedAsync(cancellationToken);
         if (ShouldLaunchRepl(args))
@@ -96,6 +105,7 @@ public sealed class AppHost : IAsyncDisposable
     {
         await _mcpClient.DisposeAsync();
         await _lspClient.DisposeAsync();
+        _pluginInitializationLock.Dispose();
         _mcpInitializationLock.Dispose();
         _lspInitializationLock.Dispose();
     }
@@ -180,7 +190,7 @@ public sealed class AppHost : IAsyncDisposable
 
             await _mcpClient.InitializeAsync(cancellationToken);
             var tools = await _mcpClient.GetToolsAsync(null, cancellationToken);
-            _toolRegistry.RegisterRange(tools.Select(tool => new McpToolAdapter(_mcpClient, tool)));
+            _toolRegistry.RegisterRange(tools.Select(tool => new McpToolProxy(_mcpClient, tool)));
             _mcpInitialized = true;
         }
         finally
@@ -217,6 +227,30 @@ public sealed class AppHost : IAsyncDisposable
         finally
         {
             _lspInitializationLock.Release();
+        }
+    }
+
+    private async Task EnsurePluginsInitializedAsync(CancellationToken cancellationToken)
+    {
+        if (_pluginsInitialized)
+        {
+            return;
+        }
+
+        await _pluginInitializationLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_pluginsInitialized)
+            {
+                return;
+            }
+
+            await _pluginCatalog.ReloadAsync(cancellationToken);
+            _pluginsInitialized = true;
+        }
+        finally
+        {
+            _pluginInitializationLock.Release();
         }
     }
 }

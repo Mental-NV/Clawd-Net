@@ -17,9 +17,9 @@ public sealed class StdioMcpClient : IMcpClient
     private readonly SemaphoreSlim _initializeLock = new(1, 1);
     private bool _initialized;
 
-    public StdioMcpClient(string dataRoot)
+    public StdioMcpClient(string dataRoot, IPluginCatalog? pluginCatalog = null)
     {
-        _configurationLoader = new McpConfigurationLoader(dataRoot);
+        _configurationLoader = new McpConfigurationLoader(dataRoot, pluginCatalog);
     }
 
     public IReadOnlyCollection<McpServerState> Servers => _states.Values.OrderBy(state => state.Name, StringComparer.OrdinalIgnoreCase).ToArray();
@@ -68,6 +68,19 @@ public sealed class StdioMcpClient : IMcpClient
         {
             _initializeLock.Release();
         }
+    }
+
+    public async Task ReloadAsync(CancellationToken cancellationToken)
+    {
+        foreach (var session in _sessions.Values)
+        {
+            await session.DisposeAsync();
+        }
+
+        _sessions.Clear();
+        _states.Clear();
+        _initialized = false;
+        await InitializeAsync(cancellationToken);
     }
 
     public async Task<McpServerState?> PingAsync(string serverName, CancellationToken cancellationToken)

@@ -10,6 +10,8 @@ public sealed class NullMcpClient : IMcpClient
 
     public Task InitializeAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
+    public Task ReloadAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
     public Task<McpServerState?> PingAsync(string serverName, CancellationToken cancellationToken)
         => Task.FromResult<McpServerState?>(null);
 
