@@ -6,5 +6,10 @@ public interface ITranscriptRenderer
 {
     string Render(IReadOnlyList<ConversationMessage> entries);
 
-    string RenderStatus(ConversationSession session, string? error = null);
+    string RenderFooter(
+        ConversationSession session,
+        PermissionMode permissionMode,
+        string? error = null);
+
+    string? RenderActivity(TerminalActivityState state, string? detail = null);
 }

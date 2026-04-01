@@ -16,6 +16,35 @@ public sealed class ConsoleTranscriptRendererTests
 
         var rendered = renderer.Render(transcript);
 
-        Assert.Equal("[2026-04-01T12:00:00.0000000+00:00] system: ready", rendered);
+        Assert.Equal("[12:00:00] system: ready", rendered);
+    }
+
+    [Fact]
+    public void Render_footer_includes_model_permission_and_message_count()
+    {
+        var renderer = new ConsoleTranscriptRenderer();
+        var session = new ConversationSession(
+            "session-1",
+            "Interactive session",
+            "claude-sonnet-4-5",
+            new DateTimeOffset(2026, 4, 1, 12, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 4, 1, 12, 0, 0, TimeSpan.Zero),
+            [new ConversationMessage("assistant", "ready", DateTimeOffset.UtcNow)]);
+
+        var footer = renderer.RenderFooter(session, PermissionMode.AcceptEdits);
+
+        Assert.Contains("session=session-1", footer);
+        Assert.Contains("permission=accept-edits", footer);
+        Assert.Contains("messages=1", footer);
+    }
+
+    [Fact]
+    public void Render_activity_formats_help_state()
+    {
+        var renderer = new ConsoleTranscriptRenderer();
+
+        var activity = renderer.RenderActivity(TerminalActivityState.ShowingHelp, "Commands: /help");
+
+        Assert.Equal("Commands: /help", activity);
     }
 }

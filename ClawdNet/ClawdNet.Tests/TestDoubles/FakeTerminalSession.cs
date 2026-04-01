@@ -1,4 +1,5 @@
 using ClawdNet.Terminal.Abstractions;
+using ClawdNet.Terminal.Models;
 
 namespace ClawdNet.Tests.TestDoubles;
 
@@ -15,11 +16,11 @@ public sealed class FakeTerminalSession : ITerminalSession
 
     public List<string> Prompts { get; } = [];
 
-    public List<string> OutputLines { get; } = [];
+    public List<TerminalViewState> RenderedViews { get; } = [];
 
     public List<string> ErrorLines { get; } = [];
 
-    public List<string> StatusLines { get; } = [];
+    public int ClearCount { get; private set; }
 
     public Task<string?> ReadLineAsync(string prompt, CancellationToken cancellationToken)
     {
@@ -33,18 +34,18 @@ public sealed class FakeTerminalSession : ITerminalSession
         return Task.FromResult(_confirmations.Count > 0 && _confirmations.Dequeue());
     }
 
-    public void WriteLine(string text)
+    public void Render(TerminalViewState viewState)
     {
-        OutputLines.Add(text);
+        RenderedViews.Add(viewState);
+    }
+
+    public void ClearVisible()
+    {
+        ClearCount++;
     }
 
     public void WriteErrorLine(string text)
     {
         ErrorLines.Add(text);
-    }
-
-    public void WriteStatus(string text)
-    {
-        StatusLines.Add(text);
     }
 }

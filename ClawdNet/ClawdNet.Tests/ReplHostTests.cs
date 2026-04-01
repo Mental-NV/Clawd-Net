@@ -43,9 +43,9 @@ public sealed class ReplHostTests : IDisposable
 
         Assert.Equal(0, result.ExitCode);
         Assert.Single(queryEngine.Requests);
-        Assert.Contains("ClawdNet interactive mode", terminal.OutputLines[0]);
-        Assert.Contains("ClawdNet: hi there", string.Join(Environment.NewLine, terminal.OutputLines));
-        Assert.Contains("Exiting ClawdNet.", terminal.StatusLines.Last());
+        Assert.Equal("ClawdNet interactive mode", terminal.RenderedViews[0].Header);
+        Assert.Contains("hi there", string.Join(Environment.NewLine, terminal.RenderedViews.Select(view => view.Transcript)));
+        Assert.Equal("Exiting ClawdNet.", terminal.RenderedViews.Last().Activity);
         Assert.Single(sessions);
     }
 
@@ -62,7 +62,7 @@ public sealed class ReplHostTests : IDisposable
 
         Assert.Equal(0, result.ExitCode);
         Assert.Empty(queryEngine.Requests);
-        Assert.Contains(existing.Id, terminal.StatusLines[0]);
+        Assert.Contains(existing.Id, terminal.RenderedViews[0].Footer);
     }
 
     [Fact]
@@ -117,9 +117,64 @@ public sealed class ReplHostTests : IDisposable
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains(terminal.Prompts, prompt => prompt.Contains("Allow file_write"));
+        Assert.Contains(terminal.RenderedViews, view => view.Activity?.Contains("Awaiting approval", StringComparison.OrdinalIgnoreCase) == true);
         Assert.NotNull(updatedSession);
         Assert.Contains(updatedSession!.Messages, message => message.Role == "permission" && message.ToolName == "file_write" && message.IsError);
         Assert.Contains(updatedSession.Messages, message => message.Role == "assistant" && message.Content == "denied");
+    }
+
+    [Fact]
+    public async Task Repl_supports_help_and_session_slash_commands()
+    {
+        var store = new JsonSessionStore(_dataRoot);
+        var session = await store.CreateAsync("Session info", "claude-sonnet-4-5", CancellationToken.None);
+        var terminal = new FakeTerminalSession(["/help", "/session", "/quit"]);
+        var host = new ReplHost(terminal, store, new FakeQueryEngine(), new ConsoleTranscriptRenderer());
+
+        var result = await host.RunAsync(new ReplLaunchOptions(session.Id), CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains(terminal.RenderedViews, view => view.Activity?.Contains("Commands:", StringComparison.OrdinalIgnoreCase) == true);
+        Assert.Contains(terminal.RenderedViews, view => view.Activity?.Contains(session.Id, StringComparison.OrdinalIgnoreCase) == true);
+    }
+
+    [Fact]
+    public async Task Repl_clear_clears_visible_screen_without_deleting_history()
+    {
+        var store = new JsonSessionStore(_dataRoot);
+        var session = await store.CreateAsync("Clear me", "claude-sonnet-4-5", CancellationToken.None);
+        var saved = session with
+        {
+            Messages =
+            [
+                new ConversationMessage("assistant", "existing", DateTimeOffset.UtcNow)
+            ]
+        };
+        await store.SaveAsync(saved, CancellationToken.None);
+        var terminal = new FakeTerminalSession(["/clear", "quit"]);
+        var host = new ReplHost(terminal, store, new FakeQueryEngine(), new ConsoleTranscriptRenderer());
+
+        var result = await host.RunAsync(new ReplLaunchOptions(session.Id), CancellationToken.None);
+        var reloaded = await store.GetAsync(session.Id, CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(1, terminal.ClearCount);
+        Assert.Contains(terminal.RenderedViews, view => view.Activity?.Contains("history is preserved", StringComparison.OrdinalIgnoreCase) == true);
+        Assert.NotNull(reloaded);
+        Assert.Single(reloaded!.Messages);
+    }
+
+    [Fact]
+    public async Task Repl_supports_slash_exit()
+    {
+        var store = new JsonSessionStore(_dataRoot);
+        var terminal = new FakeTerminalSession(["/exit"]);
+        var host = new ReplHost(terminal, store, new FakeQueryEngine(), new ConsoleTranscriptRenderer());
+
+        var result = await host.RunAsync(new ReplLaunchOptions(), CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("Exiting ClawdNet.", terminal.RenderedViews.Last().Activity);
     }
 
     public void Dispose()

@@ -1,4 +1,5 @@
 using ClawdNet.Terminal.Abstractions;
+using ClawdNet.Terminal.Models;
 
 namespace ClawdNet.Terminal.Console;
 
@@ -17,18 +18,39 @@ public sealed class ConsoleTerminalSession : ITerminalSession
             || string.Equals(response?.Trim(), "yes", StringComparison.OrdinalIgnoreCase);
     }
 
-    public void WriteLine(string text)
+    public void Render(TerminalViewState viewState)
     {
-        System.Console.WriteLine(text);
+        if (viewState.ClearScreen)
+        {
+            ClearVisible();
+        }
+
+        System.Console.WriteLine(viewState.Header);
+        System.Console.WriteLine();
+        System.Console.WriteLine(viewState.Transcript);
+        System.Console.WriteLine();
+        if (!string.IsNullOrWhiteSpace(viewState.Activity))
+        {
+            System.Console.WriteLine(viewState.Activity);
+            System.Console.WriteLine();
+        }
+
+        System.Console.WriteLine(viewState.Footer);
+    }
+
+    public void ClearVisible()
+    {
+        if (!System.Console.IsOutputRedirected)
+        {
+            System.Console.Clear();
+            return;
+        }
+
+        System.Console.Write("\u001b[2J\u001b[H");
     }
 
     public void WriteErrorLine(string text)
     {
         System.Console.Error.WriteLine(text);
-    }
-
-    public void WriteStatus(string text)
-    {
-        System.Console.WriteLine(text);
     }
 }

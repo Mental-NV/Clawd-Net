@@ -9,7 +9,7 @@ This initial implementation provides:
 - a headless `ask` workflow for non-interactive conversations
 - typed tool/runtime abstractions
 - JSON-backed session persistence
-- a console transcript renderer
+- a richer REPL with screen-oriented transcript rendering
 - characterization-style tests for core behaviors
 
 It is intentionally the first migration slice rather than full feature parity.
@@ -86,6 +86,13 @@ dotnet run --project ClawdNet.App -- --version
 - `lsp ping <server>`
 - `lsp diagnostics <path>`
 - `tool echo <text>`
+
+Inside interactive mode, these slash commands are available:
+
+- `/help`
+- `/session`
+- `/clear`
+- `/exit`
 
 ## MCP Configuration
 

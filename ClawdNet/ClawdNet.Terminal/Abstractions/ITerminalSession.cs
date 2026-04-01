@@ -1,3 +1,5 @@
+using ClawdNet.Terminal.Models;
+
 namespace ClawdNet.Terminal.Abstractions;
 
 public interface ITerminalSession
@@ -6,9 +8,9 @@ public interface ITerminalSession
 
     Task<bool> ConfirmAsync(string prompt, CancellationToken cancellationToken);
 
-    void WriteLine(string text);
+    void Render(TerminalViewState viewState);
+
+    void ClearVisible();
 
     void WriteErrorLine(string text);
-
-    void WriteStatus(string text);
 }
