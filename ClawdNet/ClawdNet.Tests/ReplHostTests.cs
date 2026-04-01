@@ -214,6 +214,26 @@ public sealed class ReplHostTests : IDisposable
         Assert.DoesNotContain(terminal.RenderedViews, view => view.Transcript.Contains("partial", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public async Task Repl_shows_edit_preview_before_batch_approval()
+    {
+        var store = new JsonSessionStore(_dataRoot);
+        var terminal = new FakeTerminalSession(["hello", "exit"], [true]);
+        var session = await store.CreateAsync("Interactive session", "claude-sonnet-4-5", CancellationToken.None);
+        var preview = new EditPreview(true, new EditBatch([]), 1, "Edit batch touches 1 file(s): note.txt", "--- a.txt\n+++ a.txt\n@@\n-old\n+new");
+        var queryEngine = new FakeQueryEngine
+        {
+            StreamHandler = _ => StreamEditPreviewAsync(session, preview)
+        };
+        var host = new ReplHost(terminal, store, queryEngine, new ConsoleTranscriptRenderer());
+
+        var result = await host.RunAsync(new ReplLaunchOptions(session.Id), CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains(terminal.RenderedViews, view => view.Draft?.Contains("--- a.txt", StringComparison.Ordinal) == true);
+        Assert.Contains(terminal.RenderedViews, view => view.Activity?.Contains("Edit batch touches 1 file", StringComparison.OrdinalIgnoreCase) == true);
+    }
+
     private static async IAsyncEnumerable<QueryStreamEvent> StreamReplyAsync(QueryRequest request)
     {
         var session = new ConversationSession(
@@ -255,6 +275,17 @@ public sealed class ReplHostTests : IDisposable
         terminal.TriggerInterrupt();
         await Task.Delay(10, CancellationToken.None);
         throw new OperationCanceledException();
+    }
+
+    private static async IAsyncEnumerable<QueryStreamEvent> StreamEditPreviewAsync(ConversationSession session, EditPreview preview)
+    {
+        var toolCall = new ToolCall("tool-1", "apply_patch", null);
+        yield return new UserTurnAcceptedEvent(session);
+        yield return new ToolCallRequestedEvent(toolCall);
+        yield return new EditPreviewGeneratedEvent(session, toolCall, preview);
+        yield return new EditApprovalRecordedEvent(session, toolCall, true, "Approved edit batch for application.");
+        yield return new TurnCompletedStreamEvent(new QueryExecutionResult(session, string.Empty, 1));
+        await Task.Yield();
     }
 
     public void Dispose()

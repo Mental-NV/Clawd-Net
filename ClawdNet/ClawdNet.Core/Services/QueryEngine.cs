@@ -196,7 +196,117 @@ public sealed class QueryEngine : IQueryEngine
                 yield return new PermissionDecisionStreamEvent(toolCall, permissionDecision);
 
                 ToolExecutionResult toolResponse;
-                if (permissionDecision.Kind == PermissionDecisionKind.Deny)
+                if (tool.RequiresEditReview && tool is IReviewableEditTool reviewableEditTool)
+                {
+                    var preview = await reviewableEditTool.PreviewAsync(
+                        new ToolExecutionRequest(toolCall.Name, toolCall.Input),
+                        cancellationToken);
+                    var previewMessage = new ConversationMessage(
+                        "edit_preview",
+                        preview.Success ? preview.Summary : preview.Error ?? "Edit preview failed.",
+                        DateTimeOffset.UtcNow,
+                        toolCall.Name,
+                        toolCall.Id,
+                        !preview.Success);
+                    workingMessages.Add(previewMessage);
+                    session = session with
+                    {
+                        UpdatedAtUtc = previewMessage.TimestampUtc,
+                        Messages = workingMessages.ToArray()
+                    };
+                    await _conversationStore.SaveAsync(session, cancellationToken);
+                    yield return new EditPreviewGeneratedEvent(session, toolCall, preview);
+
+                    if (!preview.Success)
+                    {
+                        toolResponse = new ToolExecutionResult(false, string.Empty, preview.Error ?? "Edit preview failed.");
+                    }
+                    else if (permissionDecision.Kind == PermissionDecisionKind.Deny)
+                    {
+                        var rejectedMessage = new ConversationMessage(
+                            "edit_rejected",
+                            "Edit batch denied by permission policy.",
+                            DateTimeOffset.UtcNow,
+                            toolCall.Name,
+                            toolCall.Id,
+                            true);
+                        workingMessages.Add(rejectedMessage);
+                        session = session with
+                        {
+                            UpdatedAtUtc = rejectedMessage.TimestampUtc,
+                            Messages = workingMessages.ToArray()
+                        };
+                        await _conversationStore.SaveAsync(session, cancellationToken);
+                        yield return new EditApprovalRecordedEvent(session, toolCall, false, rejectedMessage.Content);
+                        toolResponse = new ToolExecutionResult(
+                            false,
+                            string.Empty,
+                            $"Edit batch denied.{Environment.NewLine}{preview.Summary}{Environment.NewLine}{preview.Diff}".TrimEnd());
+                    }
+                    else if (permissionDecision.Kind == PermissionDecisionKind.Ask)
+                    {
+                        var approved = request.ApprovalHandler is not null &&
+                                       await request.ApprovalHandler.ApproveAsync(tool, toolCall, permissionDecision, cancellationToken);
+                        var approvalMessage = new ConversationMessage(
+                            approved ? "edit_approved" : "edit_rejected",
+                            approved ? "Approved edit batch for application." : "Rejected edit batch.",
+                            DateTimeOffset.UtcNow,
+                            toolCall.Name,
+                            toolCall.Id,
+                            !approved);
+                        workingMessages.Add(approvalMessage);
+                        session = session with
+                        {
+                            UpdatedAtUtc = approvalMessage.TimestampUtc,
+                            Messages = workingMessages.ToArray()
+                        };
+                        await _conversationStore.SaveAsync(session, cancellationToken);
+                        yield return new EditApprovalRecordedEvent(session, toolCall, approved, approvalMessage.Content);
+
+                        if (!approved)
+                        {
+                            toolResponse = new ToolExecutionResult(
+                                false,
+                                string.Empty,
+                                $"Edit batch rejected.{Environment.NewLine}{preview.Summary}{Environment.NewLine}{preview.Diff}".TrimEnd());
+                        }
+                        else
+                        {
+                            var applyResult = await reviewableEditTool.ApplyAsync(
+                                new ToolExecutionRequest(toolCall.Name, toolCall.Input),
+                                cancellationToken);
+                            toolResponse = applyResult.Success
+                                ? new ToolExecutionResult(true, $"{applyResult.Summary}{Environment.NewLine}{applyResult.Diff}".TrimEnd())
+                                : new ToolExecutionResult(false, string.Empty, applyResult.Error ?? applyResult.Summary);
+                        }
+                    }
+                    else
+                    {
+                        var approvalMessage = new ConversationMessage(
+                            "edit_approved",
+                            "Approved edit batch for application.",
+                            DateTimeOffset.UtcNow,
+                            toolCall.Name,
+                            toolCall.Id,
+                            false);
+                        workingMessages.Add(approvalMessage);
+                        session = session with
+                        {
+                            UpdatedAtUtc = approvalMessage.TimestampUtc,
+                            Messages = workingMessages.ToArray()
+                        };
+                        await _conversationStore.SaveAsync(session, cancellationToken);
+                        yield return new EditApprovalRecordedEvent(session, toolCall, true, approvalMessage.Content);
+
+                        var applyResult = await reviewableEditTool.ApplyAsync(
+                            new ToolExecutionRequest(toolCall.Name, toolCall.Input),
+                            cancellationToken);
+                        toolResponse = applyResult.Success
+                            ? new ToolExecutionResult(true, $"{applyResult.Summary}{Environment.NewLine}{applyResult.Diff}".TrimEnd())
+                            : new ToolExecutionResult(false, string.Empty, applyResult.Error ?? applyResult.Summary);
+                    }
+                }
+                else if (permissionDecision.Kind == PermissionDecisionKind.Deny)
                 {
                     toolResponse = new ToolExecutionResult(false, string.Empty, $"Permission denied for tool '{toolCall.Name}'.");
                 }

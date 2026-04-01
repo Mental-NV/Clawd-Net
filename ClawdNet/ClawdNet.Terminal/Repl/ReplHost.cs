@@ -162,6 +162,32 @@ public sealed class ReplHost : IReplHost
                                 permissionEvent.Decision.Reason);
                             Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
                             break;
+                        case EditPreviewGeneratedEvent previewEvent:
+                            session = previewEvent.Session;
+                            _currentSession = session;
+                            _draft = new StreamingAssistantDraft(
+                                string.Empty,
+                                true,
+                                previewEvent.ToolCall.Name,
+                                previewEvent.Preview.Diff);
+                            SetActivity(
+                                TerminalActivityState.ReviewingEdits,
+                                previewEvent.Preview.Success
+                                    ? previewEvent.Preview.Summary
+                                    : previewEvent.Preview.Error ?? "Edit preview failed.");
+                            Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                            break;
+                        case EditApprovalRecordedEvent editApproval:
+                            session = editApproval.Session;
+                            _currentSession = session;
+                            _draft = editApproval.Approved
+                                ? new StreamingAssistantDraft(string.Empty, true, editApproval.ToolCall.Name, "Applying approved edit batch...")
+                                : null;
+                            SetActivity(
+                                editApproval.Approved ? TerminalActivityState.RunningTool : TerminalActivityState.ReviewingEdits,
+                                editApproval.Summary);
+                            Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                            break;
                         case ToolResultCommittedEvent committedTool:
                             session = committedTool.Session;
                             _currentSession = session;

@@ -31,7 +31,9 @@ public sealed class ConsoleTranscriptRenderer : ITranscriptRenderer
 
         if (!string.IsNullOrWhiteSpace(draft.ToolName))
         {
-            return $"[live] tool={draft.ToolName} {draft.Detail}".TrimEnd();
+            return string.IsNullOrWhiteSpace(draft.Detail)
+                ? $"[live] tool={draft.ToolName}"
+                : $"[live] tool={draft.ToolName}{Environment.NewLine}{draft.Detail}".TrimEnd();
         }
 
         if (!string.IsNullOrWhiteSpace(draft.Text))
@@ -64,6 +66,7 @@ public sealed class ConsoleTranscriptRenderer : ITranscriptRenderer
             TerminalActivityState.WaitingForModel => detail ?? "Waiting for model response...",
             TerminalActivityState.StreamingResponse => detail ?? "Streaming assistant response...",
             TerminalActivityState.RunningTool => detail ?? "Running tool...",
+            TerminalActivityState.ReviewingEdits => detail ?? "Reviewing edit batch...",
             TerminalActivityState.AwaitingApproval => detail ?? "Awaiting approval...",
             TerminalActivityState.ShowingHelp => detail ?? "Available commands: /help, /session, /clear, /exit",
             TerminalActivityState.ShowingSession => detail,
@@ -86,6 +89,9 @@ public sealed class ConsoleTranscriptRenderer : ITranscriptRenderer
             "tool_use" => $"{timestamp}Tool     {entry.ToolName} -> {entry.Content}",
             "permission" when entry.IsError => $"{timestamp}Deny     {entry.ToolName} -> {entry.Content}",
             "permission" => $"{timestamp}Approve  {entry.ToolName} -> {entry.Content}",
+            "edit_preview" => $"{timestamp}Preview  {entry.ToolName} -> {entry.Content}",
+            "edit_approved" => $"{timestamp}Apply    {entry.ToolName} -> {entry.Content}",
+            "edit_rejected" => $"{timestamp}Reject   {entry.ToolName} -> {entry.Content}",
             "tool_result" when entry.IsError => $"{timestamp}Error    {entry.ToolName} -> {entry.Content}",
             "tool_result" => $"{timestamp}Result   {entry.ToolName} -> {entry.Content}",
             _ => $"{timestamp}{entry.Role}: {entry.Content}"

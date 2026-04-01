@@ -11,6 +11,8 @@ public interface ITool
 
     ToolCategory Category { get; }
 
+    bool RequiresEditReview => false;
+
     JsonObject InputSchema { get; }
 
     Task<ToolExecutionResult> ExecuteAsync(ToolExecutionRequest request, CancellationToken cancellationToken);

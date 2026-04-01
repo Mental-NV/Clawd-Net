@@ -10,6 +10,11 @@ public sealed class AppHostTests : IDisposable
 {
     private readonly string _dataRoot = Path.Combine(Path.GetTempPath(), "clawdnet-tests", Guid.NewGuid().ToString("N"));
 
+    public AppHostTests()
+    {
+        Directory.CreateDirectory(_dataRoot);
+    }
+
     [Fact]
     public async Task Version_command_returns_product_version()
     {
@@ -98,6 +103,94 @@ public sealed class AppHostTests : IDisposable
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("permission-mode", result.StdOut);
+    }
+
+    [Fact]
+    public async Task Ask_denies_apply_patch_in_default_mode_non_interactively()
+    {
+        var path = Path.Combine(_dataRoot, "default-note.txt");
+        await File.WriteAllTextAsync(path, "hello");
+        var client = new FakeAnthropicMessageClient(
+            new ModelResponse(
+                "claude-sonnet-4-5",
+                [
+                    new ToolUseContentBlock(
+                        "tool-1",
+                        "apply_patch",
+                        new JsonObject
+                        {
+                            ["edits"] = new JsonArray
+                            {
+                                new JsonObject
+                                {
+                                    ["path"] = path,
+                                    ["operation"] = "patch",
+                                    ["hunks"] = new JsonArray
+                                    {
+                                        new JsonObject
+                                        {
+                                            ["oldText"] = "hello",
+                                            ["newText"] = "hi"
+                                        }
+                                    }
+                                }
+                            }
+                        })
+                ],
+                "tool_use"),
+            new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("patch denied")], "end_turn"));
+        var host = new AppHost("1.0.0", _dataRoot, client);
+
+        var result = await host.RunAsync(["ask", "edit the file"], CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("patch denied", result.StdOut);
+        Assert.Equal("hello", await File.ReadAllTextAsync(path));
+    }
+
+    [Fact]
+    public async Task Ask_accept_edits_applies_patch_batch_and_syncs_lsp()
+    {
+        var path = Path.Combine(_dataRoot, "accept-note.txt");
+        await File.WriteAllTextAsync(path, "hello");
+        var lspClient = new FakeLspClient();
+        var client = new FakeAnthropicMessageClient(
+            new ModelResponse(
+                "claude-sonnet-4-5",
+                [
+                    new ToolUseContentBlock(
+                        "tool-1",
+                        "apply_patch",
+                        new JsonObject
+                        {
+                            ["edits"] = new JsonArray
+                            {
+                                new JsonObject
+                                {
+                                    ["path"] = path,
+                                    ["operation"] = "patch",
+                                    ["hunks"] = new JsonArray
+                                    {
+                                        new JsonObject
+                                        {
+                                            ["oldText"] = "hello",
+                                            ["newText"] = "hi"
+                                        }
+                                    }
+                                }
+                            }
+                        })
+                ],
+                "tool_use"),
+            new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("patch applied")], "end_turn"));
+        var host = new AppHost("1.0.0", _dataRoot, client, lspClient: lspClient);
+
+        var result = await host.RunAsync(["ask", "--permission-mode", "accept-edits", "edit the file"], CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("patch applied", result.StdOut);
+        Assert.Equal("hi", await File.ReadAllTextAsync(path));
+        Assert.Single(lspClient.SyncRequests);
     }
 
     [Fact]

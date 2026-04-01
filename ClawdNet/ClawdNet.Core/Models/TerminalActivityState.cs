@@ -7,6 +7,7 @@ public enum TerminalActivityState
     WaitingForModel,
     StreamingResponse,
     RunningTool,
+    ReviewingEdits,
     AwaitingApproval,
     ShowingHelp,
     ShowingSession,

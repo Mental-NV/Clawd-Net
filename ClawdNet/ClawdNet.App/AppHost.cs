@@ -4,6 +4,7 @@ using ClawdNet.Core.Models;
 using ClawdNet.Core.Services;
 using ClawdNet.Core.Tools;
 using ClawdNet.Runtime.Anthropic;
+using ClawdNet.Runtime.Editing;
 using ClawdNet.Runtime.FeatureGates;
 using ClawdNet.Runtime.Permissions;
 using ClawdNet.Runtime.Plugins;
@@ -47,21 +48,24 @@ public sealed class AppHost : IAsyncDisposable
     {
         IFeatureGate featureGate = new DictionaryFeatureGate();
         processRunner ??= new SystemProcessRunner();
+        _pluginCatalog = pluginCatalog ?? new PluginCatalog(dataRoot);
+        _mcpClient = mcpClient ?? new StdioMcpClient(dataRoot, _pluginCatalog);
+        _lspClient = lspClient ?? new StdioLspClient(dataRoot, _pluginCatalog);
+        IEditPreviewService editPreviewService = new EditPreviewService();
+        IEditApplier editApplier = new EditApplier(_lspClient);
         _toolRegistry = new ToolRegistry(
         [
             new EchoTool(),
             new FileReadTool(),
             new GlobTool(),
             new GrepTool(),
-            new ShellTool(processRunner)
+            new ShellTool(processRunner),
+            new ApplyPatchTool(editPreviewService, editApplier)
         ]);
         IToolExecutor toolExecutor = new ToolExecutor(_toolRegistry);
         IConversationStore conversationStore = new JsonSessionStore(dataRoot);
         anthropicMessageClient ??= new HttpAnthropicMessageClient(new HttpClient());
         IPermissionService permissionService = new DefaultPermissionService();
-        _pluginCatalog = pluginCatalog ?? new PluginCatalog(dataRoot);
-        _mcpClient = mcpClient ?? new StdioMcpClient(dataRoot, _pluginCatalog);
-        _lspClient = lspClient ?? new StdioLspClient(dataRoot, _pluginCatalog);
         _toolRegistry.Register(new FileWriteTool(_lspClient));
         IQueryEngine queryEngine = new QueryEngine(conversationStore, anthropicMessageClient, _toolRegistry, toolExecutor, permissionService);
         ITranscriptRenderer transcriptRenderer = new ConsoleTranscriptRenderer();

@@ -12,6 +12,10 @@ public sealed record ToolCallRequestedEvent(ToolCall ToolCall) : QueryStreamEven
 
 public sealed record PermissionDecisionStreamEvent(ToolCall ToolCall, PermissionDecision Decision, bool? Approved = null) : QueryStreamEvent;
 
+public sealed record EditPreviewGeneratedEvent(ConversationSession Session, ToolCall ToolCall, EditPreview Preview) : QueryStreamEvent;
+
+public sealed record EditApprovalRecordedEvent(ConversationSession Session, ToolCall ToolCall, bool Approved, string Summary) : QueryStreamEvent;
+
 public sealed record ToolResultCommittedEvent(ConversationSession Session, ToolCall ToolCall, ToolExecutionResult Result) : QueryStreamEvent;
 
 public sealed record TurnCompletedStreamEvent(QueryExecutionResult Result) : QueryStreamEvent;

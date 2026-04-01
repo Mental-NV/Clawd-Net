@@ -47,4 +47,18 @@ public sealed class ConsoleTranscriptRendererTests
 
         Assert.Equal("Commands: /help", activity);
     }
+
+    [Fact]
+    public void Render_formats_edit_preview_entries()
+    {
+        var renderer = new ConsoleTranscriptRenderer();
+        var transcript = new[]
+        {
+            new ConversationMessage("edit_preview", "Edit batch touches 1 file(s).", new DateTimeOffset(2026, 4, 1, 12, 0, 0, TimeSpan.Zero), "apply_patch")
+        };
+
+        var rendered = renderer.Render(transcript);
+
+        Assert.Equal("[12:00:00] Preview  apply_patch -> Edit batch touches 1 file(s).", rendered);
+    }
 }
