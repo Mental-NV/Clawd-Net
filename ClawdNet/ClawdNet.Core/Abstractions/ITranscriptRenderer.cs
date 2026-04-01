@@ -6,6 +6,8 @@ public interface ITranscriptRenderer
 {
     string Render(IReadOnlyList<ConversationMessage> entries);
 
+    string? RenderDraft(StreamingAssistantDraft? draft);
+
     string RenderFooter(
         ConversationSession session,
         PermissionMode permissionMode,

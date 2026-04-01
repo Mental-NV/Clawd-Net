@@ -102,6 +102,63 @@ public sealed class QueryEngineTests : IDisposable
         Assert.Contains(result.Session.Messages, message => message.Role == "tool_result" && message.IsError && message.ToolName == "lsp_hover");
     }
 
+    [Fact]
+    public async Task Query_engine_streams_text_deltas_and_commits_final_message()
+    {
+        var store = new JsonSessionStore(_dataRoot);
+        var client = new FakeAnthropicMessageClient();
+        client.EnqueueStream(
+            new MessageStartedEvent("claude-sonnet-4-5"),
+            new TextDeltaEvent("hel"),
+            new TextDeltaEvent("lo"),
+            new TextCompletedEvent("hello"),
+            new MessageCompletedEvent("end_turn"));
+        var registry = new ToolRegistry([new EchoTool()]);
+        var executor = new ToolExecutor(registry);
+        var engine = new QueryEngine(store, client, registry, executor, new DefaultPermissionService());
+
+        var events = new List<QueryStreamEvent>();
+        await foreach (var streamEvent in engine.StreamAskAsync(new QueryRequest("hello"), CancellationToken.None))
+        {
+            events.Add(streamEvent);
+        }
+
+        Assert.Collection(
+            events.OfType<AssistantTextDeltaStreamEvent>(),
+            first => Assert.Equal("hel", first.DeltaText),
+            second => Assert.Equal("lo", second.DeltaText));
+        Assert.Contains(events, streamEvent => streamEvent is AssistantMessageCommittedEvent committed && committed.MessageText == "hello");
+        Assert.Contains(events, streamEvent => streamEvent is TurnCompletedStreamEvent completed && completed.Result.AssistantText == "hello");
+    }
+
+    [Fact]
+    public async Task Query_engine_does_not_persist_incomplete_assistant_message_when_canceled()
+    {
+        var store = new JsonSessionStore(_dataRoot);
+        var client = new FakeAnthropicMessageClient();
+        client.EnqueueStream(
+            new MessageStartedEvent("claude-sonnet-4-5"),
+            new TextDeltaEvent("partial"));
+        var registry = new ToolRegistry([new EchoTool()]);
+        var executor = new ToolExecutor(registry);
+        var engine = new QueryEngine(store, client, registry, executor, new DefaultPermissionService());
+        using var cancellation = new CancellationTokenSource();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        {
+            await foreach (var streamEvent in engine.StreamAskAsync(new QueryRequest("hello"), cancellation.Token))
+            {
+                if (streamEvent is AssistantTextDeltaStreamEvent)
+                {
+                    cancellation.Cancel();
+                }
+            }
+        });
+
+        var session = (await store.ListAsync(CancellationToken.None)).Single();
+        Assert.DoesNotContain(session.Messages, message => message.Role == "assistant" && message.Content == "partial");
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dataRoot))

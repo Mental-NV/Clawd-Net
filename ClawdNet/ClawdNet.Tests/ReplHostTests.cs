@@ -177,6 +177,86 @@ public sealed class ReplHostTests : IDisposable
         Assert.Equal("Exiting ClawdNet.", terminal.RenderedViews.Last().Activity);
     }
 
+    [Fact]
+    public async Task Repl_renders_live_assistant_draft_during_streaming()
+    {
+        var store = new JsonSessionStore(_dataRoot);
+        var terminal = new FakeTerminalSession(["hello", "exit"]);
+        var queryEngine = new FakeQueryEngine
+        {
+            StreamHandler = request => StreamReplyAsync(request)
+        };
+        var host = new ReplHost(terminal, store, queryEngine, new ConsoleTranscriptRenderer());
+
+        var result = await host.RunAsync(new ReplLaunchOptions(), CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains(terminal.RenderedViews, view => view.Draft?.Contains("[live] ClawdNet hel", StringComparison.OrdinalIgnoreCase) == true);
+        Assert.Contains(terminal.RenderedViews, view => view.Activity?.Contains("Streaming assistant response", StringComparison.OrdinalIgnoreCase) == true);
+        Assert.Equal(string.Empty, terminal.RenderedViews.Last().Draft ?? string.Empty);
+    }
+
+    [Fact]
+    public async Task Repl_interrupt_cancels_active_turn_without_exiting()
+    {
+        var store = new JsonSessionStore(_dataRoot);
+        var terminal = new FakeTerminalSession(["hello", "exit"]);
+        var queryEngine = new FakeQueryEngine
+        {
+            StreamHandler = request => InterruptibleStreamAsync(request, terminal)
+        };
+        var host = new ReplHost(terminal, store, queryEngine, new ConsoleTranscriptRenderer());
+
+        var result = await host.RunAsync(new ReplLaunchOptions(), CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains(terminal.RenderedViews, view => view.Activity?.Contains("Interrupted active turn", StringComparison.OrdinalIgnoreCase) == true);
+        Assert.DoesNotContain(terminal.RenderedViews, view => view.Transcript.Contains("partial", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static async IAsyncEnumerable<QueryStreamEvent> StreamReplyAsync(QueryRequest request)
+    {
+        var session = new ConversationSession(
+            request.SessionId ?? Guid.NewGuid().ToString("N"),
+            "Interactive session",
+            request.Model ?? "claude-sonnet-4-5",
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            [new ConversationMessage("user", request.Prompt, DateTimeOffset.UtcNow)]);
+        yield return new UserTurnAcceptedEvent(session);
+        yield return new AssistantTextDeltaStreamEvent("hel");
+        await Task.Yield();
+        yield return new AssistantTextDeltaStreamEvent("lo");
+        var completedSession = session with
+        {
+            UpdatedAtUtc = DateTimeOffset.UtcNow,
+            Messages =
+            [
+                .. session.Messages,
+                new ConversationMessage("assistant", "hello", DateTimeOffset.UtcNow)
+            ]
+        };
+        yield return new AssistantMessageCommittedEvent(completedSession, "hello");
+        yield return new TurnCompletedStreamEvent(new QueryExecutionResult(completedSession, "hello", 1));
+    }
+
+    private static async IAsyncEnumerable<QueryStreamEvent> InterruptibleStreamAsync(QueryRequest request, FakeTerminalSession terminal)
+    {
+        var session = new ConversationSession(
+            request.SessionId ?? Guid.NewGuid().ToString("N"),
+            "Interactive session",
+            request.Model ?? "claude-sonnet-4-5",
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            [new ConversationMessage("user", request.Prompt, DateTimeOffset.UtcNow)]);
+        yield return new UserTurnAcceptedEvent(session);
+        yield return new AssistantTextDeltaStreamEvent("partial");
+        await Task.Yield();
+        terminal.TriggerInterrupt();
+        await Task.Delay(10, CancellationToken.None);
+        throw new OperationCanceledException();
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dataRoot))

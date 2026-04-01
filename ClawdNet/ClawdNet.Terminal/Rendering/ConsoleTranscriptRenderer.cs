@@ -22,6 +22,28 @@ public sealed class ConsoleTranscriptRenderer : ITranscriptRenderer
         return builder.ToString().TrimEnd();
     }
 
+    public string? RenderDraft(StreamingAssistantDraft? draft)
+    {
+        if (draft is null || !draft.IsActive)
+        {
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(draft.ToolName))
+        {
+            return $"[live] tool={draft.ToolName} {draft.Detail}".TrimEnd();
+        }
+
+        if (!string.IsNullOrWhiteSpace(draft.Text))
+        {
+            return $"[live] ClawdNet {draft.Text}";
+        }
+
+        return string.IsNullOrWhiteSpace(draft.Detail)
+            ? "[live] ClawdNet is thinking..."
+            : $"[live] {draft.Detail}";
+    }
+
     public string RenderFooter(
         ConversationSession session,
         PermissionMode permissionMode,
@@ -40,10 +62,13 @@ public sealed class ConsoleTranscriptRenderer : ITranscriptRenderer
             TerminalActivityState.Idle => null,
             TerminalActivityState.Ready => "Ready for input.",
             TerminalActivityState.WaitingForModel => detail ?? "Waiting for model response...",
+            TerminalActivityState.StreamingResponse => detail ?? "Streaming assistant response...",
+            TerminalActivityState.RunningTool => detail ?? "Running tool...",
             TerminalActivityState.AwaitingApproval => detail ?? "Awaiting approval...",
             TerminalActivityState.ShowingHelp => detail ?? "Available commands: /help, /session, /clear, /exit",
             TerminalActivityState.ShowingSession => detail,
             TerminalActivityState.Cleared => detail ?? "Screen cleared. Session history is preserved.",
+            TerminalActivityState.Interrupted => detail ?? "Interrupted active turn.",
             TerminalActivityState.Error => detail,
             TerminalActivityState.Exiting => detail ?? "Exiting ClawdNet.",
             _ => detail

@@ -22,6 +22,8 @@ public sealed class FakeTerminalSession : ITerminalSession
 
     public int ClearCount { get; private set; }
 
+    public Action? InterruptHandler { get; private set; }
+
     public Task<string?> ReadLineAsync(string prompt, CancellationToken cancellationToken)
     {
         Prompts.Add(prompt);
@@ -47,5 +49,38 @@ public sealed class FakeTerminalSession : ITerminalSession
     public void WriteErrorLine(string text)
     {
         ErrorLines.Add(text);
+    }
+
+    public IDisposable RegisterInterruptHandler(Action handler)
+    {
+        InterruptHandler = handler;
+        return new InterruptRegistration(() => InterruptHandler = null);
+    }
+
+    public void TriggerInterrupt()
+    {
+        InterruptHandler?.Invoke();
+    }
+
+    private sealed class InterruptRegistration : IDisposable
+    {
+        private readonly Action _onDispose;
+        private bool _disposed;
+
+        public InterruptRegistration(Action onDispose)
+        {
+            _onDispose = onDispose;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _onDispose();
+            _disposed = true;
+        }
     }
 }

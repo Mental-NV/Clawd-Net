@@ -7,6 +7,7 @@ namespace ClawdNet.Tests.TestDoubles;
 public sealed class FakeQueryEngine : IQueryEngine
 {
     public List<QueryRequest> Requests { get; } = [];
+    public Func<QueryRequest, IAsyncEnumerable<QueryStreamEvent>>? StreamHandler { get; set; }
 
     public Func<QueryRequest, Task<QueryExecutionResult>> Handler { get; set; }
         = request => Task.FromResult(
@@ -27,5 +28,32 @@ public sealed class FakeQueryEngine : IQueryEngine
     {
         Requests.Add(request);
         return Handler(request);
+    }
+
+    public async IAsyncEnumerable<QueryStreamEvent> StreamAskAsync(
+        QueryRequest request,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        Requests.Add(request);
+        if (StreamHandler is not null)
+        {
+            await foreach (var streamEvent in StreamHandler(request).WithCancellation(cancellationToken))
+            {
+                yield return streamEvent;
+            }
+
+            yield break;
+        }
+
+        var result = await Handler(request);
+        yield return new UserTurnAcceptedEvent(result.Session);
+
+        if (!string.IsNullOrWhiteSpace(result.AssistantText))
+        {
+            yield return new AssistantTextDeltaStreamEvent(result.AssistantText);
+            yield return new AssistantMessageCommittedEvent(result.Session, result.AssistantText);
+        }
+
+        yield return new TurnCompletedStreamEvent(result);
     }
 }

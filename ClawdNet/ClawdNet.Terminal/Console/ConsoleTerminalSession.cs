@@ -29,6 +29,12 @@ public sealed class ConsoleTerminalSession : ITerminalSession
         System.Console.WriteLine();
         System.Console.WriteLine(viewState.Transcript);
         System.Console.WriteLine();
+        if (!string.IsNullOrWhiteSpace(viewState.Draft))
+        {
+            System.Console.WriteLine(viewState.Draft);
+            System.Console.WriteLine();
+        }
+
         if (!string.IsNullOrWhiteSpace(viewState.Activity))
         {
             System.Console.WriteLine(viewState.Activity);
@@ -52,5 +58,39 @@ public sealed class ConsoleTerminalSession : ITerminalSession
     public void WriteErrorLine(string text)
     {
         System.Console.Error.WriteLine(text);
+    }
+
+    public IDisposable RegisterInterruptHandler(Action handler)
+    {
+        ConsoleCancelEventHandler wrappedHandler = (_, eventArgs) =>
+        {
+            eventArgs.Cancel = true;
+            handler();
+        };
+
+        System.Console.CancelKeyPress += wrappedHandler;
+        return new InterruptRegistration(wrappedHandler);
+    }
+
+    private sealed class InterruptRegistration : IDisposable
+    {
+        private readonly ConsoleCancelEventHandler _handler;
+        private bool _disposed;
+
+        public InterruptRegistration(ConsoleCancelEventHandler handler)
+        {
+            _handler = handler;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            System.Console.CancelKeyPress -= _handler;
+            _disposed = true;
+        }
     }
 }

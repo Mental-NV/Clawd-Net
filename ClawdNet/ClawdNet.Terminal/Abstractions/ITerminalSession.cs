@@ -13,4 +13,6 @@ public interface ITerminalSession
     void ClearVisible();
 
     void WriteErrorLine(string text);
+
+    IDisposable RegisterInterruptHandler(Action handler);
 }
