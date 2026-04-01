@@ -27,6 +27,9 @@ Run the app directly:
 
 ```bash
 dotnet run --project ClawdNet/ClawdNet.App -- --version
+dotnet run --project ClawdNet/ClawdNet.App
+dotnet run --project ClawdNet/ClawdNet.App -- --session <session-id>
+dotnet run --project ClawdNet/ClawdNet.App -- --model claude-sonnet-4-5
 dotnet run --project ClawdNet/ClawdNet.App -- ask "Explain this project"
 dotnet run --project ClawdNet/ClawdNet.App -- ask --json "Summarize the current milestone"
 dotnet run --project ClawdNet/ClawdNet.App -- ask --session <session-id> "Continue"
@@ -51,6 +54,9 @@ dotnet run --project ClawdNet.App -- --version
 
 ## Current Supported CLI Surface
 
+- `clawdnet` interactive mode
+- `clawdnet --session <id>`
+- `clawdnet --model <name>`
 - `--version`
 - `ask <prompt>`
 - `ask --session <id> <prompt>`

@@ -10,8 +10,7 @@ public sealed class VersionCommandHandler : ICommandHandler
 
     public bool CanHandle(CommandRequest request)
     {
-        return request.Arguments.Count == 0
-            || request.HasFlag("--version")
+        return request.HasFlag("--version")
             || request.HasFlag("-v")
             || request.HasFlag("-V");
     }

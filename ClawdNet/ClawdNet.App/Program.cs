@@ -1,7 +1,10 @@
 using ClawdNet.App;
 
 var version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "0.1.0";
-var dataRoot = Path.Combine(AppContext.BaseDirectory, ".clawdnet");
+var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+var dataRoot = string.IsNullOrWhiteSpace(localAppData)
+    ? Path.Combine(AppContext.BaseDirectory, ".clawdnet")
+    : Path.Combine(localAppData, "ClawdNet");
 var host = new AppHost(version, dataRoot);
 var result = await host.RunAsync(args, CancellationToken.None);
 

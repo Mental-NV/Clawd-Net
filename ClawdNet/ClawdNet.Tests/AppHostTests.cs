@@ -21,6 +21,18 @@ public sealed class AppHostTests : IDisposable
     }
 
     [Fact]
+    public async Task No_args_launches_repl()
+    {
+        var replHost = new FakeReplHost();
+        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient(), replHost: replHost);
+
+        var result = await host.RunAsync([], CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Single(replHost.Launches);
+    }
+
+    [Fact]
     public async Task Session_new_creates_persisted_session()
     {
         var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient());

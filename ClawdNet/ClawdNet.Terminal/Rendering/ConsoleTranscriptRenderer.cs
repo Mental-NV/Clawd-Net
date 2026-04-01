@@ -16,16 +16,32 @@ public sealed class ConsoleTranscriptRenderer : ITranscriptRenderer
         var builder = new StringBuilder();
         foreach (var entry in entries)
         {
-            builder
-                .Append('[')
-                .Append(entry.TimestampUtc.ToString("O"))
-                .Append("] ")
-                .Append(entry.Role)
-                .Append(entry.ToolName is null ? string.Empty : $"({entry.ToolName})")
-                .Append(": ")
-                .AppendLine(entry.Content);
+            builder.AppendLine(RenderEntry(entry));
         }
 
         return builder.ToString().TrimEnd();
+    }
+
+    public string RenderStatus(ConversationSession session, string? error = null)
+    {
+        var status = $"[session {session.Id}] [model {session.Model}] [messages {session.Messages.Count}]";
+        return string.IsNullOrWhiteSpace(error)
+            ? status
+            : $"{status} [error {error}]";
+    }
+
+    private static string RenderEntry(ConversationMessage entry)
+    {
+        var timestamp = $"[{entry.TimestampUtc:O}] ";
+
+        return entry.Role switch
+        {
+            "user" => $"{timestamp}You: {entry.Content}",
+            "assistant" => $"{timestamp}ClawdNet: {entry.Content}",
+            "tool_use" => $"{timestamp}[tool use: {entry.ToolName}] {entry.Content}",
+            "tool_result" when entry.IsError => $"{timestamp}[tool error: {entry.ToolName}] {entry.Content}",
+            "tool_result" => $"{timestamp}[tool result: {entry.ToolName}] {entry.Content}",
+            _ => $"{timestamp}{entry.Role}: {entry.Content}"
+        };
     }
 }

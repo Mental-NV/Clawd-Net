@@ -8,6 +8,9 @@ using ClawdNet.Runtime.Protocols;
 using ClawdNet.Runtime.Processes;
 using ClawdNet.Runtime.Sessions;
 using ClawdNet.Runtime.Tools;
+using ClawdNet.Terminal.Abstractions;
+using ClawdNet.Terminal.Console;
+using ClawdNet.Terminal.Repl;
 using ClawdNet.Terminal.Rendering;
 
 namespace ClawdNet.App;
@@ -16,12 +19,15 @@ public sealed class AppHost
 {
     private readonly CommandDispatcher _dispatcher;
     private readonly CommandContext _context;
+    private readonly IReplHost _replHost;
 
     public AppHost(
         string version,
         string dataRoot,
         IAnthropicMessageClient? anthropicMessageClient = null,
-        IProcessRunner? processRunner = null)
+        IProcessRunner? processRunner = null,
+        IReplHost? replHost = null,
+        ITerminalSession? terminalSession = null)
     {
         IFeatureGate featureGate = new DictionaryFeatureGate();
         processRunner ??= new SystemProcessRunner();
@@ -36,6 +42,8 @@ public sealed class AppHost
         anthropicMessageClient ??= new HttpAnthropicMessageClient(new HttpClient());
         IQueryEngine queryEngine = new QueryEngine(conversationStore, anthropicMessageClient, toolRegistry, toolExecutor);
         ITranscriptRenderer transcriptRenderer = new ConsoleTranscriptRenderer();
+        terminalSession ??= new ConsoleTerminalSession();
+        _replHost = replHost ?? new ReplHost(terminalSession, conversationStore, queryEngine, transcriptRenderer);
 
         _context = new CommandContext(featureGate, toolExecutor, conversationStore, queryEngine, transcriptRenderer, version);
         _dispatcher = new CommandDispatcher(
@@ -56,6 +64,56 @@ public sealed class AppHost
 
     public Task<CommandExecutionResult> RunAsync(IReadOnlyList<string> args, CancellationToken cancellationToken)
     {
+        if (ShouldLaunchRepl(args))
+        {
+            return _replHost.RunAsync(ParseReplLaunchOptions(args), cancellationToken);
+        }
+
         return _dispatcher.DispatchAsync(_context, new CommandRequest(args), cancellationToken);
+    }
+
+    private static bool ShouldLaunchRepl(IReadOnlyList<string> args)
+    {
+        if (args.Count == 0)
+        {
+            return true;
+        }
+
+        return TryParseReplLaunchOptions(args, out _);
+    }
+
+    private static ReplLaunchOptions ParseReplLaunchOptions(IReadOnlyList<string> args)
+    {
+        if (!TryParseReplLaunchOptions(args, out var options))
+        {
+            throw new InvalidOperationException("Invalid REPL launch arguments.");
+        }
+
+        return options;
+    }
+
+    private static bool TryParseReplLaunchOptions(IReadOnlyList<string> args, out ReplLaunchOptions options)
+    {
+        string? sessionId = null;
+        string? model = null;
+
+        for (var index = 0; index < args.Count; index++)
+        {
+            switch (args[index])
+            {
+                case "--session" when index + 1 < args.Count:
+                    sessionId = args[++index];
+                    break;
+                case "--model" when index + 1 < args.Count:
+                    model = args[++index];
+                    break;
+                default:
+                    options = new ReplLaunchOptions();
+                    return false;
+            }
+        }
+
+        options = new ReplLaunchOptions(sessionId, model);
+        return true;
     }
 }
