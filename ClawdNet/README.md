@@ -6,7 +6,7 @@ CLI that lives in the parent repository.
 This initial implementation provides:
 
 - a production-shaped solution layout
-- a small command pipeline for `--version`, `session new`, and `session list`
+- a headless `ask` workflow for non-interactive conversations
 - typed tool/runtime abstractions
 - JSON-backed session persistence
 - a console transcript renderer
@@ -27,9 +27,18 @@ Run the app directly:
 
 ```bash
 dotnet run --project ClawdNet/ClawdNet.App -- --version
+dotnet run --project ClawdNet/ClawdNet.App -- ask "Explain this project"
+dotnet run --project ClawdNet/ClawdNet.App -- ask --json "Summarize the current milestone"
+dotnet run --project ClawdNet/ClawdNet.App -- ask --session <session-id> "Continue"
 dotnet run --project ClawdNet/ClawdNet.App -- session new "First Slice"
 dotnet run --project ClawdNet/ClawdNet.App -- session list
 dotnet run --project ClawdNet/ClawdNet.App -- tool echo "hello world"
+```
+
+Set your Anthropic API key before using `ask`:
+
+```bash
+export ANTHROPIC_API_KEY=your_key_here
 ```
 
 Run from inside the `ClawdNet/` workspace:
@@ -43,6 +52,10 @@ dotnet run --project ClawdNet.App -- --version
 ## Current Supported CLI Surface
 
 - `--version`
+- `ask <prompt>`
+- `ask --session <id> <prompt>`
+- `ask --model <name> <prompt>`
+- `ask --json <prompt>`
 - `session new [title]`
 - `session list`
 - `tool echo <text>`

@@ -11,7 +11,7 @@ public sealed class ConsoleTranscriptRendererTests
         var renderer = new ConsoleTranscriptRenderer();
         var transcript = new[]
         {
-            new TranscriptEntry("system", "ready", new DateTimeOffset(2026, 4, 1, 12, 0, 0, TimeSpan.Zero))
+            new ConversationMessage("system", "ready", new DateTimeOffset(2026, 4, 1, 12, 0, 0, TimeSpan.Zero))
         };
 
         var rendered = renderer.Render(transcript);

@@ -6,7 +6,7 @@ namespace ClawdNet.Terminal.Rendering;
 
 public sealed class ConsoleTranscriptRenderer : ITranscriptRenderer
 {
-    public string Render(IReadOnlyList<TranscriptEntry> entries)
+    public string Render(IReadOnlyList<ConversationMessage> entries)
     {
         if (entries.Count == 0)
         {
@@ -21,6 +21,7 @@ public sealed class ConsoleTranscriptRenderer : ITranscriptRenderer
                 .Append(entry.TimestampUtc.ToString("O"))
                 .Append("] ")
                 .Append(entry.Role)
+                .Append(entry.ToolName is null ? string.Empty : $"({entry.ToolName})")
                 .Append(": ")
                 .AppendLine(entry.Content);
         }

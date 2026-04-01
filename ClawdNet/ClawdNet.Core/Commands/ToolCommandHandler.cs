@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using ClawdNet.Core.Abstractions;
 using ClawdNet.Core.Models;
 
@@ -23,7 +24,8 @@ public sealed class ToolCommandHandler : ICommandHandler
             ? string.Join(' ', request.Arguments.Skip(2))
             : string.Empty;
 
-        var result = await context.ToolExecutor.ExecuteAsync(new ToolExecutionRequest(toolName, input), cancellationToken);
+        var toolInput = new JsonObject { ["text"] = input };
+        var result = await context.ToolExecutor.ExecuteAsync(new ToolExecutionRequest(toolName, toolInput, input), cancellationToken);
 
         return result.Success
             ? CommandExecutionResult.Success(result.Output)

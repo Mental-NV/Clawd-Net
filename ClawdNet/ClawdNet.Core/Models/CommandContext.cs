@@ -5,6 +5,7 @@ namespace ClawdNet.Core.Models;
 public sealed record CommandContext(
     IFeatureGate FeatureGate,
     IToolExecutor ToolExecutor,
-    ISessionStore SessionStore,
+    IConversationStore ConversationStore,
+    IQueryEngine QueryEngine,
     ITranscriptRenderer TranscriptRenderer,
     string Version);
