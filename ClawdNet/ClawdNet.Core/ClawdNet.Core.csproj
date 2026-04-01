@@ -1,0 +1,8 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>ClawdNet.Core</AssemblyName>
+    <RootNamespace>ClawdNet.Core</RootNamespace>
+  </PropertyGroup>
+
+</Project>

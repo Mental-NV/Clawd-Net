@@ -1,0 +1,73 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v10.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v10.0": {
+      "ClawdNet.App/1.0.0": {
+        "dependencies": {
+          "ClawdNet.Core": "1.0.0",
+          "ClawdNet.Runtime": "1.0.0",
+          "ClawdNet.Terminal": "1.0.0"
+        },
+        "runtime": {
+          "ClawdNet.App.dll": {}
+        }
+      },
+      "ClawdNet.Core/1.0.0": {
+        "runtime": {
+          "ClawdNet.Core.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "ClawdNet.Runtime/1.0.0": {
+        "dependencies": {
+          "ClawdNet.Core": "1.0.0"
+        },
+        "runtime": {
+          "ClawdNet.Runtime.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "ClawdNet.Terminal/1.0.0": {
+        "dependencies": {
+          "ClawdNet.Core": "1.0.0"
+        },
+        "runtime": {
+          "ClawdNet.Terminal.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "ClawdNet.App/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "ClawdNet.Core/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "ClawdNet.Runtime/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "ClawdNet.Terminal/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

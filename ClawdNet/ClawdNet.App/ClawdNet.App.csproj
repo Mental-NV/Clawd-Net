@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\ClawdNet.Core\ClawdNet.Core.csproj" />
+    <ProjectReference Include="..\ClawdNet.Runtime\ClawdNet.Runtime.csproj" />
+    <ProjectReference Include="..\ClawdNet.Terminal\ClawdNet.Terminal.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>ClawdNet.App</AssemblyName>
+    <RootNamespace>ClawdNet.App</RootNamespace>
+    <OutputName>clawdnet</OutputName>
+  </PropertyGroup>
+
+</Project>

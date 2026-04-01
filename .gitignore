@@ -1,0 +1,15 @@
+node_modules
+node_modules/
+dist
+dist/
+coverage/
+.DS_Store
+*.log
+*.tmp
+*.swp
+.env
+.env.*
+.claude/
+.idea/
+.vscode/
+vendor/image-processor.node

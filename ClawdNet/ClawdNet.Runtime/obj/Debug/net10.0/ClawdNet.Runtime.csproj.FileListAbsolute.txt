@@ -1,0 +1,15 @@
+/Users/mental/Projects/clawd-code/ClawdNet/ClawdNet.Runtime/bin/Debug/net10.0/ClawdNet.Runtime.deps.json
+/Users/mental/Projects/clawd-code/ClawdNet/ClawdNet.Runtime/bin/Debug/net10.0/ClawdNet.Runtime.dll
+/Users/mental/Projects/clawd-code/ClawdNet/ClawdNet.Runtime/bin/Debug/net10.0/ClawdNet.Runtime.pdb
+/Users/mental/Projects/clawd-code/ClawdNet/ClawdNet.Runtime/bin/Debug/net10.0/ClawdNet.Core.dll
+/Users/mental/Projects/clawd-code/ClawdNet/ClawdNet.Runtime/bin/Debug/net10.0/ClawdNet.Core.pdb
+/Users/mental/Projects/clawd-code/ClawdNet/ClawdNet.Runtime/obj/Debug/net10.0/ClawdNet.Runtime.csproj.AssemblyReference.cache
+/Users/mental/Projects/clawd-code/ClawdNet/ClawdNet.Runtime/obj/Debug/net10.0/ClawdNet.Runtime.GeneratedMSBuildEditorConfig.editorconfig
+/Users/mental/Projects/clawd-code/ClawdNet/ClawdNet.Runtime/obj/Debug/net10.0/ClawdNet.Runtime.AssemblyInfoInputs.cache
+/Users/mental/Projects/clawd-code/ClawdNet/ClawdNet.Runtime/obj/Debug/net10.0/ClawdNet.Runtime.AssemblyInfo.cs
+/Users/mental/Projects/clawd-code/ClawdNet/ClawdNet.Runtime/obj/Debug/net10.0/ClawdNet.Runtime.csproj.CoreCompileInputs.cache
+/Users/mental/Projects/clawd-code/ClawdNet/ClawdNet.Runtime/obj/Debug/net10.0/ClawdNet.3964DB2F.Up2Date
+/Users/mental/Projects/clawd-code/ClawdNet/ClawdNet.Runtime/obj/Debug/net10.0/ClawdNet.Runtime.dll
+/Users/mental/Projects/clawd-code/ClawdNet/ClawdNet.Runtime/obj/Debug/net10.0/refint/ClawdNet.Runtime.dll
+/Users/mental/Projects/clawd-code/ClawdNet/ClawdNet.Runtime/obj/Debug/net10.0/ClawdNet.Runtime.pdb
+/Users/mental/Projects/clawd-code/ClawdNet/ClawdNet.Runtime/obj/Debug/net10.0/ref/ClawdNet.Runtime.dll

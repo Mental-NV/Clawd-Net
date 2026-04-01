@@ -1,0 +1,12 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\ClawdNet.Core\ClawdNet.Core.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <AssemblyName>ClawdNet.Runtime</AssemblyName>
+    <RootNamespace>ClawdNet.Runtime</RootNamespace>
+  </PropertyGroup>
+
+</Project>

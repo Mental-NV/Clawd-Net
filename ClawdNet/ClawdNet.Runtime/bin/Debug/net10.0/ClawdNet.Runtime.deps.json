@@ -1,0 +1,39 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v10.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v10.0": {
+      "ClawdNet.Runtime/1.0.0": {
+        "dependencies": {
+          "ClawdNet.Core": "1.0.0"
+        },
+        "runtime": {
+          "ClawdNet.Runtime.dll": {}
+        }
+      },
+      "ClawdNet.Core/1.0.0": {
+        "runtime": {
+          "ClawdNet.Core.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "ClawdNet.Runtime/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "ClawdNet.Core/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}
