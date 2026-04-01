@@ -62,12 +62,25 @@ public sealed class ConsoleTranscriptRenderer : ITranscriptRenderer
     public string RenderFooter(
         ConversationSession session,
         PermissionMode permissionMode,
+        PtySessionState? ptyState = null,
+        bool followLiveOutput = true,
+        bool hasBufferedLiveOutput = false,
         string? error = null)
     {
-        var status = $"session={session.Id} | model={session.Model} | permission={FormatPermissionMode(permissionMode)} | messages={session.Messages.Count}";
-        return string.IsNullOrWhiteSpace(error)
-            ? status
-            : $"{status} | error={error}";
+        var ptyStatus = ptyState is null
+            ? "pty=idle"
+            : $"pty={(ptyState.IsRunning ? "running" : "stopped")}";
+        var followStatus = followLiveOutput
+            ? "follow=live"
+            : hasBufferedLiveOutput ? "follow=paused*" : "follow=paused";
+        var status = $"session={session.Id} | model={session.Model} | permission={FormatPermissionMode(permissionMode)} | messages={session.Messages.Count} | {ptyStatus} | {followStatus}";
+        if (!string.IsNullOrWhiteSpace(error))
+        {
+            status = $"{status} | error={error}";
+        }
+
+        var hints = "keys=Up/Down history | PgUp/PgDn scroll | End bottom";
+        return $"{status}{Environment.NewLine}{hints}";
     }
 
     public string? RenderActivity(TerminalActivityState state, string? detail = null)
@@ -75,13 +88,13 @@ public sealed class ConsoleTranscriptRenderer : ITranscriptRenderer
         return state switch
         {
             TerminalActivityState.Idle => null,
-            TerminalActivityState.Ready => "Ready for input.",
+            TerminalActivityState.Ready => detail ?? "Ready for input.",
             TerminalActivityState.WaitingForModel => detail ?? "Waiting for model response...",
             TerminalActivityState.StreamingResponse => detail ?? "Streaming assistant response...",
             TerminalActivityState.RunningTool => detail ?? "Running tool...",
             TerminalActivityState.ReviewingEdits => detail ?? "Reviewing edit batch...",
             TerminalActivityState.AwaitingApproval => detail ?? "Awaiting approval...",
-            TerminalActivityState.ShowingHelp => detail ?? "Available commands: /help, /session, /clear, /exit",
+            TerminalActivityState.ShowingHelp => detail ?? "Available commands: /help, /session, /pty, /clear, /bottom, /exit",
             TerminalActivityState.ShowingSession => detail,
             TerminalActivityState.Cleared => detail ?? "Screen cleared. Session history is preserved.",
             TerminalActivityState.Interrupted => detail ?? "Interrupted active turn.",

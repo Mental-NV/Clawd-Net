@@ -13,6 +13,9 @@ public interface ITranscriptRenderer
     string RenderFooter(
         ConversationSession session,
         PermissionMode permissionMode,
+        PtySessionState? ptyState = null,
+        bool followLiveOutput = true,
+        bool hasBufferedLiveOutput = false,
         string? error = null);
 
     string? RenderActivity(TerminalActivityState state, string? detail = null);

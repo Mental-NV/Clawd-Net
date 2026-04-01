@@ -36,6 +36,7 @@ public sealed class ConsoleTranscriptRendererTests
         Assert.Contains("session=session-1", footer);
         Assert.Contains("permission=accept-edits", footer);
         Assert.Contains("messages=1", footer);
+        Assert.Contains("keys=Up/Down history", footer);
     }
 
     [Fact]
@@ -60,5 +61,23 @@ public sealed class ConsoleTranscriptRendererTests
         var rendered = renderer.Render(transcript);
 
         Assert.Equal("[12:00:00] Preview  apply_patch -> Edit batch touches 1 file(s).", rendered);
+    }
+
+    [Fact]
+    public void Render_footer_shows_paused_live_indicator()
+    {
+        var renderer = new ConsoleTranscriptRenderer();
+        var session = new ConversationSession(
+            "session-1",
+            "Interactive session",
+            "claude-sonnet-4-5",
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            [new ConversationMessage("assistant", "ready", DateTimeOffset.UtcNow)]);
+        var ptyState = new PtySessionState("pty-1", "cat", "/tmp", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, true, null, "out", false);
+        var footer = renderer.RenderFooter(session, PermissionMode.Default, ptyState, false, true);
+
+        Assert.Contains("pty=running", footer);
+        Assert.Contains("follow=paused*", footer);
     }
 }

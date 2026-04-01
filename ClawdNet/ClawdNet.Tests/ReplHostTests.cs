@@ -1,6 +1,7 @@
 using ClawdNet.Core.Models;
 using ClawdNet.Runtime.Tools;
 using ClawdNet.Runtime.Sessions;
+using ClawdNet.Terminal.Models;
 using ClawdNet.Terminal.Rendering;
 using ClawdNet.Terminal.Repl;
 using ClawdNet.Tests.TestDoubles;
@@ -139,6 +140,42 @@ public sealed class ReplHostTests : IDisposable
     }
 
     [Fact]
+    public async Task Repl_supports_prompt_history_recall()
+    {
+        var store = new JsonSessionStore(_dataRoot);
+        var terminal = new FakeTerminalSession([]);
+        terminal.EnqueuePromptEvent(PromptInputResult.Submit("first prompt"));
+        terminal.EnqueuePromptEvent(PromptInputResult.HistoryPrevious());
+        terminal.EnqueuePromptEvent(PromptInputResult.Submit("exit"));
+        var queryEngine = new FakeQueryEngine
+        {
+            Handler = async request =>
+            {
+                var session = await store.GetAsync(request.SessionId!, CancellationToken.None)
+                    ?? throw new InvalidOperationException("Expected session to exist.");
+                var updated = session with
+                {
+                    UpdatedAtUtc = DateTimeOffset.UtcNow,
+                    Messages =
+                    [
+                        .. session.Messages,
+                        new ConversationMessage("user", request.Prompt, DateTimeOffset.UtcNow),
+                        new ConversationMessage("assistant", "done", DateTimeOffset.UtcNow)
+                    ]
+                };
+                await store.SaveAsync(updated, CancellationToken.None);
+                return new QueryExecutionResult(updated, "done", 1);
+            }
+        };
+        var host = new ReplHost(terminal, store, queryEngine, new ConsoleTranscriptRenderer(), new FakePtyManager());
+
+        var result = await host.RunAsync(new ReplLaunchOptions(), CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains(terminal.RenderedViews, view => view.PromptBuffer == "first prompt");
+    }
+
+    [Fact]
     public async Task Repl_clear_clears_visible_screen_without_deleting_history()
     {
         var store = new JsonSessionStore(_dataRoot);
@@ -249,6 +286,60 @@ public sealed class ReplHostTests : IDisposable
         Assert.Equal(0, result.ExitCode);
         Assert.Contains(terminal.RenderedViews, view => view.Activity?.Contains("PTY", StringComparison.OrdinalIgnoreCase) == true);
         Assert.Contains(terminal.RenderedViews, view => view.Pty?.Contains("pty output", StringComparison.OrdinalIgnoreCase) == true);
+    }
+
+    [Fact]
+    public async Task Repl_supports_transcript_page_navigation()
+    {
+        var store = new JsonSessionStore(_dataRoot);
+        var session = await store.CreateAsync("Scrollable", "claude-sonnet-4-5", CancellationToken.None);
+        var saved = session with
+        {
+            Messages =
+            [
+                .. Enumerable.Range(0, 20).Select(index => new ConversationMessage("assistant", $"msg-{index}", DateTimeOffset.UtcNow))
+            ]
+        };
+        await store.SaveAsync(saved, CancellationToken.None);
+        var terminal = new FakeTerminalSession([]);
+        terminal.EnqueuePromptEvent(PromptInputResult.ScrollPageUp());
+        terminal.EnqueuePromptEvent(PromptInputResult.ScrollPageDown());
+        terminal.EnqueuePromptEvent(PromptInputResult.Submit("exit"));
+        var host = new ReplHost(terminal, store, new FakeQueryEngine(), new ConsoleTranscriptRenderer(), new FakePtyManager());
+
+        var result = await host.RunAsync(new ReplLaunchOptions(session.Id), CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains(terminal.RenderedViews, view =>
+            view.Viewport?.FollowLiveOutput == false &&
+            view.Transcript.Contains("msg-0", StringComparison.OrdinalIgnoreCase) &&
+            !view.Transcript.Contains("msg-19", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(terminal.RenderedViews, view =>
+            view.Viewport?.FollowLiveOutput == true &&
+            view.Transcript.Contains("msg-19", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task Repl_bottom_command_returns_to_live_output()
+    {
+        var store = new JsonSessionStore(_dataRoot);
+        var session = await store.CreateAsync("Bottom", "claude-sonnet-4-5", CancellationToken.None);
+        var saved = session with
+        {
+            Messages =
+            [
+                .. Enumerable.Range(0, 20).Select(index => new ConversationMessage("assistant", $"msg-{index}", DateTimeOffset.UtcNow))
+            ]
+        };
+        await store.SaveAsync(saved, CancellationToken.None);
+        var terminal = new FakeTerminalSession(["/bottom", "exit"]);
+        terminal.EnqueuePromptEvent(PromptInputResult.ScrollPageUp());
+        var host = new ReplHost(terminal, store, new FakeQueryEngine(), new ConsoleTranscriptRenderer(), new FakePtyManager());
+
+        var result = await host.RunAsync(new ReplLaunchOptions(session.Id), CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains(terminal.RenderedViews, view => view.Activity?.Contains("Returned to live output", StringComparison.OrdinalIgnoreCase) == true);
     }
 
     [Fact]

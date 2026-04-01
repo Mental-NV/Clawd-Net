@@ -7,6 +7,7 @@ public sealed class FakeTerminalSession : ITerminalSession
 {
     private readonly Queue<string?> _inputs;
     private readonly Queue<bool> _confirmations;
+    private readonly Queue<PromptInputResult> _promptEvents = new();
 
     public FakeTerminalSession(IEnumerable<string?> inputs, IEnumerable<bool>? confirmations = null)
     {
@@ -25,6 +26,29 @@ public sealed class FakeTerminalSession : ITerminalSession
     public Action? InterruptHandler { get; private set; }
 
     public int ReadLineDelayMs { get; set; }
+
+    public void EnqueuePromptEvent(PromptInputResult promptEvent)
+    {
+        _promptEvents.Enqueue(promptEvent);
+    }
+
+    public async Task<PromptInputResult> ReadPromptAsync(string prompt, string currentBuffer, CancellationToken cancellationToken)
+    {
+        Prompts.Add(prompt);
+        if (ReadLineDelayMs > 0)
+        {
+            await Task.Delay(ReadLineDelayMs, cancellationToken);
+        }
+
+        if (_promptEvents.Count > 0)
+        {
+            return _promptEvents.Dequeue();
+        }
+
+        return _inputs.Count > 0
+            ? PromptInputResult.Submit(_inputs.Dequeue() ?? string.Empty)
+            : PromptInputResult.EndOfStream();
+    }
 
     public async Task<string?> ReadLineAsync(string prompt, CancellationToken cancellationToken)
     {

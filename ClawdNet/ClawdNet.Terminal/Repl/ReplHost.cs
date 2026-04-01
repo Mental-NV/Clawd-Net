@@ -14,12 +14,15 @@ public sealed class ReplHost : IReplHost
     private readonly ITranscriptRenderer _transcriptRenderer;
     private readonly IToolApprovalHandler _approvalHandler;
     private readonly IPtyManager _ptyManager;
+    private readonly PromptHistoryBuffer _promptHistory = new();
     private TerminalActivityState _activityState = TerminalActivityState.Ready;
     private string? _activityDetail;
     private ConversationSession? _currentSession;
     private PermissionMode _currentPermissionMode = PermissionMode.Default;
     private int _visibleStartIndex;
     private StreamingAssistantDraft? _draft;
+    private TerminalViewportState _viewport = new();
+    private string _promptBuffer = string.Empty;
     private CancellationTokenSource? _activeTurnCancellation;
 
     public ReplHost(
@@ -52,6 +55,9 @@ public sealed class ReplHost : IReplHost
         _currentSession = session;
         _currentPermissionMode = options.PermissionMode;
         _visibleStartIndex = 0;
+        _viewport = new TerminalViewportState();
+        _promptBuffer = string.Empty;
+        _promptHistory.ResetNavigation();
         _ptyManager.SessionChanged += HandlePtySessionChanged;
         try
         {
@@ -82,17 +88,45 @@ public sealed class ReplHost : IReplHost
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var input = await _terminalSession.ReadLineAsync("> ", cancellationToken);
-                if (input is null)
+                var promptResult = await _terminalSession.ReadPromptAsync("> ", _promptBuffer, cancellationToken);
+                switch (promptResult.Kind)
                 {
-                    SetActivity(TerminalActivityState.Exiting, "Exiting ClawdNet.");
-                    Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
-                    return CommandExecutionResult.Success();
+                    case PromptInputKind.EndOfStream:
+                        SetActivity(TerminalActivityState.Exiting, "Exiting ClawdNet.");
+                        Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                        return CommandExecutionResult.Success();
+                    case PromptInputKind.BufferChanged:
+                        _promptBuffer = promptResult.Text ?? string.Empty;
+                        Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                        continue;
+                    case PromptInputKind.HistoryPrevious:
+                        _promptBuffer = _promptHistory.Previous(_promptBuffer);
+                        Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                        continue;
+                    case PromptInputKind.HistoryNext:
+                        _promptBuffer = _promptHistory.Next();
+                        Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                        continue;
+                    case PromptInputKind.ScrollPageUp:
+                        ScrollPageUp(session.Messages.Count - _visibleStartIndex);
+                        Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                        continue;
+                    case PromptInputKind.ScrollPageDown:
+                        ScrollPageDown();
+                        Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                        continue;
+                    case PromptInputKind.ScrollBottom:
+                        ScrollBottom();
+                        Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
+                        continue;
                 }
 
-                var prompt = input.Trim();
+                var rawPrompt = promptResult.Text ?? _promptBuffer;
+                _promptBuffer = rawPrompt;
+                var prompt = rawPrompt.Trim();
                 if (string.IsNullOrWhiteSpace(prompt))
                 {
+                    _promptBuffer = string.Empty;
                     continue;
                 }
 
@@ -107,10 +141,14 @@ public sealed class ReplHost : IReplHost
 
                 if (TryHandleSlashCommand(prompt, session, options, ref _visibleStartIndex))
                 {
+                    _promptBuffer = string.Empty;
+                    _promptHistory.ResetNavigation();
                     Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
                     continue;
                 }
 
+                _promptHistory.Add(prompt);
+                _promptBuffer = string.Empty;
                 try
                 {
                     SetActivity(TerminalActivityState.WaitingForModel, "Waiting for model response...");
@@ -129,11 +167,13 @@ public sealed class ReplHost : IReplHost
                             case UserTurnAcceptedEvent accepted:
                                 session = accepted.Session;
                                 _currentSession = session;
+                                MarkLiveUpdate();
                                 SetActivity(TerminalActivityState.WaitingForModel, "Waiting for model response...");
                                 _draft = new StreamingAssistantDraft(string.Empty, true, null, "Waiting for model response...");
                                 Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
                                 break;
                             case AssistantTextDeltaStreamEvent delta:
+                                MarkLiveUpdate();
                                 var currentText = _draft?.Text ?? string.Empty;
                                 _draft = new StreamingAssistantDraft(
                                     $"{currentText}{delta.DeltaText}",
@@ -146,11 +186,13 @@ public sealed class ReplHost : IReplHost
                             case AssistantMessageCommittedEvent committed:
                                 session = committed.Session;
                                 _currentSession = session;
+                                MarkLiveUpdate();
                                 _draft = null;
                                 SetActivity(TerminalActivityState.Ready, null);
                                 Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
                                 break;
                             case ToolCallRequestedEvent toolCallRequested:
+                                MarkLiveUpdate();
                                 _draft = new StreamingAssistantDraft(
                                     string.Empty,
                                     true,
@@ -160,6 +202,7 @@ public sealed class ReplHost : IReplHost
                                 Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
                                 break;
                             case PermissionDecisionStreamEvent permissionEvent:
+                                MarkLiveUpdate();
                                 _draft = new StreamingAssistantDraft(
                                     string.Empty,
                                     true,
@@ -177,6 +220,7 @@ public sealed class ReplHost : IReplHost
                             case EditPreviewGeneratedEvent previewEvent:
                                 session = previewEvent.Session;
                                 _currentSession = session;
+                                MarkLiveUpdate();
                                 _draft = new StreamingAssistantDraft(
                                     string.Empty,
                                     true,
@@ -192,6 +236,7 @@ public sealed class ReplHost : IReplHost
                             case EditApprovalRecordedEvent editApproval:
                                 session = editApproval.Session;
                                 _currentSession = session;
+                                MarkLiveUpdate();
                                 _draft = editApproval.Approved
                                     ? new StreamingAssistantDraft(string.Empty, true, editApproval.ToolCall.Name, "Applying approved edit batch...")
                                     : null;
@@ -203,6 +248,7 @@ public sealed class ReplHost : IReplHost
                             case ToolResultCommittedEvent committedTool:
                                 session = committedTool.Session;
                                 _currentSession = session;
+                                MarkLiveUpdate();
                                 _draft = new StreamingAssistantDraft(
                                     string.Empty,
                                     true,
@@ -219,6 +265,7 @@ public sealed class ReplHost : IReplHost
                                 result = completed.Result;
                                 session = completed.Result.Session;
                                 _currentSession = session;
+                                MarkLiveUpdate();
                                 _draft = null;
                                 SetActivity(TerminalActivityState.Ready, null);
                                 Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
@@ -285,7 +332,7 @@ public sealed class ReplHost : IReplHost
             case "/help":
                 SetActivity(
                     TerminalActivityState.ShowingHelp,
-                    "Commands: /help, /session, /clear, /exit. You can also use exit or quit.");
+                    "Commands: /help, /session, /pty, /clear, /bottom, /exit. Keys: Up/Down history, PgUp/PgDn scroll, End bottom.");
                 return true;
             case "/session":
                 SetActivity(
@@ -295,6 +342,7 @@ public sealed class ReplHost : IReplHost
             case "/clear":
                 visibleStartIndex = session.Messages.Count;
                 _terminalSession.ClearVisible();
+                _viewport = new TerminalViewportState();
                 SetActivity(TerminalActivityState.Cleared, "Screen cleared. Session history is preserved.");
                 return true;
             case "/pty":
@@ -304,6 +352,10 @@ public sealed class ReplHost : IReplHost
                     ptyState is null
                         ? "No active PTY session."
                         : $"PTY {ptyState.SessionId} | running={ptyState.IsRunning} | command={ptyState.Command}");
+                return true;
+            case "/bottom":
+                ScrollBottom();
+                SetActivity(TerminalActivityState.Ready, "Returned to live output.");
                 return true;
             default:
                 return false;
@@ -333,13 +385,19 @@ public sealed class ReplHost : IReplHost
         bool clearScreen,
         string? error = null)
     {
-        var visibleMessages = session.Messages.Skip(visibleStartIndex).ToArray();
+        var visibleMessages = GetViewportMessages(session, visibleStartIndex);
         var transcript = _transcriptRenderer.Render(visibleMessages);
-        var footer = _transcriptRenderer.RenderFooter(session, permissionMode, error);
+        var footer = _transcriptRenderer.RenderFooter(
+            session,
+            permissionMode,
+            _ptyManager.CurrentState,
+            _viewport.FollowLiveOutput,
+            _viewport.HasBufferedLiveOutput,
+            error);
         var draft = _transcriptRenderer.RenderDraft(_draft);
         var pty = _transcriptRenderer.RenderPty(_ptyManager.CurrentState);
         var activity = _transcriptRenderer.RenderActivity(_activityState, _activityDetail);
-        _terminalSession.Render(new TerminalViewState("ClawdNet interactive mode", transcript, footer, draft, pty, activity, clearScreen));
+        _terminalSession.Render(new TerminalViewState("ClawdNet interactive mode", transcript, footer, _promptBuffer, _viewport, draft, pty, activity, clearScreen));
     }
 
     private void SetActivity(TerminalActivityState state, string? detail)
@@ -364,12 +422,76 @@ public sealed class ReplHost : IReplHost
             return;
         }
 
+        MarkLiveUpdate();
         if (state is not null && state.IsRunning)
         {
             SetActivity(TerminalActivityState.RunningTool, $"PTY session active: {state.Command}");
         }
 
         Render(_currentSession, _currentPermissionMode, _visibleStartIndex, clearScreen: true);
+    }
+
+    private IReadOnlyList<ConversationMessage> GetViewportMessages(ConversationSession session, int visibleStartIndex)
+    {
+        var messages = session.Messages.Skip(visibleStartIndex).ToArray();
+        if (messages.Length <= _viewport.PageSize)
+        {
+            return messages;
+        }
+
+        var clampedOffset = Math.Clamp(_viewport.ScrollOffsetFromBottom, 0, Math.Max(0, messages.Length - _viewport.PageSize));
+        var endExclusive = Math.Max(0, messages.Length - clampedOffset);
+        var start = Math.Max(0, endExclusive - _viewport.PageSize);
+        return messages.Skip(start).Take(endExclusive - start).ToArray();
+    }
+
+    private void ScrollPageUp(int messageCount)
+    {
+        if (messageCount <= _viewport.PageSize)
+        {
+            return;
+        }
+
+        var maxOffset = Math.Max(0, messageCount - _viewport.PageSize);
+        var newOffset = Math.Min(maxOffset, _viewport.ScrollOffsetFromBottom + _viewport.PageSize);
+        _viewport = _viewport with
+        {
+            ScrollOffsetFromBottom = newOffset,
+            FollowLiveOutput = newOffset == 0,
+            HasBufferedLiveOutput = newOffset == 0 ? false : _viewport.HasBufferedLiveOutput
+        };
+    }
+
+    private void ScrollPageDown()
+    {
+        var newOffset = Math.Max(0, _viewport.ScrollOffsetFromBottom - _viewport.PageSize);
+        _viewport = _viewport with
+        {
+            ScrollOffsetFromBottom = newOffset,
+            FollowLiveOutput = newOffset == 0,
+            HasBufferedLiveOutput = newOffset == 0 ? false : _viewport.HasBufferedLiveOutput
+        };
+    }
+
+    private void ScrollBottom()
+    {
+        _viewport = _viewport with
+        {
+            ScrollOffsetFromBottom = 0,
+            FollowLiveOutput = true,
+            HasBufferedLiveOutput = false
+        };
+    }
+
+    private void MarkLiveUpdate()
+    {
+        if (_viewport.FollowLiveOutput)
+        {
+            _viewport = _viewport with { HasBufferedLiveOutput = false };
+            return;
+        }
+
+        _viewport = _viewport with { HasBufferedLiveOutput = true };
     }
 
     private static string FormatPermissionMode(PermissionMode permissionMode)

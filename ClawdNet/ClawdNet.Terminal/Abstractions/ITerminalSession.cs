@@ -4,6 +4,8 @@ namespace ClawdNet.Terminal.Abstractions;
 
 public interface ITerminalSession
 {
+    Task<PromptInputResult> ReadPromptAsync(string prompt, string currentBuffer, CancellationToken cancellationToken);
+
     Task<string?> ReadLineAsync(string prompt, CancellationToken cancellationToken);
 
     Task<bool> ConfirmAsync(string prompt, CancellationToken cancellationToken);
