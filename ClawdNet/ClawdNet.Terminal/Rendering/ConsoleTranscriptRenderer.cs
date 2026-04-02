@@ -75,7 +75,7 @@ public sealed class ConsoleTranscriptRenderer : ITranscriptRenderer
         var followStatus = followLiveOutput
             ? "follow=live"
             : hasBufferedLiveOutput ? "follow=paused*" : "follow=paused";
-        var status = $"session={session.Id} | model={session.Model} | permission={FormatPermissionMode(permissionMode)} | messages={session.Messages.Count} | {ptyStatus} | {followStatus}";
+        var status = $"session={session.Id} | provider={session.Provider} | model={session.Model} | permission={FormatPermissionMode(permissionMode)} | messages={session.Messages.Count} | {ptyStatus} | {followStatus}";
         if (!string.IsNullOrWhiteSpace(error))
         {
             status = $"{status} | error={error}";
@@ -96,7 +96,7 @@ public sealed class ConsoleTranscriptRenderer : ITranscriptRenderer
             TerminalActivityState.RunningTool => detail ?? "Running tool...",
             TerminalActivityState.ReviewingEdits => detail ?? "Reviewing edit batch...",
             TerminalActivityState.AwaitingApproval => detail ?? "Awaiting approval...",
-            TerminalActivityState.ShowingHelp => detail ?? "Available commands: /help, /session, /tasks, /pty, /clear, /bottom, /exit",
+            TerminalActivityState.ShowingHelp => detail ?? "Available commands: /help, /session, /provider, /tasks, /pty, /open, /browse, /clear, /bottom, /exit",
             TerminalActivityState.ShowingSession => detail,
             TerminalActivityState.Cleared => detail ?? "Screen cleared. Session history is preserved.",
             TerminalActivityState.Interrupted => detail ?? "Interrupted active turn.",

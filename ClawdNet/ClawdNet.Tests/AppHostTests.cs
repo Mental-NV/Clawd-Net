@@ -709,6 +709,90 @@ public sealed class AppHostTests : IDisposable
         Assert.Contains("assistant: worker finished", result.StdOut);
     }
 
+    [Fact]
+    public async Task Provider_commands_report_configured_providers()
+    {
+        var providerCatalog = new FakeProviderCatalog();
+        providerCatalog.Providers.Clear();
+        providerCatalog.Providers.Add(new ProviderDefinition("anthropic", ProviderKind.Anthropic, true, "ANTHROPIC_API_KEY", DefaultModel: "claude-sonnet-4-5"));
+        providerCatalog.Providers.Add(new ProviderDefinition("openai", ProviderKind.OpenAI, true, "OPENAI_API_KEY", DefaultModel: "gpt-4o-mini"));
+        providerCatalog.DefaultProviderName = "openai";
+        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient(), providerCatalog: providerCatalog);
+
+        var listResult = await host.RunAsync(["provider", "list"], CancellationToken.None);
+        var showResult = await host.RunAsync(["provider", "show", "openai"], CancellationToken.None);
+
+        Assert.Equal(0, listResult.ExitCode);
+        Assert.Contains("* openai", listResult.StdOut);
+        Assert.Equal(0, showResult.ExitCode);
+        Assert.Contains("Provider: openai", showResult.StdOut);
+        Assert.Contains("DefaultModel: gpt-4o-mini", showResult.StdOut);
+    }
+
+    [Fact]
+    public async Task Ask_can_select_openai_provider_and_persist_it_in_session()
+    {
+        var providerCatalog = new FakeProviderCatalog();
+        var modelClientFactory = new FakeModelClientFactory();
+        var openAiClient = new FakeAnthropicMessageClient(
+            new ModelResponse("gpt-4o-mini", [new TextContentBlock("hello from openai")], "end_turn"));
+        modelClientFactory.Clients["openai"] = openAiClient;
+        modelClientFactory.Clients["anthropic"] = new FakeAnthropicMessageClient();
+        var host = new AppHost(
+            "1.0.0",
+            _dataRoot,
+            new FakeAnthropicMessageClient(),
+            providerCatalog: providerCatalog,
+            modelClientFactory: modelClientFactory);
+
+        var result = await host.RunAsync(["ask", "--json", "--provider", "openai", "--model", "gpt-4o-mini", "hello"], CancellationToken.None);
+        using var document = JsonDocument.Parse(result.StdOut);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("openai", document.RootElement.GetProperty("provider").GetString());
+        Assert.Equal("gpt-4o-mini", document.RootElement.GetProperty("model").GetString());
+        Assert.Contains("openai", modelClientFactory.RequestedProviders);
+    }
+
+    [Fact]
+    public async Task Platform_commands_route_through_platform_launcher()
+    {
+        var platformLauncher = new FakePlatformLauncher();
+        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient(), platformLauncher: platformLauncher);
+
+        var openResult = await host.RunAsync(["platform", "open", "/tmp/demo.cs", "--line", "12", "--column", "4"], CancellationToken.None);
+        var browseResult = await host.RunAsync(["platform", "browse", "https://example.com"], CancellationToken.None);
+
+        Assert.Equal(0, openResult.ExitCode);
+        Assert.Equal(0, browseResult.ExitCode);
+        Assert.Single(platformLauncher.OpenPathRequests);
+        Assert.Equal("/tmp/demo.cs", platformLauncher.OpenPathRequests[0].Path);
+        Assert.Equal(12, platformLauncher.OpenPathRequests[0].Line);
+        Assert.Equal(4, platformLauncher.OpenPathRequests[0].Column);
+        Assert.Single(platformLauncher.OpenUrlRequests);
+        Assert.Equal("https://example.com", platformLauncher.OpenUrlRequests[0]);
+    }
+
+    [Fact]
+    public async Task Ask_can_invoke_platform_tool_when_permissions_allow_it()
+    {
+        var platformLauncher = new FakePlatformLauncher();
+        var client = new FakeAnthropicMessageClient(
+            new ModelResponse(
+                "claude-sonnet-4-5",
+                [new ToolUseContentBlock("tool-1", "open_url", new JsonObject { ["url"] = "https://example.com" })],
+                "tool_use"),
+            new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("opened link")], "end_turn"));
+        var host = new AppHost("1.0.0", _dataRoot, client, platformLauncher: platformLauncher);
+
+        var result = await host.RunAsync(["ask", "--permission-mode", "bypass-permissions", "open the docs"], CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("opened link", result.StdOut);
+        Assert.Single(platformLauncher.OpenUrlRequests);
+        Assert.Equal("https://example.com", platformLauncher.OpenUrlRequests[0]);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dataRoot))

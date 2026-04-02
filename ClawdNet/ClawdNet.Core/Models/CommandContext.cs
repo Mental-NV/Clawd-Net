@@ -10,10 +10,12 @@ public sealed record CommandContext(
     ITaskStore TaskStore,
     ITaskManager TaskManager,
     IQueryEngine QueryEngine,
+    IProviderCatalog ProviderCatalog,
     IMcpClient McpClient,
     ILspClient LspClient,
     IPluginCatalog PluginCatalog,
     IPluginRuntime PluginRuntime,
+    IPlatformLauncher PlatformLauncher,
     IPermissionService PermissionService,
     ITranscriptRenderer TranscriptRenderer,
     string Version);

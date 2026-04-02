@@ -20,7 +20,7 @@ public sealed class JsonSessionStore : IConversationStore
         _storePath = Path.Combine(rootDirectory, "sessions.json");
     }
 
-    public async Task<ConversationSession> CreateAsync(string? title, string model, CancellationToken cancellationToken)
+    public async Task<ConversationSession> CreateAsync(string? title, string model, CancellationToken cancellationToken, string? provider = null)
     {
         await _sync.WaitAsync(cancellationToken);
         try
@@ -35,7 +35,8 @@ public sealed class JsonSessionStore : IConversationStore
                 timestamp,
                 [
                     new ConversationMessage("system", "ClawdNet session initialized.", timestamp)
-                ]);
+                ],
+                provider);
             sessions.Add(session);
             await WriteSessionsAsync(sessions, cancellationToken);
             return session;
@@ -120,12 +121,14 @@ public sealed class JsonSessionStore : IConversationStore
         var createdAt = session.CreatedAtUtc == default ? DateTimeOffset.UtcNow : session.CreatedAtUtc;
         var updatedAt = session.UpdatedAtUtc == default ? createdAt : session.UpdatedAtUtc;
         var model = string.IsNullOrWhiteSpace(session.Model) ? "claude-sonnet-4-5" : session.Model;
+        var provider = string.IsNullOrWhiteSpace(session.Provider) ? "anthropic" : session.Provider;
 
         return session with
         {
             CreatedAtUtc = createdAt,
             UpdatedAtUtc = updatedAt,
-            Model = model
+            Model = model,
+            Provider = provider
         };
     }
 }

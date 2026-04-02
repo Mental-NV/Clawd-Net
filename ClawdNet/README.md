@@ -28,13 +28,19 @@ Run the app directly:
 ```bash
 dotnet run --project ClawdNet/ClawdNet.App -- --version
 dotnet run --project ClawdNet/ClawdNet.App
+dotnet run --project ClawdNet/ClawdNet.App -- --provider openai --model gpt-4o-mini
 dotnet run --project ClawdNet/ClawdNet.App -- --session <session-id>
 dotnet run --project ClawdNet/ClawdNet.App -- --model claude-sonnet-4-5
 dotnet run --project ClawdNet/ClawdNet.App -- --permission-mode accept-edits
 dotnet run --project ClawdNet/ClawdNet.App -- ask "Explain this project"
+dotnet run --project ClawdNet/ClawdNet.App -- ask --provider openai --model gpt-4o-mini "Explain this project"
 dotnet run --project ClawdNet/ClawdNet.App -- ask --permission-mode bypass-permissions "Inspect this repo"
 dotnet run --project ClawdNet/ClawdNet.App -- ask --json "Summarize the current milestone"
 dotnet run --project ClawdNet/ClawdNet.App -- ask --session <session-id> "Continue"
+dotnet run --project ClawdNet/ClawdNet.App -- provider list
+dotnet run --project ClawdNet/ClawdNet.App -- provider show anthropic
+dotnet run --project ClawdNet/ClawdNet.App -- platform open /absolute/path/to/file.cs --line 12 --column 4
+dotnet run --project ClawdNet/ClawdNet.App -- platform browse https://example.com
 dotnet run --project ClawdNet/ClawdNet.App -- session new "First Slice"
 dotnet run --project ClawdNet/ClawdNet.App -- session list
 dotnet run --project ClawdNet/ClawdNet.App -- plugin list
@@ -49,10 +55,11 @@ dotnet run --project ClawdNet/ClawdNet.App -- lsp diagnostics <path>
 dotnet run --project ClawdNet/ClawdNet.App -- tool echo "hello world"
 ```
 
-Set your Anthropic API key before using `ask`:
+Set your provider API keys before using `ask`:
 
 ```bash
 export ANTHROPIC_API_KEY=your_key_here
+export OPENAI_API_KEY=your_key_here
 ```
 
 Run from inside the `ClawdNet/` workspace:
@@ -67,14 +74,20 @@ dotnet run --project ClawdNet.App -- --version
 
 - `clawdnet` interactive mode
 - `clawdnet --session <id>`
+- `clawdnet --provider <name>`
 - `clawdnet --model <name>`
 - `clawdnet --permission-mode <mode>`
 - `--version`
 - `ask <prompt>`
+- `ask --provider <name> <prompt>`
 - `ask --session <id> <prompt>`
 - `ask --model <name> <prompt>`
 - `ask --permission-mode <mode> <prompt>`
 - `ask --json <prompt>`
+- `provider list`
+- `provider show <name>`
+- `platform open <path> [--line N] [--column N]`
+- `platform browse <url>`
 - `session new [title]`
 - `session list`
 - `plugin list`
@@ -91,8 +104,64 @@ Inside interactive mode, these slash commands are available:
 
 - `/help`
 - `/session`
+- `/provider`
+- `/provider <name> [model]`
+- `/open <path> [line] [column]`
+- `/browse <url>`
 - `/clear`
 - `/exit`
+
+## Provider Configuration
+
+Configure model providers in:
+
+```text
+<LocalApplicationData>/ClawdNet/config/providers.json
+```
+
+Example:
+
+```json
+{
+  "defaultProvider": "anthropic",
+  "providers": [
+    {
+      "name": "anthropic",
+      "kind": "Anthropic",
+      "enabled": true,
+      "apiKeyEnv": "ANTHROPIC_API_KEY",
+      "defaultModel": "claude-sonnet-4-5"
+    },
+    {
+      "name": "openai",
+      "kind": "OpenAI",
+      "enabled": true,
+      "apiKeyEnv": "OPENAI_API_KEY",
+      "defaultModel": "gpt-4o-mini"
+    }
+  ]
+}
+```
+
+If `providers.json` is missing, `ClawdNet` seeds built-in `anthropic` and `openai` providers automatically.
+
+## Platform Configuration
+
+Configure lightweight editor and browser launch preferences in:
+
+```text
+<LocalApplicationData>/ClawdNet/config/platform.json
+```
+
+Example:
+
+```json
+{
+  "editorCommand": "code",
+  "editorArguments": ["-g"],
+  "browserCommand": "open"
+}
+```
 
 ## MCP Configuration
 

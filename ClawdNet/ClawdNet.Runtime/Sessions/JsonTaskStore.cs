@@ -138,11 +138,13 @@ public sealed class JsonTaskStore : ITaskStore
         var createdAt = task.CreatedAtUtc == default ? DateTimeOffset.UtcNow : task.CreatedAtUtc;
         var updatedAt = task.UpdatedAtUtc == default ? createdAt : task.UpdatedAtUtc;
         var model = string.IsNullOrWhiteSpace(task.Model) ? "claude-sonnet-4-5" : task.Model;
+        var provider = string.IsNullOrWhiteSpace(task.Provider) ? "anthropic" : task.Provider;
         return task with
         {
             CreatedAtUtc = createdAt,
             UpdatedAtUtc = updatedAt,
             Model = model,
+            Provider = provider,
             Events = (task.Events ?? []).TakeLast(MaxEvents).ToArray(),
             WorkerTranscriptTail = NormalizeTranscript(task.WorkerTranscriptTail),
             WorkerUpdatedAtUtc = task.WorkerUpdatedAtUtc ?? updatedAt

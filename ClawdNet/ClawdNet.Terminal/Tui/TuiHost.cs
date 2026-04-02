@@ -2,6 +2,7 @@ using ClawdNet.Core.Abstractions;
 using ClawdNet.Core.Exceptions;
 using ClawdNet.Core.Models;
 using ClawdNet.Terminal.Abstractions;
+using ClawdNet.Terminal.Defaults;
 using ClawdNet.Terminal.Models;
 
 namespace ClawdNet.Terminal.Tui;
@@ -14,6 +15,8 @@ public sealed class TuiHost : ITuiHost
     private readonly ITuiRenderer _tuiRenderer;
     private readonly IPtyManager _ptyManager;
     private readonly ITaskManager _taskManager;
+    private readonly IProviderCatalog _providerCatalog;
+    private readonly IPlatformLauncher _platformLauncher;
     private readonly PromptHistoryBuffer _promptHistory = new();
 
     private ConversationSession? _currentSession;
@@ -40,7 +43,9 @@ public sealed class TuiHost : ITuiHost
         IQueryEngine queryEngine,
         ITuiRenderer tuiRenderer,
         IPtyManager ptyManager,
-        ITaskManager taskManager)
+        ITaskManager taskManager,
+        IProviderCatalog? providerCatalog = null,
+        IPlatformLauncher? platformLauncher = null)
     {
         _terminalSession = terminalSession;
         _conversationStore = conversationStore;
@@ -48,6 +53,8 @@ public sealed class TuiHost : ITuiHost
         _tuiRenderer = tuiRenderer;
         _ptyManager = ptyManager;
         _taskManager = taskManager;
+        _providerCatalog = providerCatalog ?? new TerminalFallbackProviderCatalog();
+        _platformLauncher = platformLauncher ?? new TerminalNullPlatformLauncher();
     }
 
     public async Task<CommandExecutionResult> RunAsync(ReplLaunchOptions options, CancellationToken cancellationToken)
@@ -56,6 +63,10 @@ public sealed class TuiHost : ITuiHost
         try
         {
             session = await LoadOrCreateSessionAsync(options, cancellationToken);
+        }
+        catch (ModelProviderConfigurationException ex)
+        {
+            return CommandExecutionResult.Failure(ex.Message, 2);
         }
         catch (ConversationStoreException ex)
         {
@@ -170,7 +181,7 @@ public sealed class TuiHost : ITuiHost
                     using var turnCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                     _activeTurnCancellation = turnCancellation;
                     await foreach (var streamEvent in _queryEngine.StreamAskAsync(
-                                       new QueryRequest(prompt, session.Id, session.Model, 8, options.PermissionMode, new TuiApprovalHandler(this)),
+                                       new QueryRequest(prompt, session.Id, session.Model, 8, options.PermissionMode, new TuiApprovalHandler(this), true, session.Provider),
                                        turnCancellation.Token))
                     {
                         ApplyStreamEvent(streamEvent);
@@ -195,7 +206,7 @@ public sealed class TuiHost : ITuiHost
                     _activityDetail = "Interrupted active turn.";
                     Render(clearScreen: true);
                 }
-                catch (AnthropicConfigurationException ex)
+                catch (ModelProviderConfigurationException ex)
                 {
                     _activeTurnCancellation = null;
                     _draft = null;
@@ -327,7 +338,14 @@ public sealed class TuiHost : ITuiHost
                 ToggleHelpOverlay();
                 return true;
             case "/session":
-                await ToggleSessionDrawerAsync(new ReplLaunchOptions(_currentSession?.Id, _currentSession?.Model, _currentPermissionMode), cancellationToken);
+                await ToggleSessionDrawerAsync(new ReplLaunchOptions(_currentSession?.Id, _currentSession?.Model, _currentPermissionMode, _currentSession?.Provider), cancellationToken);
+                return true;
+            case "/provider":
+                if (_currentSession is not null)
+                {
+                    _activityState = TerminalActivityState.ShowingSession;
+                    _activityDetail = $"Provider {_currentSession.Provider} | model={_currentSession.Model}";
+                }
                 return true;
             case "/tasks":
                 await ToggleTasksDrawerAsync(cancellationToken);
@@ -358,6 +376,49 @@ public sealed class TuiHost : ITuiHost
                         await ShowTaskDrawerAsync(taskId, cancellationToken);
                         return true;
                     }
+                }
+
+                if (prompt.StartsWith("/provider ", StringComparison.OrdinalIgnoreCase))
+                {
+                    var args = prompt["/provider ".Length..].Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    if (args.Length > 0 && _currentSession is not null)
+                    {
+                        try
+                        {
+                            _currentSession = await UpdateSessionProviderAsync(_currentSession, args[0], args.Length > 1 ? args[1] : null, cancellationToken);
+                            _activityState = TerminalActivityState.ShowingSession;
+                            _activityDetail = $"Provider updated to {_currentSession.Provider} | model={_currentSession.Model}";
+                            AddActivityFeed($"provider | {_currentSession.Provider} | {_currentSession.Model}");
+                        }
+                        catch (ModelProviderConfigurationException ex)
+                        {
+                            _activityState = TerminalActivityState.Error;
+                            _activityDetail = ex.Message;
+                            _overlay = new TuiOverlayState(TuiOverlayKind.Error, "Provider error", ex.Message, [new TuiOverlaySection("Error", [ex.Message])]);
+                            _focus = TuiFocusTarget.Overlay;
+                        }
+
+                        return true;
+                    }
+                }
+
+                if (prompt.StartsWith("/open ", StringComparison.OrdinalIgnoreCase))
+                {
+                    var result = await OpenFromSlashCommandAsync(prompt["/open ".Length..], cancellationToken);
+                    _activityState = result.Success ? TerminalActivityState.ShowingSession : TerminalActivityState.Error;
+                    _activityDetail = result.Success ? result.Message : result.Error;
+                    AddActivityFeed(result.Success ? $"platform | {result.Message}" : $"platform | error | {result.Error}");
+                    return true;
+                }
+
+                if (prompt.StartsWith("/browse ", StringComparison.OrdinalIgnoreCase))
+                {
+                    var url = prompt["/browse ".Length..].Trim();
+                    var result = await _platformLauncher.OpenUrlAsync(url, cancellationToken);
+                    _activityState = result.Success ? TerminalActivityState.ShowingSession : TerminalActivityState.Error;
+                    _activityDetail = result.Success ? result.Message : result.Error;
+                    AddActivityFeed(result.Success ? $"platform | {result.Message}" : $"platform | error | {result.Error}");
+                    return true;
                 }
 
                 if (prompt.StartsWith("/pty ", StringComparison.OrdinalIgnoreCase))
@@ -546,10 +607,95 @@ public sealed class TuiHost : ITuiHost
                 throw new ConversationStoreException($"Session '{options.SessionId}' was not found.");
             }
 
-            return existing;
+            var provider = await _providerCatalog.ResolveAsync(
+                string.IsNullOrWhiteSpace(options.Provider) ? existing.Provider : options.Provider,
+                cancellationToken);
+            var resolvedModel = ResolveModel(existing, options.Model, provider.Name, provider.DefaultModel);
+            var updated = existing with
+            {
+                Provider = provider.Name,
+                Model = resolvedModel
+            };
+            if (!string.Equals(existing.Provider, updated.Provider, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(existing.Model, updated.Model, StringComparison.Ordinal))
+            {
+                await _conversationStore.SaveAsync(updated, cancellationToken);
+            }
+
+            return updated;
         }
 
-        return await _conversationStore.CreateAsync("TUI session", options.Model ?? "claude-sonnet-4-5", cancellationToken);
+        var resolvedProvider = await _providerCatalog.ResolveAsync(options.Provider, cancellationToken);
+        var model = !string.IsNullOrWhiteSpace(options.Model)
+            ? options.Model!
+            : !string.IsNullOrWhiteSpace(resolvedProvider.DefaultModel)
+                ? resolvedProvider.DefaultModel!
+                : throw new ModelProviderConfigurationException(resolvedProvider.Name, "Model must be specified because the provider has no default model configured.");
+        return await _conversationStore.CreateAsync("TUI session", model, cancellationToken, resolvedProvider.Name);
+    }
+
+    private async Task<ConversationSession> UpdateSessionProviderAsync(
+        ConversationSession session,
+        string providerName,
+        string? model,
+        CancellationToken cancellationToken)
+    {
+        var provider = await _providerCatalog.ResolveAsync(providerName, cancellationToken);
+        var resolvedModel = ResolveModel(session, model, provider.Name, provider.DefaultModel);
+        var updated = session with
+        {
+            Provider = provider.Name,
+            Model = resolvedModel
+        };
+        await _conversationStore.SaveAsync(updated, cancellationToken);
+        return updated;
+    }
+
+    private async Task<PlatformLaunchResult> OpenFromSlashCommandAsync(string args, CancellationToken cancellationToken)
+    {
+        var parts = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+        {
+            return new PlatformLaunchResult(false, string.Empty, "Path is required.");
+        }
+
+        int? line = null;
+        int? column = null;
+        var pathParts = parts.ToList();
+        if (pathParts.Count > 0 && int.TryParse(pathParts[^1], out var parsedColumn))
+        {
+            column = parsedColumn;
+            pathParts.RemoveAt(pathParts.Count - 1);
+        }
+
+        if (pathParts.Count > 0 && int.TryParse(pathParts[^1], out var parsedLine))
+        {
+            line = parsedLine;
+            pathParts.RemoveAt(pathParts.Count - 1);
+        }
+
+        var path = string.Join(' ', pathParts).Trim();
+        return await _platformLauncher.OpenPathAsync(new PlatformOpenRequest(path, line, column), cancellationToken);
+    }
+
+    private static string ResolveModel(ConversationSession session, string? requestedModel, string providerName, string? defaultModel)
+    {
+        if (!string.IsNullOrWhiteSpace(requestedModel))
+        {
+            return requestedModel!;
+        }
+
+        if (string.Equals(session.Provider, providerName, StringComparison.OrdinalIgnoreCase))
+        {
+            return session.Model;
+        }
+
+        if (!string.IsNullOrWhiteSpace(defaultModel))
+        {
+            return defaultModel!;
+        }
+
+        throw new ModelProviderConfigurationException(providerName, "Model must be specified because the provider has no default model configured.");
     }
 
     private void Render(bool clearScreen)
@@ -728,6 +874,8 @@ public sealed class TuiHost : ITuiHost
                     [
                         "/help",
                         "/session",
+                        "/provider",
+                        "/provider <name> [model]",
                         "/tasks",
                         "/tasks <id>",
                         "/pty",
@@ -735,6 +883,8 @@ public sealed class TuiHost : ITuiHost
                         "/pty close <id>",
                         "/pty close-exited",
                         "/activity",
+                        "/open <path> [line] [column]",
+                        "/browse <url>",
                         "/clear",
                         "/bottom",
                         "/exit"
@@ -783,7 +933,7 @@ public sealed class TuiHost : ITuiHost
             .Select(session => new TuiDrawerItem(
                 session.Id,
                 $"{session.Title ?? "Session"} ({session.Id})",
-                $"model={session.Model} | messages={session.Messages.Count} | updated={session.UpdatedAtUtc:HH:mm:ss}",
+                $"provider={session.Provider} | model={session.Model} | messages={session.Messages.Count} | updated={session.UpdatedAtUtc:HH:mm:ss}",
                 _currentSession is not null && string.Equals(_currentSession.Id, session.Id, StringComparison.Ordinal),
                 selected is not null && string.Equals(selected.Id, session.Id, StringComparison.Ordinal)))
             .ToArray();
@@ -1121,6 +1271,7 @@ public sealed class TuiHost : ITuiHost
         [
             $"session={session.Id}",
             $"title={session.Title ?? "(untitled)"}",
+            $"provider={session.Provider}",
             $"model={session.Model}",
             $"messages={session.Messages.Count}",
             $"updated={session.UpdatedAtUtc:O}",

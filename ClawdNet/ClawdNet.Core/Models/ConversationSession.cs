@@ -6,4 +6,5 @@ public sealed record ConversationSession(
     string Model,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset UpdatedAtUtc,
-    IReadOnlyList<ConversationMessage> Messages);
+    IReadOnlyList<ConversationMessage> Messages,
+    string? Provider = null);

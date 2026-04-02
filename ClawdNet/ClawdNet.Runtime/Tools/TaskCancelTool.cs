@@ -47,6 +47,7 @@ public sealed class TaskCancelTool : ITool
         return new ToolExecutionResult(true, JsonSerializer.Serialize(new
         {
             taskId = task.Id,
+            provider = task.Provider,
             status = task.Status.ToString(),
             summary = task.Result?.Summary ?? task.LastStatusMessage
         }));

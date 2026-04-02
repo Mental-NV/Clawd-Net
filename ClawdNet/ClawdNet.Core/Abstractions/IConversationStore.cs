@@ -4,7 +4,7 @@ namespace ClawdNet.Core.Abstractions;
 
 public interface IConversationStore
 {
-    Task<ConversationSession> CreateAsync(string? title, string model, CancellationToken cancellationToken);
+    Task<ConversationSession> CreateAsync(string? title, string model, CancellationToken cancellationToken, string? provider = null);
 
     Task<ConversationSession?> GetAsync(string sessionId, CancellationToken cancellationToken);
 

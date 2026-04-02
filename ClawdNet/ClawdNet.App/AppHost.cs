@@ -7,9 +7,11 @@ using ClawdNet.Runtime.Anthropic;
 using ClawdNet.Runtime.Editing;
 using ClawdNet.Runtime.FeatureGates;
 using ClawdNet.Runtime.Permissions;
+using ClawdNet.Runtime.Platform;
 using ClawdNet.Runtime.Plugins;
 using ClawdNet.Runtime.Protocols;
 using ClawdNet.Runtime.Processes;
+using ClawdNet.Runtime.Providers;
 using ClawdNet.Runtime.Sessions;
 using ClawdNet.Runtime.Tasks;
 using ClawdNet.Runtime.Tools;
@@ -30,8 +32,10 @@ public sealed class AppHost : IAsyncDisposable
     private readonly IToolRegistry _toolRegistry;
     private readonly ITaskStore _taskStore;
     private readonly ITaskManager _taskManager;
+    private readonly IProviderCatalog _providerCatalog;
     private readonly IPluginCatalog _pluginCatalog;
     private readonly IPluginRuntime _pluginRuntime;
+    private readonly IPlatformLauncher _platformLauncher;
     private readonly IMcpClient _mcpClient;
     private readonly ILspClient _lspClient;
     private readonly IPtyManager _ptyManager;
@@ -49,10 +53,13 @@ public sealed class AppHost : IAsyncDisposable
         string version,
         string dataRoot,
         IAnthropicMessageClient? anthropicMessageClient = null,
+        IProviderCatalog? providerCatalog = null,
+        IModelClientFactory? modelClientFactory = null,
         IProcessRunner? processRunner = null,
         IFeatureGate? featureGate = null,
         IPluginCatalog? pluginCatalog = null,
         IPluginRuntime? pluginRuntime = null,
+        IPlatformLauncher? platformLauncher = null,
         IMcpClient? mcpClient = null,
         ILspClient? lspClient = null,
         IPtyManager? ptyManager = null,
@@ -67,6 +74,8 @@ public sealed class AppHost : IAsyncDisposable
         var builtInCommands = new[]
         {
             "ask",
+            "provider",
+            "platform",
             "task",
             "plugin",
             "lsp",
@@ -91,6 +100,8 @@ public sealed class AppHost : IAsyncDisposable
             "pty_write",
             "pty_read",
             "pty_close",
+            "open_path",
+            "open_url",
             "apply_patch",
             "file_write",
             "task_start",
@@ -103,15 +114,28 @@ public sealed class AppHost : IAsyncDisposable
             "lsp_hover",
             "lsp_diagnostics"
         };
+        _providerCatalog = providerCatalog ?? new ProviderCatalog(dataRoot);
         _pluginCatalog = pluginCatalog ?? new PluginCatalog(dataRoot, builtInCommands, builtInToolNames);
         _pluginRuntime = pluginRuntime ?? new PluginRuntime(_pluginCatalog, processRunner, builtInCommands);
         _mcpClient = mcpClient ?? new StdioMcpClient(dataRoot, _pluginCatalog);
         _lspClient = lspClient ?? new StdioLspClient(dataRoot, _pluginCatalog);
         _ptyManager = ptyManager ?? new PtyManager();
+        _platformLauncher = platformLauncher ?? new DefaultPlatformLauncher(processRunner, new PlatformConfigurationLoader(dataRoot));
         IEditPreviewService editPreviewService = new EditPreviewService();
         IEditApplier editApplier = new EditApplier(_lspClient);
         IConversationStore conversationStore = new JsonSessionStore(dataRoot);
         _taskStore = taskStore ?? new JsonTaskStore(dataRoot);
+        if (modelClientFactory is null)
+        {
+            var factory = new DefaultModelClientFactory();
+            if (anthropicMessageClient is not null)
+            {
+                factory.RegisterOverride(ProviderDefaults.DefaultProviderName, anthropicMessageClient);
+            }
+
+            modelClientFactory = factory;
+        }
+
         _toolRegistry = new ToolRegistry(
         [
             new EchoTool(),
@@ -125,13 +149,14 @@ public sealed class AppHost : IAsyncDisposable
             new PtyWriteTool(_ptyManager),
             new PtyReadTool(_ptyManager),
             new PtyCloseTool(_ptyManager),
+            new OpenPathTool(_platformLauncher),
+            new OpenUrlTool(_platformLauncher),
             new ApplyPatchTool(editPreviewService, editApplier)
         ]);
         IToolExecutor toolExecutor = new ToolExecutor(_toolRegistry);
-        anthropicMessageClient ??= new HttpAnthropicMessageClient(new HttpClient());
         IPermissionService permissionService = new DefaultPermissionService();
         _toolRegistry.Register(new FileWriteTool(_lspClient));
-        IQueryEngine queryEngine = new QueryEngine(conversationStore, anthropicMessageClient, _toolRegistry, toolExecutor, permissionService, _pluginRuntime);
+        IQueryEngine queryEngine = new QueryEngine(conversationStore, _providerCatalog, modelClientFactory, _toolRegistry, toolExecutor, permissionService, _pluginRuntime);
         _taskManager = taskManager ?? new TaskManager(_taskStore, conversationStore, queryEngine, _pluginRuntime);
         _toolRegistry.RegisterRange(
         [
@@ -144,13 +169,15 @@ public sealed class AppHost : IAsyncDisposable
         ITranscriptRenderer transcriptRenderer = new ConsoleTranscriptRenderer();
         ITuiRenderer tuiRenderer = new ConsoleTuiRenderer(transcriptRenderer);
         terminalSession ??= new ConsoleTerminalSession();
-        _replHost = replHost ?? new ReplHost(terminalSession, conversationStore, queryEngine, transcriptRenderer, _ptyManager, _taskManager);
-        _tuiHost = tuiHost ?? new TuiHost(terminalSession, conversationStore, queryEngine, tuiRenderer, _ptyManager, _taskManager);
+        _replHost = replHost ?? new ReplHost(terminalSession, conversationStore, queryEngine, transcriptRenderer, _ptyManager, _taskManager, _providerCatalog, _platformLauncher);
+        _tuiHost = tuiHost ?? new TuiHost(terminalSession, conversationStore, queryEngine, tuiRenderer, _ptyManager, _taskManager, _providerCatalog, _platformLauncher);
 
-        _context = new CommandContext(_featureGate, _toolRegistry, toolExecutor, conversationStore, _taskStore, _taskManager, queryEngine, _mcpClient, _lspClient, _pluginCatalog, _pluginRuntime, permissionService, transcriptRenderer, version);
+        _context = new CommandContext(_featureGate, _toolRegistry, toolExecutor, conversationStore, _taskStore, _taskManager, queryEngine, _providerCatalog, _mcpClient, _lspClient, _pluginCatalog, _pluginRuntime, _platformLauncher, permissionService, transcriptRenderer, version);
         _dispatcher = new CommandDispatcher(
         [
             new AskCommandHandler(),
+            new ProviderCommandHandler(),
+            new PlatformCommandHandler(),
             new TaskCommandHandler(),
             new PluginCommandHandler(),
             new LspCommandHandler(),
@@ -244,6 +271,7 @@ public sealed class AppHost : IAsyncDisposable
     private static bool TryParseReplLaunchOptions(IReadOnlyList<string> args, out ReplLaunchOptions options)
     {
         string? sessionId = null;
+        string? provider = null;
         string? model = null;
         var permissionMode = PermissionMode.Default;
 
@@ -253,6 +281,9 @@ public sealed class AppHost : IAsyncDisposable
             {
                 case "--session" when index + 1 < args.Count:
                     sessionId = args[++index];
+                    break;
+                case "--provider" when index + 1 < args.Count:
+                    provider = args[++index];
                     break;
                 case "--model" when index + 1 < args.Count:
                     model = args[++index];
@@ -266,7 +297,7 @@ public sealed class AppHost : IAsyncDisposable
             }
         }
 
-        options = new ReplLaunchOptions(sessionId, model, permissionMode);
+        options = new ReplLaunchOptions(sessionId, model, permissionMode, provider);
         return true;
     }
 

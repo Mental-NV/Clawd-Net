@@ -27,7 +27,7 @@ public sealed class HttpAnthropicMessageClient : IAnthropicMessageClient
         var apiKey = _apiKeyAccessor();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            throw new AnthropicConfigurationException("ANTHROPIC_API_KEY is not set.");
+            throw new ModelProviderConfigurationException("anthropic", "API key is not set.");
         }
 
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/v1/messages");
@@ -41,8 +41,7 @@ public sealed class HttpAnthropicMessageClient : IAnthropicMessageClient
         if (!response.IsSuccessStatusCode)
         {
             var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
-            throw new AnthropicConfigurationException(
-                $"Anthropic API request failed with {(int)response.StatusCode}: {responseText}");
+            throw new ModelProviderConfigurationException("anthropic", $"API request failed with {(int)response.StatusCode}: {responseText}");
         }
 
         var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -56,7 +55,7 @@ public sealed class HttpAnthropicMessageClient : IAnthropicMessageClient
         var apiKey = _apiKeyAccessor();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            throw new AnthropicConfigurationException("ANTHROPIC_API_KEY is not set.");
+            throw new ModelProviderConfigurationException("anthropic", "API key is not set.");
         }
 
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/v1/messages");
@@ -74,8 +73,7 @@ public sealed class HttpAnthropicMessageClient : IAnthropicMessageClient
         if (!response.IsSuccessStatusCode)
         {
             var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
-            throw new AnthropicConfigurationException(
-                $"Anthropic API request failed with {(int)response.StatusCode}: {responseText}");
+            throw new ModelProviderConfigurationException("anthropic", $"API request failed with {(int)response.StatusCode}: {responseText}");
         }
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);

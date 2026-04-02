@@ -47,6 +47,7 @@ public sealed class TaskStatusTool : ITool
         return new ToolExecutionResult(true, JsonSerializer.Serialize(new
         {
             taskId = task.Id,
+            provider = task.Provider,
             status = task.Status.ToString(),
             title = task.Title,
             workerSessionId = task.WorkerSessionId,

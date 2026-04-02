@@ -8,4 +8,5 @@ public sealed record TaskRequest(
     string? WorkingDirectory = null,
     string? Model = null,
     PermissionMode PermissionMode = PermissionMode.Default,
-    int MaxTurns = 8);
+    int MaxTurns = 8,
+    string? Provider = null);

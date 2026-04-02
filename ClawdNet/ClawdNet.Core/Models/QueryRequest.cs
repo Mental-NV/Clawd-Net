@@ -9,4 +9,5 @@ public sealed record QueryRequest(
     int MaxTurns = 8,
     PermissionMode PermissionMode = PermissionMode.Default,
     IToolApprovalHandler? ApprovalHandler = null,
-    bool AllowTaskTools = true);
+    bool AllowTaskTools = true,
+    string? Provider = null);

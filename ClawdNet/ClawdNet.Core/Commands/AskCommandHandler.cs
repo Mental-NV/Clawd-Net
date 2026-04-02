@@ -24,7 +24,7 @@ public sealed class AskCommandHandler : ICommandHandler
         {
             var options = Parse(request.Arguments.Skip(1).ToArray());
             var result = await context.QueryEngine.AskAsync(
-                new QueryRequest(options.Prompt, options.SessionId, options.Model, 8, options.PermissionMode),
+                new QueryRequest(options.Prompt, options.SessionId, options.Model, 8, options.PermissionMode, null, true, options.Provider),
                 cancellationToken);
 
             if (options.Json)
@@ -32,6 +32,7 @@ public sealed class AskCommandHandler : ICommandHandler
                 var payload = JsonSerializer.Serialize(new
                 {
                     sessionId = result.Session.Id,
+                    provider = result.Session.Provider,
                     model = result.Session.Model,
                     turnsExecuted = result.TurnsExecuted,
                     assistantText = result.AssistantText,
@@ -50,7 +51,7 @@ public sealed class AskCommandHandler : ICommandHandler
                 ]);
             return CommandExecutionResult.Success(output.TrimEnd());
         }
-        catch (AnthropicConfigurationException ex)
+        catch (ModelProviderConfigurationException ex)
         {
             return CommandExecutionResult.Failure(ex.Message, 2);
         }
@@ -63,6 +64,7 @@ public sealed class AskCommandHandler : ICommandHandler
     private static AskOptions Parse(string[] args)
     {
         string? sessionId = null;
+        string? provider = null;
         string? model = null;
         var permissionMode = PermissionMode.Default;
         var json = false;
@@ -74,6 +76,9 @@ public sealed class AskCommandHandler : ICommandHandler
             {
                 case "--session" when index + 1 < args.Length:
                     sessionId = args[++index];
+                    break;
+                case "--provider" when index + 1 < args.Length:
+                    provider = args[++index];
                     break;
                 case "--model" when index + 1 < args.Length:
                     model = args[++index];
@@ -96,7 +101,7 @@ public sealed class AskCommandHandler : ICommandHandler
             throw new ConversationStoreException("ask requires a prompt.");
         }
 
-        return new AskOptions(prompt, sessionId, model, permissionMode, json);
+        return new AskOptions(prompt, sessionId, model, permissionMode, json, provider);
     }
 
     private static PermissionMode ParsePermissionMode(string value)
@@ -113,5 +118,5 @@ public sealed class AskCommandHandler : ICommandHandler
         };
     }
 
-    private sealed record AskOptions(string Prompt, string? SessionId, string? Model, PermissionMode PermissionMode, bool Json);
+    private sealed record AskOptions(string Prompt, string? SessionId, string? Model, PermissionMode PermissionMode, bool Json, string? Provider);
 }

@@ -47,6 +47,7 @@ public sealed class TaskInspectTool : ITool
         return new ToolExecutionResult(true, JsonSerializer.Serialize(new
         {
             taskId = inspection.Task.Id,
+            provider = inspection.Task.Provider,
             status = inspection.Task.Status.ToString(),
             title = inspection.Task.Title,
             workerSessionId = inspection.Worker.WorkerSessionId,

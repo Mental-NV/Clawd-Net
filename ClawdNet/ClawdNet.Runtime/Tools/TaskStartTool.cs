@@ -29,6 +29,7 @@ public sealed class TaskStartTool : ITool
             ["goal"] = new JsonObject { ["type"] = "string" },
             ["parentSummary"] = new JsonObject { ["type"] = "string" },
             ["cwd"] = new JsonObject { ["type"] = "string" },
+            ["provider"] = new JsonObject { ["type"] = "string" },
             ["model"] = new JsonObject { ["type"] = "string" },
             ["permissionMode"] = new JsonObject { ["type"] = "string" }
         },
@@ -59,12 +60,14 @@ public sealed class TaskStartTool : ITool
                 request.Input?["parentSummary"]?.GetValue<string>(),
                 request.Input?["cwd"]?.GetValue<string>(),
                 request.Input?["model"]?.GetValue<string>(),
-                permissionMode),
+                permissionMode,
+                Provider: request.Input?["provider"]?.GetValue<string>()),
             cancellationToken);
 
         return new ToolExecutionResult(true, JsonSerializer.Serialize(new
         {
             taskId = task.Id,
+            provider = task.Provider,
             status = task.Status.ToString(),
             title = task.Title,
             workerSessionId = task.WorkerSessionId,

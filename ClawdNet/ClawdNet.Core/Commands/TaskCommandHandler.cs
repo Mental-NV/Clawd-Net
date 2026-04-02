@@ -28,7 +28,7 @@ public sealed class TaskCommandHandler : ICommandHandler
             }
 
             var lines = tasks.Select(task =>
-                $"{task.Id} | {task.Status} | {task.Title} | worker={task.WorkerSessionId} | {task.UpdatedAtUtc:O}");
+                $"{task.Id} | {task.Status} | {task.Title} | provider={task.Provider} | model={task.Model} | worker={task.WorkerSessionId} | {task.UpdatedAtUtc:O}");
             return CommandExecutionResult.Success(string.Join(Environment.NewLine, lines));
         }
 
@@ -52,6 +52,7 @@ public sealed class TaskCommandHandler : ICommandHandler
                     $"Title: {task.Title}",
                     $"ParentSession: {task.ParentSessionId}",
                     $"WorkerSession: {task.WorkerSessionId}",
+                    $"Provider: {task.Provider}",
                     $"Model: {task.Model}",
                     $"UpdatedAtUtc: {task.UpdatedAtUtc:O}",
                     $"Summary: {task.Result?.Summary ?? task.LastStatusMessage ?? "(none)"}",

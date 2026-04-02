@@ -55,8 +55,14 @@ public sealed class TaskManager : ITaskManager
     public async Task<TaskRecord> StartAsync(TaskRequest request, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var model = string.IsNullOrWhiteSpace(request.Model) ? "claude-sonnet-4-5" : request.Model!;
-        var workerSession = await _conversationStore.CreateAsync(request.Title, model, cancellationToken);
+        var parentSession = await _conversationStore.GetAsync(request.ParentSessionId, cancellationToken);
+        var provider = string.IsNullOrWhiteSpace(request.Provider)
+            ? parentSession?.Provider ?? "anthropic"
+            : request.Provider!;
+        var model = string.IsNullOrWhiteSpace(request.Model)
+            ? parentSession?.Model ?? "claude-sonnet-4-5"
+            : request.Model!;
+        var workerSession = await _conversationStore.CreateAsync(request.Title, model, cancellationToken, provider);
         var timestamp = DateTimeOffset.UtcNow;
         var startedEvent = new TaskEvent(ClawdTaskStatus.Running, "Task started.", timestamp);
         var task = new TaskRecord(
@@ -80,7 +86,8 @@ public sealed class TaskManager : ITaskManager
             "system: Worker session created.",
             workerSession.Messages.Count,
             workerSession.UpdatedAtUtc,
-            null);
+            null,
+            provider);
 
         await _taskStore.CreateAsync(task, cancellationToken);
         await AppendParentMessageAsync(task.ParentSessionId, "task_started", task.Id, $"{task.Title}: {startedEvent.Message}", false, cancellationToken);
@@ -186,7 +193,8 @@ public sealed class TaskManager : ITaskManager
                                    request.MaxTurns,
                                    request.PermissionMode,
                                    null,
-                                   false),
+                                   false,
+                                   task.Provider),
                                cancellationToken))
             {
                 switch (streamEvent)

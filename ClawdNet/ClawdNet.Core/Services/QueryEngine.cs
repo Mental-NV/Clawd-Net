@@ -7,15 +7,33 @@ namespace ClawdNet.Core.Services;
 
 public sealed class QueryEngine : IQueryEngine
 {
-    private const string DefaultModel = "claude-sonnet-4-5";
     private const string DefaultSystemPrompt = "You are ClawdNet, a concise coding assistant.";
 
     private readonly IConversationStore _conversationStore;
-    private readonly IAnthropicMessageClient _anthropicMessageClient;
+    private readonly IProviderCatalog _providerCatalog;
+    private readonly IModelClientFactory _modelClientFactory;
     private readonly IToolRegistry _toolRegistry;
     private readonly IToolExecutor _toolExecutor;
     private readonly IPermissionService _permissionService;
     private readonly IPluginRuntime _pluginRuntime;
+
+    public QueryEngine(
+        IConversationStore conversationStore,
+        IProviderCatalog providerCatalog,
+        IModelClientFactory modelClientFactory,
+        IToolRegistry toolRegistry,
+        IToolExecutor toolExecutor,
+        IPermissionService permissionService,
+        IPluginRuntime? pluginRuntime = null)
+    {
+        _conversationStore = conversationStore;
+        _providerCatalog = providerCatalog;
+        _modelClientFactory = modelClientFactory;
+        _toolRegistry = toolRegistry;
+        _toolExecutor = toolExecutor;
+        _permissionService = permissionService;
+        _pluginRuntime = pluginRuntime ?? new NoOpPluginRuntime();
+    }
 
     public QueryEngine(
         IConversationStore conversationStore,
@@ -24,13 +42,15 @@ public sealed class QueryEngine : IQueryEngine
         IToolExecutor toolExecutor,
         IPermissionService permissionService,
         IPluginRuntime? pluginRuntime = null)
+        : this(
+            conversationStore,
+            new FixedProviderCatalog(),
+            new FixedModelClientFactory(anthropicMessageClient),
+            toolRegistry,
+            toolExecutor,
+            permissionService,
+            pluginRuntime)
     {
-        _conversationStore = conversationStore;
-        _anthropicMessageClient = anthropicMessageClient;
-        _toolRegistry = toolRegistry;
-        _toolExecutor = toolExecutor;
-        _permissionService = permissionService;
-        _pluginRuntime = pluginRuntime ?? new NoOpPluginRuntime();
     }
 
     public async Task<QueryExecutionResult> AskAsync(QueryRequest request, CancellationToken cancellationToken)
@@ -73,6 +93,7 @@ public sealed class QueryEngine : IQueryEngine
             new
             {
                 prompt = request.Prompt,
+                provider = session.Provider,
                 model = session.Model,
                 permissionMode = request.PermissionMode.ToString(),
                 allowTaskTools = request.AllowTaskTools
@@ -99,6 +120,8 @@ public sealed class QueryEngine : IQueryEngine
         {
             cancellationToken.ThrowIfCancellationRequested();
             turnsExecuted++;
+            var provider = await _providerCatalog.ResolveAsync(session.Provider, cancellationToken);
+            var modelClient = _modelClientFactory.Create(provider);
 
             var modelRequest = new ModelRequest(
                 session.Model,
@@ -113,7 +136,7 @@ public sealed class QueryEngine : IQueryEngine
             var assistantDraft = string.Empty;
             var currentToolUse = (Id: string.Empty, Name: string.Empty, Input: string.Empty);
 
-            await foreach (var modelEvent in _anthropicMessageClient.StreamAsync(modelRequest, cancellationToken))
+            await foreach (var modelEvent in modelClient.StreamAsync(modelRequest, cancellationToken))
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -435,6 +458,7 @@ public sealed class QueryEngine : IQueryEngine
             new
             {
                 assistantText,
+                provider = session.Provider,
                 turnsExecuted,
                 messageCount = session.Messages.Count
             },
@@ -513,6 +537,42 @@ public sealed class QueryEngine : IQueryEngine
             => Task.FromResult(new ToolExecutionResult(false, string.Empty, $"Plugin tool '{invocation.QualifiedToolName}' is unavailable."));
     }
 
+    private sealed class FixedProviderCatalog : IProviderCatalog
+    {
+        private readonly ProviderDefinition _provider = ProviderDefaults.GetBuiltInProviders()
+            .First(provider => string.Equals(provider.Name, ProviderDefaults.DefaultProviderName, StringComparison.OrdinalIgnoreCase));
+
+        public Task ReloadAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<IReadOnlyList<ProviderDefinition>> ListAsync(CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<ProviderDefinition>>([_provider]);
+
+        public Task<ProviderDefinition?> GetAsync(string providerName, CancellationToken cancellationToken)
+            => Task.FromResult<ProviderDefinition?>(string.Equals(_provider.Name, providerName, StringComparison.OrdinalIgnoreCase) ? _provider : null);
+
+        public Task<ProviderDefinition> ResolveAsync(string? providerName, CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(providerName) || string.Equals(_provider.Name, providerName, StringComparison.OrdinalIgnoreCase))
+            {
+                return Task.FromResult(_provider);
+            }
+
+            throw new ModelProviderConfigurationException(providerName!, "Provider is not configured in the compatibility query engine.");
+        }
+    }
+
+    private sealed class FixedModelClientFactory : IModelClientFactory
+    {
+        private readonly IModelClient _client;
+
+        public FixedModelClientFactory(IModelClient client)
+        {
+            _client = client;
+        }
+
+        public IModelClient Create(ProviderDefinition provider) => _client;
+    }
+
     private async Task<ConversationSession> LoadOrCreateSessionAsync(QueryRequest request, CancellationToken cancellationToken)
     {
         if (!string.IsNullOrWhiteSpace(request.SessionId))
@@ -523,13 +583,61 @@ public sealed class QueryEngine : IQueryEngine
                 throw new ConversationStoreException($"Session '{request.SessionId}' was not found.");
             }
 
-            return string.IsNullOrWhiteSpace(request.Model)
-                ? existing
-                : existing with { Model = request.Model! };
+            var provider = await _providerCatalog.ResolveAsync(
+                string.IsNullOrWhiteSpace(request.Provider) ? existing.Provider : request.Provider,
+                cancellationToken);
+            var model = ResolveModelForExistingSession(existing, request.Model, provider.Name, provider.DefaultModel);
+            return existing with
+            {
+                Provider = provider.Name,
+                Model = model
+            };
         }
 
+        var resolvedProvider = await _providerCatalog.ResolveAsync(request.Provider, cancellationToken);
+        var resolvedModel = ResolveModelForNewSession(request.Model, resolvedProvider);
         var title = request.Prompt.Length > 60 ? $"{request.Prompt[..57]}..." : request.Prompt;
-        return await _conversationStore.CreateAsync(title, request.Model ?? DefaultModel, cancellationToken);
+        return await _conversationStore.CreateAsync(title, resolvedModel, cancellationToken, resolvedProvider.Name);
+    }
+
+    private static string ResolveModelForExistingSession(
+        ConversationSession session,
+        string? requestedModel,
+        string providerName,
+        string? defaultModel)
+    {
+        if (!string.IsNullOrWhiteSpace(requestedModel))
+        {
+            return requestedModel!;
+        }
+
+        if (string.Equals(session.Provider, providerName, StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(session.Model))
+        {
+            return session.Model;
+        }
+
+        if (!string.IsNullOrWhiteSpace(defaultModel))
+        {
+            return defaultModel!;
+        }
+
+        throw new ModelProviderConfigurationException(providerName, "Model must be specified because the provider has no default model configured.");
+    }
+
+    private static string ResolveModelForNewSession(string? requestedModel, ProviderDefinition provider)
+    {
+        if (!string.IsNullOrWhiteSpace(requestedModel))
+        {
+            return requestedModel!;
+        }
+
+        if (!string.IsNullOrWhiteSpace(provider.DefaultModel))
+        {
+            return provider.DefaultModel!;
+        }
+
+        throw new ModelProviderConfigurationException(provider.Name, "Model must be specified because the provider has no default model configured.");
     }
 
     private static ModelMessage ToModelMessage(ConversationMessage message)
@@ -650,7 +758,7 @@ public sealed class QueryEngine : IQueryEngine
             summary ?? title,
             string.Empty,
             workerSessionId,
-            root.TryGetProperty("model", out var modelElement) ? modelElement.GetString() ?? DefaultModel : DefaultModel,
+            root.TryGetProperty("model", out var modelElement) ? modelElement.GetString() ?? "claude-sonnet-4-5" : "claude-sonnet-4-5",
             permissionMode,
             status,
             now,
@@ -660,6 +768,7 @@ public sealed class QueryEngine : IQueryEngine
             null,
             summary,
             summary is null ? null : new TaskResult(status == ClawdNet.Core.Models.TaskStatus.Completed, summary, status == ClawdNet.Core.Models.TaskStatus.Completed ? null : summary),
-            []);
+            [],
+            Provider: root.TryGetProperty("provider", out var providerElement) ? providerElement.GetString() ?? "anthropic" : "anthropic");
     }
 }

@@ -2,6 +2,7 @@ using ClawdNet.Core.Abstractions;
 using ClawdNet.Core.Exceptions;
 using ClawdNet.Core.Models;
 using ClawdNet.Terminal.Abstractions;
+using ClawdNet.Terminal.Defaults;
 using ClawdNet.Terminal.Models;
 
 namespace ClawdNet.Terminal.Repl;
@@ -15,6 +16,8 @@ public sealed class ReplHost : IReplHost
     private readonly IToolApprovalHandler _approvalHandler;
     private readonly IPtyManager _ptyManager;
     private readonly ITaskManager _taskManager;
+    private readonly IProviderCatalog _providerCatalog;
+    private readonly IPlatformLauncher _platformLauncher;
     private readonly PromptHistoryBuffer _promptHistory = new();
     private TerminalActivityState _activityState = TerminalActivityState.Ready;
     private string? _activityDetail;
@@ -32,7 +35,9 @@ public sealed class ReplHost : IReplHost
         IQueryEngine queryEngine,
         ITranscriptRenderer transcriptRenderer,
         IPtyManager ptyManager,
-        ITaskManager taskManager)
+        ITaskManager taskManager,
+        IProviderCatalog? providerCatalog = null,
+        IPlatformLauncher? platformLauncher = null)
     {
         _terminalSession = terminalSession;
         _conversationStore = conversationStore;
@@ -40,6 +45,8 @@ public sealed class ReplHost : IReplHost
         _transcriptRenderer = transcriptRenderer;
         _ptyManager = ptyManager;
         _taskManager = taskManager;
+        _providerCatalog = providerCatalog ?? new TerminalFallbackProviderCatalog();
+        _platformLauncher = platformLauncher ?? new TerminalNullPlatformLauncher();
         _approvalHandler = new TerminalApprovalHandler(terminalSession, HandleActivityChange);
     }
 
@@ -49,6 +56,10 @@ public sealed class ReplHost : IReplHost
         try
         {
             session = await LoadOrCreateSessionAsync(options, cancellationToken);
+        }
+        catch (ModelProviderConfigurationException ex)
+        {
+            return CommandExecutionResult.Failure(ex.Message, 2);
         }
         catch (ConversationStoreException ex)
         {
@@ -147,6 +158,10 @@ public sealed class ReplHost : IReplHost
                 {
                     _promptBuffer = string.Empty;
                     _promptHistory.ResetNavigation();
+                    if (_currentSession is not null)
+                    {
+                        session = _currentSession;
+                    }
                     Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
                     continue;
                 }
@@ -163,7 +178,7 @@ public sealed class ReplHost : IReplHost
                     _activeTurnCancellation = turnCancellation;
 
                     await foreach (var streamEvent in _queryEngine.StreamAskAsync(
-                                       new QueryRequest(prompt, session.Id, session.Model, 8, options.PermissionMode, _approvalHandler),
+                                       new QueryRequest(prompt, session.Id, session.Model, 8, options.PermissionMode, _approvalHandler, true, session.Provider),
                                        turnCancellation.Token))
                     {
                         switch (streamEvent)
@@ -334,7 +349,7 @@ public sealed class ReplHost : IReplHost
                     SetActivity(TerminalActivityState.Interrupted, "Interrupted active turn.");
                     Render(session, options.PermissionMode, _visibleStartIndex, clearScreen: true);
                 }
-                catch (AnthropicConfigurationException ex)
+                catch (ModelProviderConfigurationException ex)
                 {
                     _activeTurnCancellation = null;
                     _draft = null;
@@ -371,12 +386,17 @@ public sealed class ReplHost : IReplHost
             case "/help":
                 SetActivity(
                     TerminalActivityState.ShowingHelp,
-                    "Commands: /help, /session, /tasks, /pty, /clear, /bottom, /exit. Keys: Up/Down history, PgUp/PgDn scroll, End bottom, F3 PTY overlay in TUI.");
+                    "Commands: /help, /session, /provider, /tasks, /pty, /open, /browse, /clear, /bottom, /exit. Keys: Up/Down history, PgUp/PgDn scroll, End bottom, F3 PTY overlay in TUI.");
                 return true;
             case "/session":
                 SetActivity(
                     TerminalActivityState.ShowingSession,
-                    $"Session {session.Id} | model={session.Model} | permission={FormatPermissionMode(options.PermissionMode)} | messages={session.Messages.Count}");
+                    $"Session {session.Id} | provider={session.Provider} | model={session.Model} | permission={FormatPermissionMode(options.PermissionMode)} | messages={session.Messages.Count}");
+                return true;
+            case "/provider":
+                SetActivity(
+                    TerminalActivityState.ShowingSession,
+                    $"Provider {session.Provider} | model={session.Model}");
                 return true;
             case "/clear":
                 _visibleStartIndex = session.Messages.Count;
@@ -406,6 +426,41 @@ public sealed class ReplHost : IReplHost
                 SetActivity(TerminalActivityState.Ready, "Returned to live output.");
                 return true;
             default:
+                if (prompt.StartsWith("/provider ", StringComparison.OrdinalIgnoreCase))
+                {
+                    var args = prompt["/provider ".Length..].Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    if (args.Length > 0)
+                    {
+                        try
+                        {
+                            var updated = await UpdateSessionProviderAsync(session, args[0], args.Length > 1 ? args[1] : null, cancellationToken);
+                            _currentSession = updated;
+                            SetActivity(TerminalActivityState.ShowingSession, $"Provider updated to {updated.Provider} | model={updated.Model}");
+                        }
+                        catch (ModelProviderConfigurationException ex)
+                        {
+                            SetActivity(TerminalActivityState.Error, ex.Message);
+                        }
+
+                        return true;
+                    }
+                }
+
+                if (prompt.StartsWith("/open ", StringComparison.OrdinalIgnoreCase))
+                {
+                    var result = await OpenFromSlashCommandAsync(prompt["/open ".Length..], cancellationToken);
+                    SetActivity(result.Success ? TerminalActivityState.ShowingSession : TerminalActivityState.Error, result.Success ? result.Message : result.Error);
+                    return true;
+                }
+
+                if (prompt.StartsWith("/browse ", StringComparison.OrdinalIgnoreCase))
+                {
+                    var url = prompt["/browse ".Length..].Trim();
+                    var result = await _platformLauncher.OpenUrlAsync(url, cancellationToken);
+                    SetActivity(result.Success ? TerminalActivityState.ShowingSession : TerminalActivityState.Error, result.Success ? result.Message : result.Error);
+                    return true;
+                }
+
                 return false;
         }
     }
@@ -420,10 +475,95 @@ public sealed class ReplHost : IReplHost
                 throw new ConversationStoreException($"Session '{options.SessionId}' was not found.");
             }
 
-            return existing;
+            var provider = await _providerCatalog.ResolveAsync(
+                string.IsNullOrWhiteSpace(options.Provider) ? existing.Provider : options.Provider,
+                cancellationToken);
+            var resolvedModel = ResolveModel(existing, options.Model, provider.Name, provider.DefaultModel);
+            var updated = existing with
+            {
+                Provider = provider.Name,
+                Model = resolvedModel
+            };
+            if (!string.Equals(existing.Provider, updated.Provider, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(existing.Model, updated.Model, StringComparison.Ordinal))
+            {
+                await _conversationStore.SaveAsync(updated, cancellationToken);
+            }
+
+            return updated;
         }
 
-        return await _conversationStore.CreateAsync("Interactive session", options.Model ?? "claude-sonnet-4-5", cancellationToken);
+        var resolvedProvider = await _providerCatalog.ResolveAsync(options.Provider, cancellationToken);
+        var model = !string.IsNullOrWhiteSpace(options.Model)
+            ? options.Model!
+            : !string.IsNullOrWhiteSpace(resolvedProvider.DefaultModel)
+                ? resolvedProvider.DefaultModel!
+                : throw new ModelProviderConfigurationException(resolvedProvider.Name, "Model must be specified because the provider has no default model configured.");
+        return await _conversationStore.CreateAsync("Interactive session", model, cancellationToken, resolvedProvider.Name);
+    }
+
+    private async Task<ConversationSession> UpdateSessionProviderAsync(
+        ConversationSession session,
+        string providerName,
+        string? model,
+        CancellationToken cancellationToken)
+    {
+        var provider = await _providerCatalog.ResolveAsync(providerName, cancellationToken);
+        var resolvedModel = ResolveModel(session, model, provider.Name, provider.DefaultModel);
+        var updated = session with
+        {
+            Provider = provider.Name,
+            Model = resolvedModel
+        };
+        await _conversationStore.SaveAsync(updated, cancellationToken);
+        return updated;
+    }
+
+    private async Task<PlatformLaunchResult> OpenFromSlashCommandAsync(string args, CancellationToken cancellationToken)
+    {
+        var parts = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+        {
+            return new PlatformLaunchResult(false, string.Empty, "Path is required.");
+        }
+
+        int? line = null;
+        int? column = null;
+        var pathParts = parts.ToList();
+        if (pathParts.Count > 0 && int.TryParse(pathParts[^1], out var parsedColumn))
+        {
+            column = parsedColumn;
+            pathParts.RemoveAt(pathParts.Count - 1);
+        }
+
+        if (pathParts.Count > 0 && int.TryParse(pathParts[^1], out var parsedLine))
+        {
+            line = parsedLine;
+            pathParts.RemoveAt(pathParts.Count - 1);
+        }
+
+        var path = string.Join(' ', pathParts).Trim();
+        return await _platformLauncher.OpenPathAsync(new PlatformOpenRequest(path, line, column), cancellationToken);
+    }
+
+    private static string ResolveModel(ConversationSession session, string? requestedModel, string providerName, string? defaultModel)
+    {
+        if (!string.IsNullOrWhiteSpace(requestedModel))
+        {
+            return requestedModel!;
+        }
+
+        if (string.Equals(session.Provider, providerName, StringComparison.OrdinalIgnoreCase))
+        {
+            return session.Model;
+        }
+
+        if (!string.IsNullOrWhiteSpace(defaultModel))
+        {
+            return defaultModel!;
+        }
+
+        throw new ModelProviderConfigurationException(providerName, "Model must be specified because the provider has no default model configured.");
     }
 
     private void Render(

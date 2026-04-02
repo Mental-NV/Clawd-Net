@@ -21,4 +21,5 @@ public sealed record TaskRecord(
     string? WorkerTranscriptTail = null,
     int WorkerMessageCount = 0,
     DateTimeOffset? WorkerUpdatedAtUtc = null,
-    string? InterruptionReason = null);
+    string? InterruptionReason = null,
+    string? Provider = null);

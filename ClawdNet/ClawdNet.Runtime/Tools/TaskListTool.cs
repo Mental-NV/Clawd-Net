@@ -38,6 +38,7 @@ public sealed class TaskListTool : ITool
             .Select(task => new
             {
                 taskId = task.Id,
+                provider = task.Provider,
                 status = task.Status.ToString(),
                 title = task.Title,
                 updatedAtUtc = task.UpdatedAtUtc,
