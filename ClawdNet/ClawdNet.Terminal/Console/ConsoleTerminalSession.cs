@@ -48,6 +48,18 @@ public sealed class ConsoleTerminalSession : ITerminalSession
                     return Task.FromResult(PromptInputResult.ToggleSession());
                 case ConsoleKey.F3:
                     return Task.FromResult(PromptInputResult.TogglePty());
+                case ConsoleKey.F4:
+                    return Task.FromResult(PromptInputResult.ToggleTasks());
+                case ConsoleKey.F5:
+                    return Task.FromResult(PromptInputResult.ToggleActivity());
+                case ConsoleKey.F6:
+                    return Task.FromResult(PromptInputResult.DrawerPreviousItem());
+                case ConsoleKey.F7:
+                    return Task.FromResult(PromptInputResult.DrawerNextItem());
+                case ConsoleKey.F8:
+                    return Task.FromResult(PromptInputResult.DrawerOpenSelected());
+                case ConsoleKey.Escape:
+                    return Task.FromResult(PromptInputResult.DismissSurface());
                 default:
                     if (!char.IsControl(key.KeyChar))
                     {
@@ -123,6 +135,12 @@ public sealed class ConsoleTerminalSession : ITerminalSession
         System.Console.WriteLine("Composer");
         System.Console.WriteLine(frame.ComposerPane);
         System.Console.WriteLine();
+        if (!string.IsNullOrWhiteSpace(frame.DrawerPane))
+        {
+            System.Console.WriteLine("Drawer");
+            System.Console.WriteLine(frame.DrawerPane);
+            System.Console.WriteLine();
+        }
         if (!string.IsNullOrWhiteSpace(frame.Overlay))
         {
             System.Console.WriteLine("Overlay");

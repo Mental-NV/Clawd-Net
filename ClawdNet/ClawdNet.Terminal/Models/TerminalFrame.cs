@@ -6,6 +6,7 @@ public sealed record TerminalFrame(
     string ContextPane,
     string ComposerPane,
     string Footer,
+    string? DrawerPane = null,
     string? Overlay = null,
     bool ClearScreen = true,
     bool UseAlternateScreen = true);

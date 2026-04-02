@@ -5,5 +5,6 @@ public enum TuiFocusTarget
     Transcript,
     Composer,
     Context,
+    Drawer,
     Overlay
 }

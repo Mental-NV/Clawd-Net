@@ -23,11 +23,16 @@ public sealed class TuiHost : ITuiHost
     private StreamingAssistantDraft? _draft;
     private string _promptBuffer = string.Empty;
     private TuiFocusTarget _focus = TuiFocusTarget.Composer;
+    private TuiDrawerState? _drawer;
     private TuiOverlayState? _overlay;
     private TerminalActivityState _activityState = TerminalActivityState.Ready;
     private string? _activityDetail;
     private string? _error;
     private CancellationTokenSource? _activeTurnCancellation;
+    private readonly List<string> _activityFeed = [];
+    private string? _selectedSessionId;
+    private string? _selectedTaskId;
+    private string? _selectedPtySessionId;
 
     public TuiHost(
         ITerminalSession terminalSession,
@@ -61,6 +66,7 @@ public sealed class TuiHost : ITuiHost
         _currentPermissionMode = options.PermissionMode;
         _promptBuffer = string.Empty;
         _focus = TuiFocusTarget.Composer;
+        _drawer = null;
         _overlay = null;
         _draft = null;
         _activityState = TerminalActivityState.Ready;
@@ -69,6 +75,8 @@ public sealed class TuiHost : ITuiHost
         _promptHistory.ResetNavigation();
         _transcriptViewport = new TerminalViewportState(PageSize: 18);
         _contextViewport = new TerminalViewportState(PageSize: 10);
+        _activityFeed.Clear();
+        AddActivityFeed("TUI session ready.");
 
         _ptyManager.StateChanged += HandlePtyStateChanged;
         _taskManager.TaskChanged += HandleTaskChanged;
@@ -194,7 +202,12 @@ public sealed class TuiHost : ITuiHost
                     _activityState = TerminalActivityState.Error;
                     _activityDetail = ex.Message;
                     _error = ex.Message;
-                    _overlay = new TuiOverlayState(TuiOverlayKind.Error, "Configuration error", ex.Message);
+                    _overlay = new TuiOverlayState(
+                        TuiOverlayKind.Error,
+                        "Configuration error",
+                        ex.Message,
+                        [new TuiOverlaySection("Error", [ex.Message])]);
+                    AddActivityFeed($"error | {ex.Message}");
                     Render(clearScreen: true);
                     _terminalSession.WriteErrorLine(ex.Message);
                 }
@@ -205,7 +218,12 @@ public sealed class TuiHost : ITuiHost
                     _activityState = TerminalActivityState.Error;
                     _activityDetail = ex.Message;
                     _error = ex.Message;
-                    _overlay = new TuiOverlayState(TuiOverlayKind.Error, "Conversation error", ex.Message);
+                    _overlay = new TuiOverlayState(
+                        TuiOverlayKind.Error,
+                        "Conversation error",
+                        ex.Message,
+                        [new TuiOverlaySection("Error", [ex.Message])]);
+                    AddActivityFeed($"error | {ex.Message}");
                     Render(clearScreen: true);
                     _terminalSession.WriteErrorLine(ex.Message);
                     return CommandExecutionResult.Failure(ex.Message, 3);
@@ -265,11 +283,35 @@ public sealed class TuiHost : ITuiHost
                 Render(clearScreen: true);
                 return true;
             case PromptInputKind.ToggleSession:
-                await ToggleSessionOverlayAsync(options, cancellationToken);
+                await ToggleSessionDrawerAsync(options, cancellationToken);
                 Render(clearScreen: true);
                 return true;
             case PromptInputKind.TogglePty:
-                await TogglePtyOverlayAsync(cancellationToken);
+                await TogglePtyDrawerAsync(cancellationToken);
+                Render(clearScreen: true);
+                return true;
+            case PromptInputKind.ToggleTasks:
+                await ToggleTasksDrawerAsync(cancellationToken);
+                Render(clearScreen: true);
+                return true;
+            case PromptInputKind.ToggleActivity:
+                ToggleActivityDrawer();
+                Render(clearScreen: true);
+                return true;
+            case PromptInputKind.DrawerPreviousItem:
+                await MoveDrawerSelectionAsync(-1, cancellationToken);
+                Render(clearScreen: true);
+                return true;
+            case PromptInputKind.DrawerNextItem:
+                await MoveDrawerSelectionAsync(1, cancellationToken);
+                Render(clearScreen: true);
+                return true;
+            case PromptInputKind.DrawerOpenSelected:
+                await OpenSelectedDrawerItemAsync(options, cancellationToken);
+                Render(clearScreen: true);
+                return true;
+            case PromptInputKind.DismissSurface:
+                DismissSurface();
                 Render(clearScreen: true);
                 return true;
             default:
@@ -285,13 +327,16 @@ public sealed class TuiHost : ITuiHost
                 ToggleHelpOverlay();
                 return true;
             case "/session":
-                await ToggleSessionOverlayAsync(new ReplLaunchOptions(_currentSession?.Id, _currentSession?.Model, _currentPermissionMode), cancellationToken);
+                await ToggleSessionDrawerAsync(new ReplLaunchOptions(_currentSession?.Id, _currentSession?.Model, _currentPermissionMode), cancellationToken);
                 return true;
             case "/tasks":
-                await ShowTasksOverlayAsync(cancellationToken);
+                await ToggleTasksDrawerAsync(cancellationToken);
                 return true;
             case "/pty":
-                await TogglePtyOverlayAsync(cancellationToken);
+                await TogglePtyDrawerAsync(cancellationToken);
+                return true;
+            case "/activity":
+                ToggleActivityDrawer();
                 return true;
             case "/clear":
                 _transcriptViewport = new TerminalViewportState(PageSize: _transcriptViewport.PageSize);
@@ -310,7 +355,7 @@ public sealed class TuiHost : ITuiHost
                     var taskId = prompt["/tasks ".Length..].Trim();
                     if (!string.IsNullOrWhiteSpace(taskId))
                     {
-                        await ShowTaskInspectionOverlayAsync(taskId, cancellationToken);
+                        await ShowTaskDrawerAsync(taskId, cancellationToken);
                         return true;
                     }
                 }
@@ -323,7 +368,8 @@ public sealed class TuiHost : ITuiHost
                         var pruned = await _ptyManager.PruneExitedAsync(cancellationToken);
                         _activityState = TerminalActivityState.Ready;
                         _activityDetail = pruned == 0 ? "No exited PTY sessions to remove." : $"Removed {pruned} exited PTY session(s).";
-                        await RefreshPtyOverlayAsync();
+                        AddActivityFeed(_activityDetail);
+                        await RefreshPtyDrawerAsync();
                         return true;
                     }
 
@@ -337,14 +383,15 @@ public sealed class TuiHost : ITuiHost
                             _activityDetail = closed is null
                                 ? $"PTY session '{closeSessionId}' was not found."
                                 : $"Closed PTY session {closed.SessionId}.";
-                            await RefreshPtyOverlayAsync();
+                            AddActivityFeed(_activityDetail);
+                            await RefreshPtyDrawerAsync();
                             return true;
                         }
                     }
 
                     if (!string.IsNullOrWhiteSpace(args))
                     {
-                        await ShowPtyOverlayAsync(args, focusSession: true, cancellationToken);
+                        await ShowPtyDrawerAsync(args, focusSession: true, cancellationToken);
                         return true;
                     }
                 }
@@ -362,6 +409,7 @@ public sealed class TuiHost : ITuiHost
                 _draft = new StreamingAssistantDraft(string.Empty, true, null, "Waiting for model response...");
                 _activityState = TerminalActivityState.WaitingForModel;
                 _activityDetail = "Waiting for model response...";
+                AddActivityFeed("query | user turn accepted");
                 MarkTranscriptLiveUpdate();
                 break;
             case AssistantTextDeltaStreamEvent delta:
@@ -382,6 +430,7 @@ public sealed class TuiHost : ITuiHost
                 _draft = new StreamingAssistantDraft(string.Empty, true, toolCallRequested.ToolCall.Name, $"Preparing tool {toolCallRequested.ToolCall.Name}...");
                 _activityState = TerminalActivityState.RunningTool;
                 _activityDetail = $"Preparing tool {toolCallRequested.ToolCall.Name}...";
+                AddActivityFeed($"tool | requested {toolCallRequested.ToolCall.Name}");
                 MarkTranscriptLiveUpdate();
                 break;
             case PermissionDecisionStreamEvent permissionEvent:
@@ -390,16 +439,29 @@ public sealed class TuiHost : ITuiHost
                     : TerminalActivityState.RunningTool;
                 _activityDetail = permissionEvent.Decision.Reason;
                 _draft = new StreamingAssistantDraft(string.Empty, true, permissionEvent.ToolCall.Name, permissionEvent.Decision.Reason);
+                AddActivityFeed($"permission | {permissionEvent.ToolCall.Name} | {permissionEvent.Decision.Reason}");
                 break;
             case EditPreviewGeneratedEvent previewEvent:
                 _currentSession = previewEvent.Session;
                 _overlay = new TuiOverlayState(
-                    TuiOverlayKind.EditPreview,
+                    TuiOverlayKind.EditReview,
                     $"Edit preview: {previewEvent.ToolCall.Name}",
-                    previewEvent.Preview.Diff);
+                    previewEvent.Preview.Summary,
+                    [
+                        new TuiOverlaySection(
+                            "Summary",
+                            [
+                                $"files={previewEvent.Preview.FileCount}",
+                                previewEvent.Preview.Summary
+                            ]),
+                        new TuiOverlaySection(
+                            "Diff",
+                            previewEvent.Preview.Diff.Split(Environment.NewLine).ToArray())
+                    ]);
                 _focus = TuiFocusTarget.Overlay;
                 _activityState = TerminalActivityState.ReviewingEdits;
                 _activityDetail = previewEvent.Preview.Summary;
+                AddActivityFeed($"edit | preview | {previewEvent.Preview.Summary}");
                 MarkTranscriptLiveUpdate();
                 break;
             case EditApprovalRecordedEvent editApproval:
@@ -408,6 +470,7 @@ public sealed class TuiHost : ITuiHost
                 _focus = TuiFocusTarget.Composer;
                 _activityState = editApproval.Approved ? TerminalActivityState.RunningTool : TerminalActivityState.ReviewingEdits;
                 _activityDetail = editApproval.Summary;
+                AddActivityFeed($"edit | {(editApproval.Approved ? "approved" : "rejected")} | {editApproval.Summary}");
                 MarkTranscriptLiveUpdate();
                 break;
             case ToolResultCommittedEvent committedTool:
@@ -416,33 +479,40 @@ public sealed class TuiHost : ITuiHost
                 _activityDetail = committedTool.Result.Success
                     ? $"Tool {committedTool.ToolCall.Name} completed."
                     : $"Tool {committedTool.ToolCall.Name} failed.";
+                AddActivityFeed($"tool | {committedTool.ToolCall.Name} | {(committedTool.Result.Success ? "completed" : "failed")}");
                 MarkTranscriptLiveUpdate();
                 break;
             case PluginHookRecordedEvent hookRecorded:
                 _currentSession = hookRecorded.Session;
                 _activityState = hookRecorded.Result.Success ? TerminalActivityState.RunningTool : TerminalActivityState.Error;
                 _activityDetail = $"{hookRecorded.Result.Plugin.Name}:{hookRecorded.Result.Hook.Kind} -> {hookRecorded.Result.Message}";
+                AddActivityFeed($"hook | {hookRecorded.Result.Plugin.Name}:{hookRecorded.Result.Hook.Kind} | {hookRecorded.Result.Message}");
                 MarkTranscriptLiveUpdate();
                 break;
             case TaskStartedStreamEvent taskStarted:
                 _activityState = TerminalActivityState.RunningTool;
                 _activityDetail = $"Task {taskStarted.Task.Id} started: {taskStarted.Task.Title}";
+                AddActivityFeed($"task | started | {taskStarted.Task.Id}");
                 break;
             case TaskUpdatedStreamEvent taskUpdated:
                 _activityState = TerminalActivityState.RunningTool;
                 _activityDetail = $"Task {taskUpdated.Task.Id}: {taskUpdated.Event.Message}";
+                AddActivityFeed($"task | updated | {taskUpdated.Task.Id} | {taskUpdated.Event.Message}");
                 break;
             case TaskCompletedStreamEvent taskCompleted:
                 _activityState = TerminalActivityState.RunningTool;
                 _activityDetail = $"Task {taskCompleted.Task.Id} completed: {taskCompleted.Result.Summary}";
+                AddActivityFeed($"task | completed | {taskCompleted.Task.Id}");
                 break;
             case TaskFailedStreamEvent taskFailed:
                 _activityState = TerminalActivityState.Error;
                 _activityDetail = $"Task {taskFailed.Task.Id} failed: {taskFailed.Result.Error ?? taskFailed.Result.Summary}";
+                AddActivityFeed($"task | failed | {taskFailed.Task.Id}");
                 break;
             case TaskCanceledStreamEvent taskCanceled:
                 _activityState = TerminalActivityState.Interrupted;
                 _activityDetail = $"Task {taskCanceled.Task.Id} canceled: {taskCanceled.Event.Message}";
+                AddActivityFeed($"task | canceled | {taskCanceled.Task.Id}");
                 break;
             case TurnCompletedStreamEvent completed:
                 _currentSession = completed.Result.Session;
@@ -455,8 +525,13 @@ public sealed class TuiHost : ITuiHost
                 _activityState = TerminalActivityState.Error;
                 _activityDetail = failed.Message;
                 _error = failed.Message;
-                _overlay = new TuiOverlayState(TuiOverlayKind.Error, "Turn failed", failed.Message);
+                _overlay = new TuiOverlayState(
+                    TuiOverlayKind.Error,
+                    "Turn failed",
+                    failed.Message,
+                    [new TuiOverlaySection("Error", [failed.Message])]);
                 _focus = TuiFocusTarget.Overlay;
+                AddActivityFeed($"error | turn failed | {failed.Message}");
                 break;
         }
     }
@@ -485,14 +560,16 @@ public sealed class TuiHost : ITuiHost
         }
 
         var size = _terminalSession.GetTerminalSize();
-        var layout = new TuiLayoutState(size.Width, size.Height, Math.Max(50, size.Width - 32), Math.Min(30, Math.Max(24, size.Width / 4)));
+        var layout = new TuiLayoutState(size.Width, size.Height, Math.Max(50, size.Width - 32), Math.Min(30, Math.Max(24, size.Width / 4)), Math.Min(42, Math.Max(30, size.Width / 3)));
         var state = new TuiState(
             _currentSession,
             _currentPermissionMode,
             GetTranscriptMessages(_currentSession),
             GetVisibleTasks(),
+            _activityFeed.TakeLast(12).Reverse().ToArray(),
             _promptBuffer,
             _focus,
+            _drawer,
             _overlay,
             layout,
             _transcriptViewport,
@@ -594,7 +671,9 @@ public sealed class TuiHost : ITuiHost
 
     private void CycleFocus(bool forward)
     {
-        var order = new[] { TuiFocusTarget.Transcript, TuiFocusTarget.Composer, TuiFocusTarget.Context };
+        var order = _drawer is null
+            ? new[] { TuiFocusTarget.Transcript, TuiFocusTarget.Composer, TuiFocusTarget.Context }
+            : new[] { TuiFocusTarget.Transcript, TuiFocusTarget.Composer, TuiFocusTarget.Context, TuiFocusTarget.Drawer };
         if (_overlay is not null)
         {
             _focus = TuiFocusTarget.Overlay;
@@ -626,102 +705,161 @@ public sealed class TuiHost : ITuiHost
         _overlay = new TuiOverlayState(
             TuiOverlayKind.Help,
             "Keyboard shortcuts",
-            "Tab/Shift+Tab: cycle focus" + Environment.NewLine +
-            "PgUp/PgDn: scroll focused pane" + Environment.NewLine +
-            "End: jump focused pane to bottom" + Environment.NewLine +
-            "F1: help" + Environment.NewLine +
-            "F2: session details" + Environment.NewLine +
-            "F3: PTY sessions" + Environment.NewLine +
-            "Ctrl+C: interrupt PTY or active turn" + Environment.NewLine +
-            "Slash commands: /help /session /tasks [/tasks <id>] /pty [/pty <id>] [/pty close <id>] [/pty close-exited] /clear /bottom /exit");
-        _focus = TuiFocusTarget.Overlay;
-    }
-
-    private async Task ToggleSessionOverlayAsync(ReplLaunchOptions options, CancellationToken cancellationToken)
-    {
-        if (_overlay?.Kind == TuiOverlayKind.Session)
-        {
-            _overlay = null;
-            _focus = TuiFocusTarget.Composer;
-            return;
-        }
-
-        var tasks = await _taskManager.ListAsync(cancellationToken);
-        _overlay = new TuiOverlayState(
-            TuiOverlayKind.Session,
-            "Session details",
-            $"Session: {_currentSession?.Id ?? options.SessionId}" + Environment.NewLine +
-            $"Model: {_currentSession?.Model ?? options.Model}" + Environment.NewLine +
-            $"Permission: {_currentPermissionMode}" + Environment.NewLine +
-            $"Messages: {_currentSession?.Messages.Count ?? 0}" + Environment.NewLine +
-            $"Recent tasks: {tasks.Count}");
-        _focus = TuiFocusTarget.Overlay;
-    }
-
-    private async Task ShowTasksOverlayAsync(CancellationToken cancellationToken)
-    {
-        var tasks = await _taskManager.ListAsync(cancellationToken);
-        var content = tasks.Count == 0
-            ? "No tasks found."
-            : string.Join(
-                Environment.NewLine,
-                tasks.Take(8).Select(task =>
-                    $"{task.Id} | {task.Status} | {task.Title}{Environment.NewLine}  updated={task.UpdatedAtUtc:O}{Environment.NewLine}  summary={task.Result?.Summary ?? task.LastStatusMessage ?? "(none)"}"));
-        if (tasks.Count > 0)
-        {
-            content = $"{content}{Environment.NewLine}{Environment.NewLine}Use /tasks <id> to inspect a worker transcript.";
-        }
-
-        _overlay = new TuiOverlayState(TuiOverlayKind.Session, "Recent tasks", content);
-        _focus = TuiFocusTarget.Overlay;
-    }
-
-    private async Task ShowTaskInspectionOverlayAsync(string taskId, CancellationToken cancellationToken)
-    {
-        var inspection = await _taskManager.InspectAsync(taskId, cancellationToken);
-        if (inspection is null)
-        {
-            _overlay = new TuiOverlayState(TuiOverlayKind.Error, "Task not found", $"Task '{taskId}' was not found.");
-            _focus = TuiFocusTarget.Overlay;
-            return;
-        }
-
-        var recentEvents = inspection.RecentEvents.Count == 0
-            ? "(none)"
-            : string.Join(Environment.NewLine, inspection.RecentEvents.Select(taskEvent => $"{taskEvent.TimestampUtc:HH:mm:ss} | {taskEvent.Status} | {taskEvent.Message}"));
-        var content = string.Join(
-            Environment.NewLine,
+            "Conversation-first shell with drawers for sessions, tasks, PTY, and runtime activity.",
             [
-                $"Task: {inspection.Task.Id}",
-                $"Status: {inspection.Task.Status}",
-                $"Title: {inspection.Task.Title}",
-                $"WorkerSession: {inspection.Worker.WorkerSessionId}",
-                $"WorkerMessages: {inspection.Worker.MessageCount}",
-                $"WorkerUpdatedAtUtc: {inspection.Worker.UpdatedAtUtc:O}",
-                $"Summary: {inspection.Task.Result?.Summary ?? inspection.Task.LastStatusMessage ?? "(none)"}",
-                "RecentEvents:",
-                recentEvents,
-                "WorkerTranscriptTail:",
-                string.IsNullOrWhiteSpace(inspection.Worker.TranscriptTail) ? "(none)" : inspection.Worker.TranscriptTail
+                new TuiOverlaySection(
+                    "Keys",
+                    [
+                        "Tab/Shift+Tab: cycle focus",
+                        "PgUp/PgDn: scroll focused pane",
+                        "End: jump focused pane to bottom",
+                        "F1: help overlay",
+                        "F2: sessions drawer",
+                        "F3: PTY drawer",
+                        "F4: tasks drawer",
+                        "F5: activity drawer",
+                        "F6/F7: previous/next drawer item",
+                        "F8: open selected drawer detail",
+                        "Esc: dismiss drawer or overlay",
+                        "Ctrl+C: interrupt PTY or active turn"
+                    ]),
+                new TuiOverlaySection(
+                    "Slash Commands",
+                    [
+                        "/help",
+                        "/session",
+                        "/tasks",
+                        "/tasks <id>",
+                        "/pty",
+                        "/pty <id>",
+                        "/pty close <id>",
+                        "/pty close-exited",
+                        "/activity",
+                        "/clear",
+                        "/bottom",
+                        "/exit"
+                    ])
             ]);
-
-        _overlay = new TuiOverlayState(TuiOverlayKind.Session, $"Task details: {inspection.Task.Id}", content);
         _focus = TuiFocusTarget.Overlay;
     }
 
-    private async Task TogglePtyOverlayAsync(CancellationToken cancellationToken)
+    private async Task ToggleSessionDrawerAsync(ReplLaunchOptions options, CancellationToken cancellationToken)
     {
-        if (_overlay?.Title == "PTY sessions" || (_overlay?.Title?.StartsWith("PTY details:", StringComparison.Ordinal) ?? false))
+        if (_drawer?.Kind == TuiDrawerKind.Sessions)
         {
-            _overlay = null;
+            _drawer = null;
             _focus = TuiFocusTarget.Composer;
             return;
         }
 
-        await ShowPtyOverlayAsync(_ptyManager.State.CurrentSessionId, focusSession: false, cancellationToken);
+        await ShowSessionDrawerAsync(_selectedSessionId ?? _currentSession?.Id ?? options.SessionId, cancellationToken);
     }
 
-    private async Task ShowPtyOverlayAsync(string? sessionId, bool focusSession, CancellationToken cancellationToken)
+    private async Task ToggleTasksDrawerAsync(CancellationToken cancellationToken)
+    {
+        if (_drawer?.Kind == TuiDrawerKind.Tasks)
+        {
+            _drawer = null;
+            _focus = TuiFocusTarget.Composer;
+            return;
+        }
+
+        await ShowTaskDrawerAsync(_selectedTaskId, cancellationToken);
+    }
+
+    private async Task ShowSessionDrawerAsync(string? sessionId, CancellationToken cancellationToken)
+    {
+        var sessions = await _conversationStore.ListAsync(cancellationToken);
+        var selected = !string.IsNullOrWhiteSpace(sessionId)
+            ? sessions.FirstOrDefault(session => string.Equals(session.Id, sessionId, StringComparison.Ordinal))
+            : _currentSession;
+        if (selected is not null)
+        {
+            _selectedSessionId = selected.Id;
+        }
+
+        var items = sessions
+            .Take(12)
+            .Select(session => new TuiDrawerItem(
+                session.Id,
+                $"{session.Title ?? "Session"} ({session.Id})",
+                $"model={session.Model} | messages={session.Messages.Count} | updated={session.UpdatedAtUtc:HH:mm:ss}",
+                _currentSession is not null && string.Equals(_currentSession.Id, session.Id, StringComparison.Ordinal),
+                selected is not null && string.Equals(selected.Id, session.Id, StringComparison.Ordinal)))
+            .ToArray();
+        var detail = selected is null
+            ? ["No session selected."]
+            : BuildSessionDetail(selected);
+        _drawer = new TuiDrawerState(
+            TuiDrawerKind.Sessions,
+            "Sessions",
+            items,
+            selected is null ? "Session detail" : $"Session detail: {selected.Id}",
+            detail);
+        _focus = TuiFocusTarget.Drawer;
+    }
+
+    private async Task ShowTaskDrawerAsync(string? taskId, CancellationToken cancellationToken)
+    {
+        var tasks = await _taskManager.ListAsync(cancellationToken);
+        var selected = !string.IsNullOrWhiteSpace(taskId)
+            ? tasks.FirstOrDefault(task => string.Equals(task.Id, taskId, StringComparison.Ordinal))
+            : tasks.FirstOrDefault();
+        if (selected is not null)
+        {
+            _selectedTaskId = selected.Id;
+        }
+
+        var items = tasks
+            .Take(10)
+            .Select(task => new TuiDrawerItem(
+                task.Id,
+                $"{task.Title} ({task.Id})",
+                $"{task.Status} | updated={task.UpdatedAtUtc:HH:mm:ss}",
+                task.Status == ClawdNet.Core.Models.TaskStatus.Running,
+                selected is not null && string.Equals(selected.Id, task.Id, StringComparison.Ordinal)))
+            .ToArray();
+        var detail = await BuildTaskDetailAsync(selected?.Id, cancellationToken);
+        _drawer = new TuiDrawerState(
+            TuiDrawerKind.Tasks,
+            "Tasks",
+            items,
+            selected is null ? "Task detail" : $"Task detail: {selected.Id}",
+            detail);
+        _focus = TuiFocusTarget.Drawer;
+    }
+
+    private async Task TogglePtyDrawerAsync(CancellationToken cancellationToken)
+    {
+        if (_drawer?.Kind == TuiDrawerKind.Pty)
+        {
+            _drawer = null;
+            _focus = TuiFocusTarget.Composer;
+            return;
+        }
+
+        await ShowPtyDrawerAsync(_selectedPtySessionId ?? _ptyManager.State.CurrentSessionId, focusSession: false, cancellationToken);
+    }
+
+    private void ToggleActivityDrawer()
+    {
+        if (_drawer?.Kind == TuiDrawerKind.Activity)
+        {
+            _drawer = null;
+            _focus = TuiFocusTarget.Composer;
+            return;
+        }
+
+        _drawer = new TuiDrawerState(
+            TuiDrawerKind.Activity,
+            "Runtime activity",
+            _activityFeed.Take(20).Select((line, index) => new TuiDrawerItem(index.ToString(), line, null, false, index == 0)).ToArray(),
+            "Recent activity",
+            _activityFeed.Take(20).ToArray());
+        _focus = TuiFocusTarget.Drawer;
+    }
+
+    private async Task ShowPtyDrawerAsync(string? sessionId, bool focusSession, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (focusSession && !string.IsNullOrWhiteSpace(sessionId))
@@ -739,61 +877,61 @@ public sealed class TuiHost : ITuiHost
         }
 
         var state = _ptyManager.State;
-        if (state.Sessions.Count == 0)
-        {
-            _overlay = new TuiOverlayState(TuiOverlayKind.Session, "PTY sessions", "No PTY sessions.");
-            _focus = TuiFocusTarget.Overlay;
-            return;
-        }
-
         var selected = !string.IsNullOrWhiteSpace(sessionId)
             ? state.Sessions.FirstOrDefault(session => string.Equals(session.SessionId, sessionId, StringComparison.Ordinal))
-            : state.Sessions.FirstOrDefault(session => session.IsCurrent) ?? state.Sessions[0];
+            : state.Sessions.FirstOrDefault(session => session.IsCurrent) ?? state.Sessions.FirstOrDefault();
+        if (selected is not null)
+        {
+            _selectedPtySessionId = selected.SessionId;
+        }
+
+        var items = state.Sessions
+            .Take(10)
+            .Select(session => new TuiDrawerItem(
+                session.SessionId,
+                $"{session.Command} ({session.SessionId})",
+                $"{(session.IsRunning ? "running" : "stopped")} | cwd={session.WorkingDirectory}",
+                session.IsCurrent,
+                selected is not null && string.Equals(selected.SessionId, session.SessionId, StringComparison.Ordinal)))
+            .ToArray();
         var detail = selected is null
-            ? "No PTY session selected."
+            ? ["No PTY session selected."]
             : await BuildPtyDetailAsync(selected.SessionId, cancellationToken);
-        var list = string.Join(
-            Environment.NewLine,
-            state.Sessions.Take(8).Select(session =>
-                $"{(session.IsCurrent ? "*" : "-")} {session.SessionId} | {(session.IsRunning ? "running" : "stopped")} | {session.Command}"));
-        var content = $"Sessions:{Environment.NewLine}{list}{Environment.NewLine}{Environment.NewLine}{detail}{Environment.NewLine}{Environment.NewLine}Commands: /pty <id> focus | /pty close <id> | /pty close-exited";
-
-        _overlay = new TuiOverlayState(
-            TuiOverlayKind.Session,
-            selected is null ? "PTY sessions" : $"PTY details: {selected.SessionId}",
-            content);
-        _focus = TuiFocusTarget.Overlay;
+        _drawer = new TuiDrawerState(
+            TuiDrawerKind.Pty,
+            "PTY sessions",
+            items,
+            selected is null ? "PTY detail" : $"PTY detail: {selected.SessionId}",
+            detail);
+        _focus = TuiFocusTarget.Drawer;
     }
 
-    private async Task RefreshPtyOverlayAsync()
+    private async Task RefreshPtyDrawerAsync()
     {
-        var selectedSessionId = _overlay?.Title?.StartsWith("PTY details:", StringComparison.Ordinal) == true
-            ? _overlay.Title["PTY details: ".Length..].Trim()
-            : _ptyManager.State.CurrentSessionId;
-        await ShowPtyOverlayAsync(selectedSessionId, focusSession: false, CancellationToken.None);
+        await ShowPtyDrawerAsync(_selectedPtySessionId ?? _ptyManager.State.CurrentSessionId, focusSession: false, CancellationToken.None);
     }
 
-    private async Task<string> BuildPtyDetailAsync(string sessionId, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<string>> BuildPtyDetailAsync(string sessionId, CancellationToken cancellationToken)
     {
         var state = await _ptyManager.ReadAsync(sessionId, cancellationToken);
         if (state is null)
         {
-            return "Selected PTY session was not found.";
+            return ["Selected PTY session was not found."];
         }
 
-        return string.Join(
-            Environment.NewLine,
-            [
-                "Selected:",
-                $"session={state.SessionId}",
-                $"command={state.Command}",
-                $"cwd={state.WorkingDirectory}",
-                $"running={state.IsRunning}",
-                $"exitCode={(state.ExitCode.HasValue ? state.ExitCode.Value.ToString() : "n/a")}",
-                $"outputClipped={state.IsOutputClipped}",
-                string.Empty,
-                string.IsNullOrWhiteSpace(state.RecentOutput) ? "(no output yet)" : state.RecentOutput.TrimEnd()
-            ]);
+        return
+        [
+            $"session={state.SessionId}",
+            $"command={state.Command}",
+            $"cwd={state.WorkingDirectory}",
+            $"running={state.IsRunning}",
+            $"exitCode={(state.ExitCode.HasValue ? state.ExitCode.Value.ToString() : "n/a")}",
+            $"outputClipped={state.IsOutputClipped}",
+            string.Empty,
+            string.IsNullOrWhiteSpace(state.RecentOutput) ? "(no output yet)" : state.RecentOutput.TrimEnd(),
+            string.Empty,
+            "commands: /pty <id> | /pty close <id> | /pty close-exited"
+        ];
     }
 
     private void HandlePtyStateChanged(PtyManagerState state)
@@ -809,11 +947,12 @@ public sealed class TuiHost : ITuiHost
             _activityDetail = $"PTY session active: {state.CurrentSession.Command}";
         }
 
-        if (_overlay?.Title == "PTY sessions" || (_overlay?.Title?.StartsWith("PTY details:", StringComparison.Ordinal) ?? false))
+        if (_drawer?.Kind == TuiDrawerKind.Pty)
         {
-            _ = RefreshPtyOverlayAsync();
+            _ = RefreshPtyDrawerAsync();
         }
 
+        AddActivityFeed($"pty | current={state.CurrentSessionId ?? "none"}");
         MarkContextLiveUpdate();
         Render(clearScreen: true);
     }
@@ -835,13 +974,10 @@ public sealed class TuiHost : ITuiHost
 
             _activityState = TerminalActivityState.RunningTool;
             _activityDetail = $"Task {task.Id} | {task.Status} | {taskEvent.Message}";
-            if (_overlay?.Title == "Recent tasks")
+            AddActivityFeed($"task | {task.Id} | {taskEvent.Message}");
+            if (_drawer?.Kind == TuiDrawerKind.Tasks)
             {
-                await ShowTasksOverlayAsync(CancellationToken.None);
-            }
-            else if (_overlay?.Title == $"Task details: {task.Id}")
-            {
-                await ShowTaskInspectionOverlayAsync(task.Id, CancellationToken.None);
+                await ShowTaskDrawerAsync(_selectedTaskId ?? task.Id, CancellationToken.None);
             }
             MarkContextLiveUpdate();
             Render(clearScreen: true);
@@ -874,6 +1010,158 @@ public sealed class TuiHost : ITuiHost
         _contextViewport = _contextViewport with { HasBufferedLiveOutput = true };
     }
 
+    private void AddActivityFeed(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        _activityFeed.Insert(0, $"[{DateTimeOffset.UtcNow:HH:mm:ss}] {message}");
+        if (_activityFeed.Count > 40)
+        {
+            _activityFeed.RemoveRange(40, _activityFeed.Count - 40);
+        }
+
+        if (_drawer?.Kind == TuiDrawerKind.Activity)
+        {
+            ToggleActivityDrawer();
+            ToggleActivityDrawer();
+        }
+    }
+
+    private async Task MoveDrawerSelectionAsync(int delta, CancellationToken cancellationToken)
+    {
+        if (_drawer is null || _drawer.Items.Count == 0)
+        {
+            return;
+        }
+
+        var currentIndex = _drawer.Items.ToList().FindIndex(item => item.IsSelected);
+        if (currentIndex < 0)
+        {
+            currentIndex = 0;
+        }
+
+        var nextIndex = Math.Clamp(currentIndex + delta, 0, _drawer.Items.Count - 1);
+        var selectedId = _drawer.Items[nextIndex].Id;
+        switch (_drawer.Kind)
+        {
+            case TuiDrawerKind.Sessions:
+                await ShowSessionDrawerAsync(selectedId, cancellationToken);
+                break;
+            case TuiDrawerKind.Tasks:
+                await ShowTaskDrawerAsync(selectedId, cancellationToken);
+                break;
+            case TuiDrawerKind.Pty:
+                await ShowPtyDrawerAsync(selectedId, focusSession: false, cancellationToken);
+                break;
+            case TuiDrawerKind.Activity:
+                ToggleActivityDrawer();
+                break;
+        }
+    }
+
+    private async Task OpenSelectedDrawerItemAsync(ReplLaunchOptions options, CancellationToken cancellationToken)
+    {
+        if (_drawer is null)
+        {
+            return;
+        }
+
+        var selectedId = _drawer.Items.FirstOrDefault(item => item.IsSelected)?.Id;
+        switch (_drawer.Kind)
+        {
+            case TuiDrawerKind.Sessions:
+                if (!string.IsNullOrWhiteSpace(selectedId))
+                {
+                    await ShowSessionDrawerAsync(selectedId, cancellationToken);
+                }
+                break;
+            case TuiDrawerKind.Tasks:
+                if (!string.IsNullOrWhiteSpace(selectedId))
+                {
+                    await ShowTaskDrawerAsync(selectedId, cancellationToken);
+                }
+                break;
+            case TuiDrawerKind.Pty:
+                if (!string.IsNullOrWhiteSpace(selectedId))
+                {
+                    await ShowPtyDrawerAsync(selectedId, focusSession: true, cancellationToken);
+                }
+                break;
+            case TuiDrawerKind.Activity:
+                await ToggleSessionDrawerAsync(options, cancellationToken);
+                break;
+        }
+    }
+
+    private void DismissSurface()
+    {
+        if (_overlay is not null)
+        {
+            _overlay = null;
+            _focus = _drawer is null ? TuiFocusTarget.Composer : TuiFocusTarget.Drawer;
+            return;
+        }
+
+        if (_drawer is not null)
+        {
+            _drawer = null;
+            _focus = TuiFocusTarget.Composer;
+        }
+    }
+
+    private IReadOnlyList<string> BuildSessionDetail(ConversationSession session)
+    {
+        var tail = session.Messages.TakeLast(8)
+            .Select(message => $"{message.Role}: {message.Content}")
+            .ToArray();
+        return
+        [
+            $"session={session.Id}",
+            $"title={session.Title ?? "(untitled)"}",
+            $"model={session.Model}",
+            $"messages={session.Messages.Count}",
+            $"updated={session.UpdatedAtUtc:O}",
+            string.Empty,
+            "Transcript tail:",
+            .. tail
+        ];
+    }
+
+    private async Task<IReadOnlyList<string>> BuildTaskDetailAsync(string? taskId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(taskId))
+        {
+            return ["No task selected."];
+        }
+
+        var inspection = await _taskManager.InspectAsync(taskId, cancellationToken);
+        if (inspection is null)
+        {
+            return [$"Task '{taskId}' was not found."];
+        }
+
+        var lines = new List<string>
+        {
+            $"task={inspection.Task.Id}",
+            $"status={inspection.Task.Status}",
+            $"title={inspection.Task.Title}",
+            $"workerSession={inspection.Worker.WorkerSessionId}",
+            $"workerMessages={inspection.Worker.MessageCount}",
+            $"updated={inspection.Worker.UpdatedAtUtc:O}",
+            $"summary={inspection.Task.Result?.Summary ?? inspection.Task.LastStatusMessage ?? "(none)"}",
+            string.Empty,
+            "Recent events:"
+        };
+        lines.AddRange(inspection.RecentEvents.Take(8).Select(taskEvent => $"{taskEvent.TimestampUtc:HH:mm:ss} | {taskEvent.Status} | {taskEvent.Message}"));
+        lines.Add(string.Empty);
+        lines.Add("Worker transcript:");
+        lines.Add(string.IsNullOrWhiteSpace(inspection.Worker.TranscriptTail) ? "(none)" : inspection.Worker.TranscriptTail);
+        return lines;
+    }
+
     private sealed class TuiApprovalHandler : IToolApprovalHandler
     {
         private readonly TuiHost _owner;
@@ -893,14 +1181,20 @@ public sealed class TuiHost : ITuiHost
                 TuiOverlayKind.Approval,
                 $"Approve {toolCall.Name}",
                 permissionDecision.Reason,
+                [
+                    new TuiOverlaySection("Tool", [$"name={toolCall.Name}"]),
+                    new TuiOverlaySection("Reason", [permissionDecision.Reason])
+                ],
                 true);
             _owner._focus = TuiFocusTarget.Overlay;
             _owner._activityState = TerminalActivityState.AwaitingApproval;
             _owner._activityDetail = permissionDecision.Reason;
+            _owner.AddActivityFeed($"approval | requested | {toolCall.Name}");
             _owner.Render(clearScreen: true);
             var approved = await _owner._terminalSession.ConfirmAsync($"Approve {toolCall.Name}?", cancellationToken);
             _owner._overlay = null;
             _owner._focus = TuiFocusTarget.Composer;
+            _owner.AddActivityFeed($"approval | {(approved ? "approved" : "denied")} | {toolCall.Name}");
             return approved;
         }
     }

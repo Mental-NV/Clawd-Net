@@ -15,5 +15,11 @@ public enum PromptInputKind
     FocusPrevious,
     ToggleHelp,
     ToggleSession,
-    TogglePty
+    TogglePty,
+    ToggleTasks,
+    ToggleActivity,
+    DrawerNextItem,
+    DrawerPreviousItem,
+    DrawerOpenSelected,
+    DismissSurface
 }

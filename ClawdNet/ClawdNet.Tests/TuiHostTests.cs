@@ -60,7 +60,7 @@ public sealed class TuiHostTests : IDisposable
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains(terminal.RenderedFrames, frame => frame.Overlay is not null && frame.Overlay.Contains("Keyboard shortcuts", StringComparison.Ordinal));
-        Assert.Contains(terminal.RenderedFrames, frame => frame.Overlay is not null && frame.Overlay.Contains("Session details", StringComparison.Ordinal));
+        Assert.Contains(terminal.RenderedFrames, frame => frame.DrawerPane is not null && frame.DrawerPane.Contains("Sessions", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -97,8 +97,8 @@ public sealed class TuiHostTests : IDisposable
         var result = await host.RunAsync(new ReplLaunchOptions(), CancellationToken.None);
 
         Assert.Equal(0, result.ExitCode);
-        Assert.Contains(terminal.RenderedFrames, frame => frame.Overlay is not null && frame.Overlay.Contains("Recent tasks", StringComparison.Ordinal));
-        Assert.Contains(terminal.RenderedFrames, frame => frame.Overlay is not null && frame.Overlay.Contains("assistant: worker finished", StringComparison.Ordinal));
+        Assert.Contains(terminal.RenderedFrames, frame => frame.DrawerPane is not null && frame.DrawerPane.Contains("Tasks", StringComparison.Ordinal));
+        Assert.Contains(terminal.RenderedFrames, frame => frame.DrawerPane is not null && frame.DrawerPane.Contains("assistant: worker finished", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -114,9 +114,9 @@ public sealed class TuiHostTests : IDisposable
         var result = await host.RunAsync(new ReplLaunchOptions(), CancellationToken.None);
 
         Assert.Equal(0, result.ExitCode);
-        Assert.Contains(terminal.RenderedFrames, frame => frame.Overlay is not null && frame.Overlay.Contains("PTY details", StringComparison.Ordinal));
-        Assert.Contains(terminal.RenderedFrames, frame => frame.Overlay is not null && frame.Overlay.Contains("pty-1", StringComparison.Ordinal));
-        Assert.Contains(terminal.RenderedFrames, frame => frame.Overlay is not null && frame.Overlay.Contains("pty-2", StringComparison.Ordinal));
+        Assert.Contains(terminal.RenderedFrames, frame => frame.DrawerPane is not null && frame.DrawerPane.Contains("PTY sessions", StringComparison.Ordinal));
+        Assert.Contains(terminal.RenderedFrames, frame => frame.DrawerPane is not null && frame.DrawerPane.Contains("pty-1", StringComparison.Ordinal));
+        Assert.Contains(terminal.RenderedFrames, frame => frame.DrawerPane is not null && frame.DrawerPane.Contains("pty-2", StringComparison.Ordinal));
         Assert.Equal("pty-2", ptyManager.State.CurrentSessionId);
     }
 

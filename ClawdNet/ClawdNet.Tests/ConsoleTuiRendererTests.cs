@@ -23,9 +23,20 @@ public sealed class ConsoleTuiRendererTests
             PermissionMode.Default,
             session.Messages,
             [],
+            [],
             "hello",
             TuiFocusTarget.Composer,
-            new TuiOverlayState(TuiOverlayKind.Help, "Keyboard shortcuts", "Tab: focus"),
+            new TuiDrawerState(
+                TuiDrawerKind.Tasks,
+                "Tasks",
+                [new TuiDrawerItem("task-1", "Index repo", "running", true, true)],
+                "Task detail: task-1",
+                ["status=running"]),
+            new TuiOverlayState(
+                TuiOverlayKind.Help,
+                "Keyboard shortcuts",
+                "Tab: focus",
+                [new TuiOverlaySection("Keys", ["Tab: focus"])]),
             new TuiLayoutState(120, 40, 88, 32),
             new TerminalViewportState(),
             new TerminalViewportState(),
@@ -40,6 +51,7 @@ public sealed class ConsoleTuiRendererTests
         Assert.Contains("ClawdNet TUI", frame.Header);
         Assert.Contains("ready", frame.TranscriptPane);
         Assert.Contains("composer", frame.ComposerPane, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Tasks", frame.DrawerPane);
         Assert.Contains("Keyboard shortcuts", frame.Overlay);
     }
 }

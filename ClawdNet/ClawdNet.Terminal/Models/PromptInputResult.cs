@@ -31,4 +31,16 @@ public sealed record PromptInputResult(
     public static PromptInputResult ToggleSession() => new(PromptInputKind.ToggleSession);
 
     public static PromptInputResult TogglePty() => new(PromptInputKind.TogglePty);
+
+    public static PromptInputResult ToggleTasks() => new(PromptInputKind.ToggleTasks);
+
+    public static PromptInputResult ToggleActivity() => new(PromptInputKind.ToggleActivity);
+
+    public static PromptInputResult DrawerNextItem() => new(PromptInputKind.DrawerNextItem);
+
+    public static PromptInputResult DrawerPreviousItem() => new(PromptInputKind.DrawerPreviousItem);
+
+    public static PromptInputResult DrawerOpenSelected() => new(PromptInputKind.DrawerOpenSelected);
+
+    public static PromptInputResult DismissSurface() => new(PromptInputKind.DismissSurface);
 }

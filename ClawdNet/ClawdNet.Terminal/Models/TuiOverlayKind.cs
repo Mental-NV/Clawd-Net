@@ -5,7 +5,7 @@ public enum TuiOverlayKind
     None,
     Help,
     Approval,
-    EditPreview,
+    EditReview,
     Error,
     Session
 }

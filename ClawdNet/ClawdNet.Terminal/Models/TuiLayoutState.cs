@@ -4,4 +4,5 @@ public sealed record TuiLayoutState(
     int Width,
     int Height,
     int TranscriptWidth,
-    int ContextWidth);
+    int ContextWidth,
+    int DrawerWidth = 36);

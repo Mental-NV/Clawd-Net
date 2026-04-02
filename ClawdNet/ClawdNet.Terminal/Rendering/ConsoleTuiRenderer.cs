@@ -20,6 +20,7 @@ public sealed class ConsoleTuiRenderer : ITuiRenderer
         var transcript = _transcriptRenderer.Render(state.VisibleTranscript);
         var context = RenderContext(state);
         var composer = RenderComposer(state);
+        var drawer = RenderDrawer(state.Drawer);
         var footer = _transcriptRenderer.RenderFooter(
             state.Session,
             state.PermissionMode,
@@ -29,7 +30,7 @@ public sealed class ConsoleTuiRenderer : ITuiRenderer
             state.Error);
         var overlay = RenderOverlay(state.Overlay);
         var header = $"ClawdNet TUI | focus={state.Focus} | size={state.Layout.Width}x{state.Layout.Height}";
-        return new TerminalFrame(header, transcript, context, composer, footer, overlay, state.ClearScreen, state.UseAlternateScreen);
+        return new TerminalFrame(header, transcript, context, composer, footer, drawer, overlay, state.ClearScreen, state.UseAlternateScreen);
     }
 
     private string RenderContext(TuiState state)
@@ -85,6 +86,16 @@ public sealed class ConsoleTuiRenderer : ITuiRenderer
             }
         }
 
+        if (state.ActivityFeed.Count > 0)
+        {
+            builder.AppendLine();
+            builder.AppendLine("activity-feed");
+            foreach (var line in state.ActivityFeed.Take(5))
+            {
+                builder.AppendLine(line);
+            }
+        }
+
         return builder.Length == 0 ? "(no context)" : builder.ToString().TrimEnd();
     }
 
@@ -95,6 +106,45 @@ public sealed class ConsoleTuiRenderer : ITuiRenderer
         return $"{focus} composer{Environment.NewLine}{buffer}";
     }
 
+    private static string? RenderDrawer(TuiDrawerState? drawer)
+    {
+        if (drawer is null || drawer.Kind == TuiDrawerKind.None)
+        {
+            return null;
+        }
+
+        var builder = new StringBuilder();
+        builder.AppendLine($"[{drawer.Kind}] {drawer.Title}");
+        if (drawer.Items.Count == 0)
+        {
+            builder.AppendLine("(empty)");
+        }
+        else
+        {
+            foreach (var item in drawer.Items)
+            {
+                var marker = item.IsSelected ? ">" : item.IsActive ? "*" : "-";
+                builder.AppendLine($"{marker} {item.Title}");
+                if (!string.IsNullOrWhiteSpace(item.Subtitle))
+                {
+                    builder.AppendLine($"  {item.Subtitle}");
+                }
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(drawer.DetailTitle))
+        {
+            builder.AppendLine();
+            builder.AppendLine(drawer.DetailTitle);
+            foreach (var line in drawer.DetailLines ?? [])
+            {
+                builder.AppendLine(line);
+            }
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
     private static string? RenderOverlay(TuiOverlayState? overlay)
     {
         if (overlay is null || overlay.Kind == TuiOverlayKind.None)
@@ -102,6 +152,29 @@ public sealed class ConsoleTuiRenderer : ITuiRenderer
             return null;
         }
 
-        return $"[{overlay.Kind}] {overlay.Title}{Environment.NewLine}{overlay.Content}";
+        var builder = new StringBuilder();
+        builder.AppendLine($"[{overlay.Kind}] {overlay.Title}");
+        if (!string.IsNullOrWhiteSpace(overlay.Summary))
+        {
+            builder.AppendLine(overlay.Summary);
+        }
+
+        foreach (var section in overlay.Sections ?? [])
+        {
+            builder.AppendLine();
+            builder.AppendLine(section.Title);
+            foreach (var line in section.Lines)
+            {
+                builder.AppendLine(line);
+            }
+        }
+
+        if (overlay.RequiresConfirmation)
+        {
+            builder.AppendLine();
+            builder.AppendLine($"actions: {overlay.PrimaryActionLabel ?? "confirm"} / {overlay.SecondaryActionLabel ?? "cancel"}");
+        }
+
+        return builder.ToString().TrimEnd();
     }
 }
