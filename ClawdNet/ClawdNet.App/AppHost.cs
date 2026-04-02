@@ -78,7 +78,32 @@ public sealed class AppHost : IAsyncDisposable
             "-v",
             "-V"
         };
-        _pluginCatalog = pluginCatalog ?? new PluginCatalog(dataRoot, builtInCommands);
+        var builtInToolNames = new[]
+        {
+            "echo",
+            "file_read",
+            "glob",
+            "grep",
+            "shell",
+            "pty_start",
+            "pty_focus",
+            "pty_list",
+            "pty_write",
+            "pty_read",
+            "pty_close",
+            "apply_patch",
+            "file_write",
+            "task_start",
+            "task_status",
+            "task_list",
+            "task_inspect",
+            "task_cancel",
+            "lsp_definition",
+            "lsp_references",
+            "lsp_hover",
+            "lsp_diagnostics"
+        };
+        _pluginCatalog = pluginCatalog ?? new PluginCatalog(dataRoot, builtInCommands, builtInToolNames);
         _pluginRuntime = pluginRuntime ?? new PluginRuntime(_pluginCatalog, processRunner, builtInCommands);
         _mcpClient = mcpClient ?? new StdioMcpClient(dataRoot, _pluginCatalog);
         _lspClient = lspClient ?? new StdioLspClient(dataRoot, _pluginCatalog);
@@ -333,6 +358,11 @@ public sealed class AppHost : IAsyncDisposable
 
             await _pluginCatalog.ReloadAsync(cancellationToken);
             await _pluginRuntime.ReloadAsync(cancellationToken);
+            _toolRegistry.UnregisterWhere(tool => tool.Name.StartsWith("plugin.", StringComparison.OrdinalIgnoreCase));
+            _toolRegistry.RegisterRange(
+                _pluginCatalog.Plugins
+                    .Where(plugin => plugin.Enabled && plugin.IsValid)
+                    .SelectMany(plugin => plugin.Tools.Where(tool => tool.Enabled).Select(tool => new PluginToolProxy(_pluginRuntime, plugin, tool))));
             _pluginsInitialized = true;
         }
         finally

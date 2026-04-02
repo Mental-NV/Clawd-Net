@@ -11,6 +11,8 @@ public sealed class FakePluginCatalog : IPluginCatalog
 
     public IReadOnlyList<LspServerDefinition> LspDefinitions { get; set; } = [];
 
+    public IReadOnlyList<PluginToolDefinition> ToolDefinitions { get; set; } = [];
+
     public int ReloadCount { get; private set; }
 
     public Func<FakePluginCatalog, Task>? ReloadHandler { get; set; }
@@ -29,4 +31,7 @@ public sealed class FakePluginCatalog : IPluginCatalog
 
     public Task<IReadOnlyList<LspServerDefinition>> GetLspServerDefinitionsAsync(CancellationToken cancellationToken)
         => Task.FromResult(LspDefinitions);
+
+    public Task<IReadOnlyList<PluginToolDefinition>> GetToolDefinitionsAsync(CancellationToken cancellationToken)
+        => Task.FromResult(ToolDefinitions);
 }

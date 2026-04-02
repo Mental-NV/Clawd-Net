@@ -437,7 +437,7 @@ public sealed class AppHostTests : IDisposable
                     "demo",
                     "/tmp/demo",
                     true,
-                    new PluginManifest("demo", "1.0.0", true, [], [], [], []),
+                    new PluginManifest("demo", "1.0.0", true, [], [], [], [], []),
                     []),
                 new PluginDefinition(
                     "broken",
@@ -470,7 +470,7 @@ public sealed class AppHostTests : IDisposable
                     "demo",
                     "/tmp/demo",
                     true,
-                    new PluginManifest("demo", "1.0.0", true, [], [], [], []),
+                    new PluginManifest("demo", "1.0.0", true, [], [], [], [], []),
                     [])
             ]
         };
@@ -543,6 +543,25 @@ public sealed class AppHostTests : IDisposable
                         [],
                         [],
                         [
+                            new PluginToolDefinition(
+                                "inspect",
+                                "Inspect plugin",
+                                new JsonObject
+                                {
+                                    ["type"] = "object",
+                                    ["properties"] = new JsonObject
+                                    {
+                                        ["value"] = new JsonObject { ["type"] = "string" }
+                                    }
+                                },
+                                ToolCategory.ReadOnly,
+                                "python3",
+                                ["tool.py"],
+                                new Dictionary<string, string>(),
+                                PluginExecutionMode.Subprocess,
+                                true)
+                        ],
+                        [
                             new PluginCommandDefinition(
                                 "demo-run",
                                 "python3",
@@ -569,8 +588,70 @@ public sealed class AppHostTests : IDisposable
         var result = await host.RunAsync(["plugin", "show", "demo"], CancellationToken.None);
 
         Assert.Equal(0, result.ExitCode);
+        Assert.Contains("plugin.demo.inspect", result.StdOut);
         Assert.Contains("demo-run", result.StdOut);
         Assert.Contains("AfterQuery", result.StdOut);
+    }
+
+    [Fact]
+    public async Task Ask_can_round_trip_plugin_defined_tool()
+    {
+        var plugin = new PluginDefinition(
+            "demo",
+            "demo",
+            "/tmp/demo",
+            true,
+            new PluginManifest(
+                "demo",
+                "1.0.0",
+                true,
+                [],
+                [],
+                [
+                    new PluginToolDefinition(
+                        "inspect",
+                        "Inspect plugin",
+                        new JsonObject
+                        {
+                            ["type"] = "object",
+                            ["properties"] = new JsonObject
+                            {
+                                ["value"] = new JsonObject { ["type"] = "string" }
+                            }
+                        },
+                        ToolCategory.ReadOnly,
+                        "python3",
+                        ["tool.py"],
+                        new Dictionary<string, string>(),
+                        PluginExecutionMode.Subprocess,
+                        true)
+                ],
+                [],
+                []),
+            []);
+        var pluginCatalog = new FakePluginCatalog
+        {
+            Plugins = [plugin]
+        };
+        var pluginRuntime = new FakePluginRuntime
+        {
+            ToolHandler = invocation => invocation.QualifiedToolName == "plugin.demo.inspect"
+                ? new ToolExecutionResult(true, "plugin tool ok")
+                : new ToolExecutionResult(false, string.Empty, "unexpected tool")
+        };
+        var anthropicClient = new FakeAnthropicMessageClient(
+            new ModelResponse(
+                "claude-sonnet-4-5",
+                [new ToolUseContentBlock("tool-1", "plugin.demo.inspect", new JsonObject { ["value"] = "hello" })],
+                "tool_use"),
+            new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("plugin tool used")], "end_turn"));
+        var host = new AppHost("1.0.0", _dataRoot, anthropicClient, pluginCatalog: pluginCatalog, pluginRuntime: pluginRuntime);
+
+        var result = await host.RunAsync(["ask", "use plugin tool"], CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("plugin tool used", result.StdOut);
+        Assert.Contains(pluginRuntime.ToolInvocations, invocation => invocation.QualifiedToolName == "plugin.demo.inspect");
     }
 
     [Fact]

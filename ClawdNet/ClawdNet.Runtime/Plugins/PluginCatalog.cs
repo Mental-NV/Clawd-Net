@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using ClawdNet.Core.Abstractions;
 using ClawdNet.Core.Models;
 
@@ -13,14 +14,16 @@ public sealed class PluginCatalog : IPluginCatalog
 
     private readonly string _pluginsRoot;
     private readonly HashSet<string> _reservedCommandNames;
+    private readonly HashSet<string> _reservedToolNames;
     private readonly SemaphoreSlim _reloadLock = new(1, 1);
     private IReadOnlyList<PluginDefinition> _plugins = [];
     private bool _loaded;
 
-    public PluginCatalog(string dataRoot, IEnumerable<string>? reservedCommandNames = null)
+    public PluginCatalog(string dataRoot, IEnumerable<string>? reservedCommandNames = null, IEnumerable<string>? reservedToolNames = null)
     {
         _pluginsRoot = Path.Combine(dataRoot, "plugins");
         _reservedCommandNames = new HashSet<string>(reservedCommandNames ?? [], StringComparer.OrdinalIgnoreCase);
+        _reservedToolNames = new HashSet<string>(reservedToolNames ?? [], StringComparer.OrdinalIgnoreCase);
     }
 
     public IReadOnlyList<PluginDefinition> Plugins => _plugins;
@@ -54,6 +57,15 @@ public sealed class PluginCatalog : IPluginCatalog
         return _plugins
             .Where(plugin => plugin.Enabled && plugin.IsValid)
             .SelectMany(plugin => plugin.LspServers)
+            .ToArray();
+    }
+
+    public async Task<IReadOnlyList<PluginToolDefinition>> GetToolDefinitionsAsync(CancellationToken cancellationToken)
+    {
+        await EnsureLoadedAsync(cancellationToken);
+        return _plugins
+            .Where(plugin => plugin.Enabled && plugin.IsValid)
+            .SelectMany(plugin => plugin.Tools.Where(tool => tool.Enabled))
             .ToArray();
     }
 
@@ -148,6 +160,45 @@ public sealed class PluginCatalog : IPluginCatalog
                 command.Enabled ?? true));
         }
 
+        var tools = new List<PluginToolDefinition>();
+        foreach (var tool in payload.Tools ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(tool.Name))
+            {
+                errors.Add(new PluginError("tool-invalid", "Plugin tool must include a non-empty 'name'."));
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(tool.Command))
+            {
+                errors.Add(new PluginError("tool-invalid", $"Plugin tool '{tool.Name}' must include a non-empty 'command'."));
+                continue;
+            }
+
+            if (_reservedToolNames.Contains(tool.Name))
+            {
+                errors.Add(new PluginError("tool-conflict", $"Plugin tool '{tool.Name}' conflicts with a built-in tool."));
+                continue;
+            }
+
+            if (tool.InputSchema is null || tool.InputSchema["type"]?.GetValue<string>() is not "object")
+            {
+                errors.Add(new PluginError("tool-invalid", $"Plugin tool '{tool.Name}' must include an object-shaped 'inputSchema'."));
+                continue;
+            }
+
+            tools.Add(new PluginToolDefinition(
+                tool.Name.Trim(),
+                tool.Description?.Trim() ?? string.Empty,
+                tool.InputSchema,
+                ParseToolCategory(tool.Category),
+                tool.Command!,
+                tool.Arguments ?? [],
+                tool.Environment ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                PluginExecutionMode.Subprocess,
+                tool.Enabled ?? true));
+        }
+
         var hooks = new List<PluginHookDefinition>();
         foreach (var hook in payload.Hooks ?? [])
         {
@@ -195,7 +246,7 @@ public sealed class PluginCatalog : IPluginCatalog
                 server.Enabled ?? true))
             .ToArray();
 
-        var manifest = new PluginManifest(pluginName, payload.Version, enabled, mcpServers, lspServers, commands, hooks);
+        var manifest = new PluginManifest(pluginName, payload.Version, enabled, mcpServers, lspServers, tools, commands, hooks);
         return new PluginDefinition(pluginId, pluginName, pluginDirectory, enabled, manifest, errors);
     }
 
@@ -216,6 +267,7 @@ public sealed class PluginCatalog : IPluginCatalog
         public bool? Enabled { get; init; }
         public List<McpServerDocument>? McpServers { get; init; }
         public List<LspServerDocument>? LspServers { get; init; }
+        public List<PluginToolDocument>? Tools { get; init; }
         public List<PluginCommandDocument>? Commands { get; init; }
         public List<PluginHookDocument>? Hooks { get; init; }
     }
@@ -244,6 +296,18 @@ public sealed class PluginCatalog : IPluginCatalog
     private sealed class PluginCommandDocument
     {
         public string? Name { get; init; }
+        public string? Command { get; init; }
+        public string[]? Arguments { get; init; }
+        public Dictionary<string, string>? Environment { get; init; }
+        public bool? Enabled { get; init; }
+    }
+
+    private sealed class PluginToolDocument
+    {
+        public string? Name { get; init; }
+        public string? Description { get; init; }
+        public JsonObject? InputSchema { get; init; }
+        public string? Category { get; init; }
         public string? Command { get; init; }
         public string[]? Arguments { get; init; }
         public Dictionary<string, string>? Environment { get; init; }
@@ -284,5 +348,16 @@ public sealed class PluginCatalog : IPluginCatalog
                 kind = default;
                 return false;
         }
+    }
+
+    private static ToolCategory ParseToolCategory(string? value)
+    {
+        return value?.Trim().ToLowerInvariant() switch
+        {
+            "readonly" or "read-only" or "read" => ToolCategory.ReadOnly,
+            "write" => ToolCategory.Write,
+            "execute" or "exec" => ToolCategory.Execute,
+            _ => ToolCategory.Execute
+        };
     }
 }

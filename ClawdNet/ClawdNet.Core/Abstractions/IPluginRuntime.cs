@@ -9,4 +9,6 @@ public interface IPluginRuntime
     Task<PluginCommandResult?> TryExecuteCommandAsync(CommandRequest request, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<PluginHookResult>> InvokeHooksAsync(PluginHookInvocation invocation, CancellationToken cancellationToken);
+
+    Task<ToolExecutionResult> ExecuteToolAsync(PluginToolInvocation invocation, CancellationToken cancellationToken);
 }

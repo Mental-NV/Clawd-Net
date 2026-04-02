@@ -14,6 +14,8 @@ public sealed record PluginDefinition(
 
     public IReadOnlyList<LspServerDefinition> LspServers => Manifest?.LspServers ?? [];
 
+    public IReadOnlyList<PluginToolDefinition> Tools => Manifest?.Tools ?? [];
+
     public IReadOnlyList<PluginCommandDefinition> Commands => Manifest?.Commands ?? [];
 
     public IReadOnlyList<PluginHookDefinition> Hooks => Manifest?.Hooks ?? [];

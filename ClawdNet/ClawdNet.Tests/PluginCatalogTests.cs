@@ -40,6 +40,25 @@ public sealed class PluginCatalogTests : IDisposable
                         languageId = "csharp"
                     }
                 },
+                tools = new[]
+                {
+                    new
+                    {
+                        name = "inspect",
+                        description = "Inspect plugin state",
+                        command = "python3",
+                        arguments = new[] { "tool.py" },
+                        category = "readOnly",
+                        inputSchema = new
+                        {
+                            type = "object",
+                            properties = new
+                            {
+                                value = new { type = "string" }
+                            }
+                        }
+                    }
+                },
                 commands = new[]
                 {
                     new
@@ -68,6 +87,7 @@ public sealed class PluginCatalogTests : IDisposable
         Assert.True(catalog.Plugins[0].IsValid);
         Assert.Equal("demo.echo", catalog.Plugins[0].McpServers[0].Name);
         Assert.Equal("demo.csharp", catalog.Plugins[0].LspServers[0].Name);
+        Assert.Contains(catalog.Plugins[0].Tools, tool => tool.Name == "inspect");
         Assert.Contains(catalog.Plugins[0].Commands, command => command.Name == "demo-run");
         Assert.Contains(catalog.Plugins[0].Hooks, hook => hook.Kind == ClawdNet.Core.Models.PluginHookKind.BeforeQuery);
     }
@@ -122,6 +142,54 @@ public sealed class PluginCatalogTests : IDisposable
         Assert.DoesNotContain(catalog.Plugins[0].Commands, command => command.Name == "ask");
         Assert.Contains(catalog.Plugins[0].Commands, command => command.Name == "demo-ok");
         Assert.Contains(catalog.Plugins[0].Errors, error => error.Code == "command-conflict");
+    }
+
+    [Fact]
+    public async Task Plugin_catalog_reports_invalid_tool_without_invalidating_plugin()
+    {
+        var pluginRoot = Path.Combine(_dataRoot, "plugins", "demo-tools");
+        Directory.CreateDirectory(pluginRoot);
+        await File.WriteAllTextAsync(
+            Path.Combine(pluginRoot, "plugin.json"),
+            JsonSerializer.Serialize(new
+            {
+                name = "demo-tools",
+                version = "1.0.0",
+                enabled = true,
+                tools = new object[]
+                {
+                    new
+                    {
+                        name = "echo",
+                        command = "python3",
+                        inputSchema = new
+                        {
+                            type = "string"
+                        }
+                    },
+                    new
+                    {
+                        name = "inspect",
+                        command = "python3",
+                        inputSchema = new
+                        {
+                            type = "object",
+                            properties = new
+                            {
+                                value = new { type = "string" }
+                            }
+                        }
+                    }
+                }
+            }));
+        var catalog = new PluginCatalog(_dataRoot, null, ["echo"]);
+
+        await catalog.ReloadAsync(CancellationToken.None);
+
+        Assert.True(catalog.Plugins[0].IsValid);
+        Assert.DoesNotContain(catalog.Plugins[0].Tools, tool => tool.Name == "echo");
+        Assert.Contains(catalog.Plugins[0].Tools, tool => tool.Name == "inspect");
+        Assert.Contains(catalog.Plugins[0].Errors, error => error.Code.StartsWith("tool-", StringComparison.Ordinal));
     }
 
     public void Dispose()

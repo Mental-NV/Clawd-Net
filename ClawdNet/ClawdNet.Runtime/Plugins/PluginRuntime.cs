@@ -74,6 +74,35 @@ public sealed class PluginRuntime : IPluginRuntime
         return results;
     }
 
+    public async Task<ToolExecutionResult> ExecuteToolAsync(PluginToolInvocation invocation, CancellationToken cancellationToken)
+    {
+        var payload = JsonSerializer.Serialize(new
+        {
+            plugin = new { id = invocation.Plugin.Id, name = invocation.Plugin.Name, path = invocation.Plugin.Path },
+            invocation = "tool",
+            tool = new
+            {
+                name = invocation.Tool.Name,
+                qualifiedName = invocation.QualifiedToolName,
+                category = invocation.Tool.Category.ToString()
+            },
+            cwd = invocation.WorkingDirectory,
+            sessionId = invocation.SessionId,
+            taskId = invocation.TaskId,
+            rawInput = invocation.RawInput,
+            input = invocation.Input
+        }, _jsonOptions);
+        var result = await _processRunner.RunAsync(
+            new ProcessRequest(
+                invocation.Tool.Command,
+                string.Join(' ', invocation.Tool.Arguments),
+                invocation.WorkingDirectory ?? invocation.Plugin.Path,
+                invocation.Tool.Environment,
+                payload),
+            cancellationToken);
+        return ParseToolResult(result);
+    }
+
     private async Task<PluginCommandResult> ExecuteCommandAsync(PluginCommandInvocation invocation, CancellationToken cancellationToken)
     {
         var payload = JsonSerializer.Serialize(new
@@ -151,6 +180,26 @@ public sealed class PluginRuntime : IPluginRuntime
         return new PluginHookResult(plugin, hook, result.ExitCode == 0, fallbackMessage, hook.Blocking, result.ExitCode);
     }
 
+    private static ToolExecutionResult ParseToolResult(ProcessResult result)
+    {
+        if (TryParseStructuredToolResult(result.StdOut, out var success, out var output, out var error, out var exitCode))
+        {
+            var effectiveSuccess = success ?? ((exitCode ?? result.ExitCode) == 0);
+            return new ToolExecutionResult(
+                effectiveSuccess,
+                output ?? string.Empty,
+                effectiveSuccess ? null : (string.IsNullOrWhiteSpace(error) ? result.StdErr : error));
+        }
+
+        if (result.ExitCode == 0)
+        {
+            return new ToolExecutionResult(true, result.StdOut);
+        }
+
+        var fallbackError = string.IsNullOrWhiteSpace(result.StdErr) ? result.StdOut : result.StdErr;
+        return new ToolExecutionResult(false, string.Empty, fallbackError);
+    }
+
     private static bool TryParseStructuredResult(
         string raw,
         out string? stdout,
@@ -193,6 +242,59 @@ public sealed class PluginRuntime : IPluginRuntime
             if (document.RootElement.TryGetProperty("message", out var messageElement))
             {
                 message = messageElement.GetString();
+            }
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool TryParseStructuredToolResult(
+        string raw,
+        out bool? success,
+        out string? output,
+        out string? error,
+        out int? exitCode)
+    {
+        success = null;
+        output = null;
+        error = null;
+        exitCode = null;
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(raw);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            if (document.RootElement.TryGetProperty("success", out var successElement)
+                && (successElement.ValueKind is JsonValueKind.True or JsonValueKind.False))
+            {
+                success = successElement.GetBoolean();
+            }
+
+            if (document.RootElement.TryGetProperty("output", out var outputElement))
+            {
+                output = outputElement.GetString();
+            }
+
+            if (document.RootElement.TryGetProperty("error", out var errorElement))
+            {
+                error = errorElement.GetString();
+            }
+
+            if (document.RootElement.TryGetProperty("exitCode", out var exitCodeElement) && exitCodeElement.TryGetInt32(out var parsedExitCode))
+            {
+                exitCode = parsedExitCode;
             }
 
             return true;

@@ -22,4 +22,10 @@ public sealed class NullPluginRuntime : IPluginRuntime
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult<IReadOnlyList<PluginHookResult>>([]);
     }
+
+    public Task<ToolExecutionResult> ExecuteToolAsync(PluginToolInvocation invocation, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(new ToolExecutionResult(false, string.Empty, $"Plugin tool '{invocation.QualifiedToolName}' is unavailable."));
+    }
 }

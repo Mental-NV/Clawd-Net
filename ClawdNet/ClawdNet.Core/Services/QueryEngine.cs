@@ -508,6 +508,9 @@ public sealed class QueryEngine : IQueryEngine
 
         public Task<IReadOnlyList<PluginHookResult>> InvokeHooksAsync(PluginHookInvocation invocation, CancellationToken cancellationToken)
             => Task.FromResult<IReadOnlyList<PluginHookResult>>([]);
+
+        public Task<ToolExecutionResult> ExecuteToolAsync(PluginToolInvocation invocation, CancellationToken cancellationToken)
+            => Task.FromResult(new ToolExecutionResult(false, string.Empty, $"Plugin tool '{invocation.QualifiedToolName}' is unavailable."));
     }
 
     private async Task<ConversationSession> LoadOrCreateSessionAsync(QueryRequest request, CancellationToken cancellationToken)

@@ -46,7 +46,7 @@ public sealed class PluginCommandHandler : ICommandHandler
             var errors = plugin.Errors.Count == 0
                 ? string.Empty
                 : $" | errors={string.Join("; ", plugin.Errors.Select(error => $"{error.Code}:{error.Message}"))}";
-            return $"{plugin.Name} | enabled={plugin.Enabled} | valid={plugin.IsValid} | mcp={plugin.McpServers.Count} | lsp={plugin.LspServers.Count} | commands={plugin.Commands.Count} | hooks={plugin.Hooks.Count}{errors}";
+            return $"{plugin.Name} | enabled={plugin.Enabled} | valid={plugin.IsValid} | mcp={plugin.McpServers.Count} | lsp={plugin.LspServers.Count} | tools={plugin.Tools.Count} | commands={plugin.Commands.Count} | hooks={plugin.Hooks.Count}{errors}";
         });
         return CommandExecutionResult.Success(string.Join(Environment.NewLine, lines));
     }
@@ -73,6 +73,9 @@ public sealed class PluginCommandHandler : ICommandHandler
         var commandLines = plugin.Commands.Count == 0
             ? ["(none)"]
             : plugin.Commands.Select(command => $"{command.Name} => {command.Command} {string.Join(' ', command.Arguments)}".TrimEnd());
+        var toolLines = plugin.Tools.Count == 0
+            ? ["(none)"]
+            : plugin.Tools.Select(tool => $"plugin.{plugin.Name}.{tool.Name} => {tool.Command} {string.Join(' ', tool.Arguments)} | category={tool.Category}".TrimEnd());
         var hookLines = plugin.Hooks.Count == 0
             ? ["(none)"]
             : plugin.Hooks.Select(hook => $"{hook.Kind} => {hook.Command} {string.Join(' ', hook.Arguments)} | blocking={hook.Blocking}".TrimEnd());
@@ -86,6 +89,8 @@ public sealed class PluginCommandHandler : ICommandHandler
                 $"Id: {plugin.Id}",
                 $"Enabled: {plugin.Enabled}",
                 $"Valid: {plugin.IsValid}",
+                "Tools:",
+                .. toolLines,
                 "Commands:",
                 .. commandLines,
                 "Hooks:",
@@ -102,7 +107,12 @@ public sealed class PluginCommandHandler : ICommandHandler
         await context.PluginRuntime.ReloadAsync(cancellationToken);
         await context.McpClient.ReloadAsync(cancellationToken);
         await context.LspClient.ReloadAsync(cancellationToken);
+        context.ToolRegistry.UnregisterWhere(tool => tool.Name.StartsWith("plugin.", StringComparison.OrdinalIgnoreCase));
         context.ToolRegistry.UnregisterWhere(tool => tool.Name.StartsWith("mcp.", StringComparison.OrdinalIgnoreCase));
+        context.ToolRegistry.RegisterRange(
+            context.PluginCatalog.Plugins
+                .Where(plugin => plugin.Enabled && plugin.IsValid)
+                .SelectMany(plugin => plugin.Tools.Where(tool => tool.Enabled).Select(tool => new PluginToolProxy(context.PluginRuntime, plugin, tool))));
         var tools = await context.McpClient.GetToolsAsync(null, cancellationToken);
         context.ToolRegistry.RegisterRange(tools.Select(tool => new McpToolProxy(context.McpClient, tool)));
 
@@ -112,6 +122,7 @@ public sealed class PluginCommandHandler : ICommandHandler
                 $"Reloaded {context.PluginCatalog.Plugins.Count} plugin(s).",
                 $"MCP servers: {context.McpClient.Servers.Count}",
                 $"LSP servers: {context.LspClient.Servers.Count}",
+                $"Plugin tools: {context.PluginCatalog.Plugins.Sum(plugin => plugin.Tools.Count(tool => tool.Enabled))}",
                 $"Plugin commands: {context.PluginCatalog.Plugins.Sum(plugin => plugin.Commands.Count(command => command.Enabled))}",
                 $"Plugin hooks: {context.PluginCatalog.Plugins.Sum(plugin => plugin.Hooks.Count(hook => hook.Enabled))}"
             ]);
