@@ -5,74 +5,153 @@ namespace ClawdNet.Tests.TestDoubles;
 
 public sealed class FakePtyManager : IPtyManager
 {
-    public PtySessionState? CurrentState { get; private set; }
+    private readonly Dictionary<string, PtySessionState> _sessions = new(StringComparer.Ordinal);
+    private string? _currentSessionId;
 
-    public event Action<PtySessionState?>? SessionChanged;
+    public PtyManagerState State => BuildState();
+
+    public event Action<PtyManagerState>? StateChanged;
 
     public List<(string Command, string? WorkingDirectory)> Starts { get; } = [];
 
-    public List<string> Writes { get; } = [];
+    public List<(string? SessionId, string Text)> Writes { get; } = [];
+
+    public List<string?> Focuses { get; } = [];
 
     public int CloseCount { get; private set; }
 
     public Func<string, string?, PtySessionState>? StartHandler { get; set; }
 
-    public Func<string, PtySessionState>? WriteHandler { get; set; }
+    public Func<string, string?, PtySessionState>? WriteHandler { get; set; }
 
     public Task<PtySessionState> StartAsync(string command, string? workingDirectory, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         Starts.Add((command, workingDirectory));
-        CurrentState = StartHandler?.Invoke(command, workingDirectory)
+        var state = StartHandler?.Invoke(command, workingDirectory)
             ?? NewState(command, workingDirectory ?? Environment.CurrentDirectory, string.Empty, true, null, false);
-        SessionChanged?.Invoke(CurrentState);
-        return Task.FromResult(CurrentState);
+        _sessions[state.SessionId] = state;
+        _currentSessionId = state.SessionId;
+        NotifyChanged();
+        return Task.FromResult(state);
     }
 
-    public Task<PtySessionState> WriteAsync(string text, CancellationToken cancellationToken)
+    public Task<IReadOnlyList<PtySessionSummary>> ListAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        Writes.Add(text);
-        CurrentState = WriteHandler?.Invoke(text)
-            ?? (CurrentState is null
-                ? NewState("cat", Environment.CurrentDirectory, text, true, null, false)
-                : CurrentState with
-                {
-                    RecentOutput = CurrentState.RecentOutput + text,
-                    UpdatedAtUtc = DateTimeOffset.UtcNow
-                });
-        SessionChanged?.Invoke(CurrentState);
-        return Task.FromResult(CurrentState);
+        return Task.FromResult<IReadOnlyList<PtySessionSummary>>(BuildState().Sessions);
     }
 
-    public Task<PtySessionState?> CloseAsync(CancellationToken cancellationToken)
+    public Task<PtySessionState> FocusAsync(string sessionId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        CloseCount++;
-        if (CurrentState is not null)
+        if (!_sessions.TryGetValue(sessionId, out var state))
         {
-            CurrentState = CurrentState with
-            {
-                IsRunning = false,
-                ExitCode = 0,
-                UpdatedAtUtc = DateTimeOffset.UtcNow
-            };
+            throw new InvalidOperationException($"PTY session '{sessionId}' was not found.");
         }
 
-        SessionChanged?.Invoke(CurrentState);
-        return Task.FromResult(CurrentState);
+        Focuses.Add(sessionId);
+        _currentSessionId = sessionId;
+        NotifyChanged();
+        return Task.FromResult(state);
     }
 
-    public Task<PtySessionState?> ReadAsync(CancellationToken cancellationToken)
+    public Task<PtySessionState> WriteAsync(string text, string? sessionId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(CurrentState);
+        var targetId = ResolveSessionId(sessionId) ?? throw new InvalidOperationException("No active PTY session.");
+        Writes.Add((targetId, text));
+        var current = _sessions[targetId];
+        var updated = WriteHandler?.Invoke(targetId, text)
+            ?? current with
+            {
+                RecentOutput = current.RecentOutput + text,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            };
+        _sessions[targetId] = updated;
+        _currentSessionId = targetId;
+        NotifyChanged();
+        return Task.FromResult(updated);
     }
 
-    public void Publish(PtySessionState? state)
+    public Task<PtySessionState?> CloseAsync(string? sessionId, CancellationToken cancellationToken)
     {
-        CurrentState = state;
-        SessionChanged?.Invoke(CurrentState);
+        cancellationToken.ThrowIfCancellationRequested();
+        var targetId = ResolveSessionId(sessionId);
+        if (targetId is null)
+        {
+            return Task.FromResult<PtySessionState?>(null);
+        }
+
+        CloseCount++;
+        var current = _sessions[targetId];
+        var updated = current with
+        {
+            IsRunning = false,
+            ExitCode = 0,
+            UpdatedAtUtc = DateTimeOffset.UtcNow
+        };
+        _sessions[targetId] = updated;
+        if (string.Equals(_currentSessionId, targetId, StringComparison.Ordinal))
+        {
+            _currentSessionId = _sessions.Values
+                .Where(state => state.IsRunning && !string.Equals(state.SessionId, targetId, StringComparison.Ordinal))
+                .OrderByDescending(state => state.UpdatedAtUtc)
+                .Select(state => state.SessionId)
+                .FirstOrDefault()
+                ?? _sessions.Values
+                    .Where(state => !string.Equals(state.SessionId, targetId, StringComparison.Ordinal))
+                    .OrderByDescending(state => state.UpdatedAtUtc)
+                    .Select(state => state.SessionId)
+                    .FirstOrDefault();
+        }
+
+        NotifyChanged();
+        return Task.FromResult<PtySessionState?>(updated);
+    }
+
+    public Task<PtySessionState?> ReadAsync(string? sessionId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var targetId = ResolveSessionId(sessionId);
+        return Task.FromResult(targetId is null ? null : _sessions[targetId]);
+    }
+
+    public Task<int> PruneExitedAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var exitedIds = _sessions.Values.Where(state => !state.IsRunning).Select(state => state.SessionId).ToArray();
+        foreach (var exitedId in exitedIds)
+        {
+            _sessions.Remove(exitedId);
+        }
+
+        if (_currentSessionId is not null && !_sessions.ContainsKey(_currentSessionId))
+        {
+            _currentSessionId = _sessions.Values.OrderByDescending(state => state.UpdatedAtUtc).Select(state => state.SessionId).FirstOrDefault();
+        }
+
+        NotifyChanged();
+        return Task.FromResult(exitedIds.Length);
+    }
+
+    public void Publish(PtySessionState? state, bool makeCurrent = true)
+    {
+        if (state is null)
+        {
+            _sessions.Clear();
+            _currentSessionId = null;
+            NotifyChanged();
+            return;
+        }
+
+        _sessions[state.SessionId] = state;
+        if (makeCurrent || _currentSessionId is null)
+        {
+            _currentSessionId = state.SessionId;
+        }
+
+        NotifyChanged();
     }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
@@ -83,11 +162,12 @@ public sealed class FakePtyManager : IPtyManager
         string recentOutput,
         bool isRunning,
         int? exitCode,
-        bool isOutputClipped)
+        bool isOutputClipped,
+        string? sessionId = null)
     {
         var now = DateTimeOffset.UtcNow;
         return new PtySessionState(
-            Guid.NewGuid().ToString("N"),
+            sessionId ?? Guid.NewGuid().ToString("N"),
             command,
             workingDirectory,
             now,
@@ -96,5 +176,39 @@ public sealed class FakePtyManager : IPtyManager
             exitCode,
             recentOutput,
             isOutputClipped);
+    }
+
+    private string? ResolveSessionId(string? sessionId)
+    {
+        if (!string.IsNullOrWhiteSpace(sessionId))
+        {
+            return _sessions.ContainsKey(sessionId) ? sessionId : null;
+        }
+
+        return _currentSessionId;
+    }
+
+    private PtyManagerState BuildState()
+    {
+        var sessions = _sessions.Values
+            .OrderByDescending(state => state.UpdatedAtUtc)
+            .Select(state => new PtySessionSummary(
+                state.SessionId,
+                state.Command,
+                state.WorkingDirectory,
+                state.StartedAtUtc,
+                state.UpdatedAtUtc,
+                state.IsRunning,
+                state.ExitCode,
+                string.Equals(state.SessionId, _currentSessionId, StringComparison.Ordinal),
+                state.IsOutputClipped))
+            .ToArray();
+        var current = _currentSessionId is null || !_sessions.TryGetValue(_currentSessionId, out var selected) ? null : selected;
+        return new PtyManagerState(_currentSessionId, current, sessions);
+    }
+
+    private void NotifyChanged()
+    {
+        StateChanged?.Invoke(BuildState());
     }
 }

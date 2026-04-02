@@ -59,6 +59,15 @@ public sealed class ConsoleTuiRenderer : ITuiRenderer
             builder.AppendLine("pty");
             builder.AppendLine(pty);
         }
+        else if (state.Pty?.Sessions.Count > 0)
+        {
+            builder.AppendLine();
+            builder.AppendLine("pty");
+            foreach (var session in state.Pty.Sessions.Take(5))
+            {
+                builder.AppendLine($"{(session.IsCurrent ? "*" : "-")} {session.SessionId} | {(session.IsRunning ? "running" : "stopped")} | {session.Command}");
+            }
+        }
 
         if (state.RecentTasks.Count > 0)
         {

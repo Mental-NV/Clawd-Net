@@ -95,6 +95,8 @@ public sealed class AppHost : IAsyncDisposable
             new GrepTool(),
             new ShellTool(processRunner),
             new PtyStartTool(_ptyManager),
+            new PtyFocusTool(_ptyManager),
+            new PtyListTool(_ptyManager),
             new PtyWriteTool(_ptyManager),
             new PtyReadTool(_ptyManager),
             new PtyCloseTool(_ptyManager),

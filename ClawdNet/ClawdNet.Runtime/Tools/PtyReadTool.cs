@@ -22,15 +22,19 @@ public sealed class PtyReadTool : ITool
     public JsonObject InputSchema => new()
     {
         ["type"] = "object",
-        ["properties"] = new JsonObject()
+        ["properties"] = new JsonObject
+        {
+            ["sessionId"] = new JsonObject { ["type"] = "string" }
+        }
     };
 
     public async Task<ToolExecutionResult> ExecuteAsync(ToolExecutionRequest request, CancellationToken cancellationToken)
     {
         PtySessionState? state;
+        var sessionId = request.Input?["sessionId"]?.GetValue<string>();
         try
         {
-            state = await _ptyManager.ReadAsync(cancellationToken);
+            state = await _ptyManager.ReadAsync(sessionId, cancellationToken);
         }
         catch (Exception ex)
         {

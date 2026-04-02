@@ -24,7 +24,8 @@ public sealed class PtyWriteTool : ITool
         ["type"] = "object",
         ["properties"] = new JsonObject
         {
-            ["text"] = new JsonObject { ["type"] = "string" }
+            ["text"] = new JsonObject { ["type"] = "string" },
+            ["sessionId"] = new JsonObject { ["type"] = "string" }
         },
         ["required"] = new JsonArray("text")
     };
@@ -32,6 +33,7 @@ public sealed class PtyWriteTool : ITool
     public async Task<ToolExecutionResult> ExecuteAsync(ToolExecutionRequest request, CancellationToken cancellationToken)
     {
         var text = request.Input?["text"]?.GetValue<string>() ?? request.RawInput;
+        var sessionId = request.Input?["sessionId"]?.GetValue<string>();
         if (string.IsNullOrEmpty(text))
         {
             return new ToolExecutionResult(false, string.Empty, "pty_write requires 'text'.");
@@ -39,7 +41,7 @@ public sealed class PtyWriteTool : ITool
 
         try
         {
-            var state = await _ptyManager.WriteAsync(text, cancellationToken);
+            var state = await _ptyManager.WriteAsync(text, sessionId, cancellationToken);
             return new ToolExecutionResult(true, $"Wrote {text.Length} chars to PTY session {state.SessionId}.");
         }
         catch (Exception ex)

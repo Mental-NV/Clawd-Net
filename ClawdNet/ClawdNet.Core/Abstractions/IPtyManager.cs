@@ -4,15 +4,21 @@ namespace ClawdNet.Core.Abstractions;
 
 public interface IPtyManager : IAsyncDisposable
 {
-    PtySessionState? CurrentState { get; }
+    PtyManagerState State { get; }
 
-    event Action<PtySessionState?>? SessionChanged;
+    event Action<PtyManagerState>? StateChanged;
 
     Task<PtySessionState> StartAsync(string command, string? workingDirectory, CancellationToken cancellationToken);
 
-    Task<PtySessionState> WriteAsync(string text, CancellationToken cancellationToken);
+    Task<IReadOnlyList<PtySessionSummary>> ListAsync(CancellationToken cancellationToken);
 
-    Task<PtySessionState?> CloseAsync(CancellationToken cancellationToken);
+    Task<PtySessionState> FocusAsync(string sessionId, CancellationToken cancellationToken);
 
-    Task<PtySessionState?> ReadAsync(CancellationToken cancellationToken);
+    Task<PtySessionState> WriteAsync(string text, string? sessionId, CancellationToken cancellationToken);
+
+    Task<PtySessionState?> CloseAsync(string? sessionId, CancellationToken cancellationToken);
+
+    Task<PtySessionState?> ReadAsync(string? sessionId, CancellationToken cancellationToken);
+
+    Task<int> PruneExitedAsync(CancellationToken cancellationToken);
 }

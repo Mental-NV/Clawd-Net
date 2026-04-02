@@ -70,7 +70,7 @@ public sealed class TuiHost : ITuiHost
         _transcriptViewport = new TerminalViewportState(PageSize: 18);
         _contextViewport = new TerminalViewportState(PageSize: 10);
 
-        _ptyManager.SessionChanged += HandlePtySessionChanged;
+        _ptyManager.StateChanged += HandlePtyStateChanged;
         _taskManager.TaskChanged += HandleTaskChanged;
         _terminalSession.EnterAlternateScreen();
 
@@ -80,9 +80,9 @@ public sealed class TuiHost : ITuiHost
 
             using var interruptRegistration = _terminalSession.RegisterInterruptHandler(() =>
             {
-                if (_ptyManager.CurrentState?.IsRunning == true)
+                if (_ptyManager.State.CurrentSession?.IsRunning == true)
                 {
-                    _ = _ptyManager.CloseAsync(CancellationToken.None);
+                    _ = _ptyManager.CloseAsync(null, CancellationToken.None);
                     return;
                 }
 
@@ -215,7 +215,7 @@ public sealed class TuiHost : ITuiHost
         finally
         {
             _terminalSession.LeaveAlternateScreen();
-            _ptyManager.SessionChanged -= HandlePtySessionChanged;
+            _ptyManager.StateChanged -= HandlePtyStateChanged;
             _taskManager.TaskChanged -= HandleTaskChanged;
         }
     }
@@ -268,6 +268,10 @@ public sealed class TuiHost : ITuiHost
                 await ToggleSessionOverlayAsync(options, cancellationToken);
                 Render(clearScreen: true);
                 return true;
+            case PromptInputKind.TogglePty:
+                await TogglePtyOverlayAsync(cancellationToken);
+                Render(clearScreen: true);
+                return true;
             default:
                 return false;
         }
@@ -287,14 +291,7 @@ public sealed class TuiHost : ITuiHost
                 await ShowTasksOverlayAsync(cancellationToken);
                 return true;
             case "/pty":
-                var ptyState = _ptyManager.CurrentState;
-                _overlay = new TuiOverlayState(
-                    TuiOverlayKind.Session,
-                    "PTY",
-                    ptyState is null
-                        ? "No active PTY session."
-                        : $"PTY {ptyState.SessionId}{Environment.NewLine}running={ptyState.IsRunning}{Environment.NewLine}command={ptyState.Command}");
-                _focus = TuiFocusTarget.Overlay;
+                await TogglePtyOverlayAsync(cancellationToken);
                 return true;
             case "/clear":
                 _transcriptViewport = new TerminalViewportState(PageSize: _transcriptViewport.PageSize);
@@ -314,6 +311,40 @@ public sealed class TuiHost : ITuiHost
                     if (!string.IsNullOrWhiteSpace(taskId))
                     {
                         await ShowTaskInspectionOverlayAsync(taskId, cancellationToken);
+                        return true;
+                    }
+                }
+
+                if (prompt.StartsWith("/pty ", StringComparison.OrdinalIgnoreCase))
+                {
+                    var args = prompt["/pty ".Length..].Trim();
+                    if (args.StartsWith("close-exited", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var pruned = await _ptyManager.PruneExitedAsync(cancellationToken);
+                        _activityState = TerminalActivityState.Ready;
+                        _activityDetail = pruned == 0 ? "No exited PTY sessions to remove." : $"Removed {pruned} exited PTY session(s).";
+                        await RefreshPtyOverlayAsync();
+                        return true;
+                    }
+
+                    if (args.StartsWith("close ", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var closeSessionId = args["close ".Length..].Trim();
+                        if (!string.IsNullOrWhiteSpace(closeSessionId))
+                        {
+                            var closed = await _ptyManager.CloseAsync(closeSessionId, cancellationToken);
+                            _activityState = TerminalActivityState.Ready;
+                            _activityDetail = closed is null
+                                ? $"PTY session '{closeSessionId}' was not found."
+                                : $"Closed PTY session {closed.SessionId}.";
+                            await RefreshPtyOverlayAsync();
+                            return true;
+                        }
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(args))
+                    {
+                        await ShowPtyOverlayAsync(args, focusSession: true, cancellationToken);
                         return true;
                     }
                 }
@@ -467,7 +498,7 @@ public sealed class TuiHost : ITuiHost
             _transcriptViewport,
             _contextViewport,
             _draft,
-            _ptyManager.CurrentState,
+            _ptyManager.State,
             _activityState,
             _activityDetail,
             _error,
@@ -600,8 +631,9 @@ public sealed class TuiHost : ITuiHost
             "End: jump focused pane to bottom" + Environment.NewLine +
             "F1: help" + Environment.NewLine +
             "F2: session details" + Environment.NewLine +
+            "F3: PTY sessions" + Environment.NewLine +
             "Ctrl+C: interrupt PTY or active turn" + Environment.NewLine +
-            "Slash commands: /help /session /tasks [/tasks <id>] /pty /clear /bottom /exit");
+            "Slash commands: /help /session /tasks [/tasks <id>] /pty [/pty <id>] [/pty close <id>] [/pty close-exited] /clear /bottom /exit");
         _focus = TuiFocusTarget.Overlay;
     }
 
@@ -677,17 +709,109 @@ public sealed class TuiHost : ITuiHost
         _focus = TuiFocusTarget.Overlay;
     }
 
-    private void HandlePtySessionChanged(PtySessionState? state)
+    private async Task TogglePtyOverlayAsync(CancellationToken cancellationToken)
+    {
+        if (_overlay?.Title == "PTY sessions" || (_overlay?.Title?.StartsWith("PTY details:", StringComparison.Ordinal) ?? false))
+        {
+            _overlay = null;
+            _focus = TuiFocusTarget.Composer;
+            return;
+        }
+
+        await ShowPtyOverlayAsync(_ptyManager.State.CurrentSessionId, focusSession: false, cancellationToken);
+    }
+
+    private async Task ShowPtyOverlayAsync(string? sessionId, bool focusSession, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (focusSession && !string.IsNullOrWhiteSpace(sessionId))
+        {
+            try
+            {
+                await _ptyManager.FocusAsync(sessionId, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _overlay = new TuiOverlayState(TuiOverlayKind.Error, "PTY session not found", ex.Message);
+                _focus = TuiFocusTarget.Overlay;
+                return;
+            }
+        }
+
+        var state = _ptyManager.State;
+        if (state.Sessions.Count == 0)
+        {
+            _overlay = new TuiOverlayState(TuiOverlayKind.Session, "PTY sessions", "No PTY sessions.");
+            _focus = TuiFocusTarget.Overlay;
+            return;
+        }
+
+        var selected = !string.IsNullOrWhiteSpace(sessionId)
+            ? state.Sessions.FirstOrDefault(session => string.Equals(session.SessionId, sessionId, StringComparison.Ordinal))
+            : state.Sessions.FirstOrDefault(session => session.IsCurrent) ?? state.Sessions[0];
+        var detail = selected is null
+            ? "No PTY session selected."
+            : await BuildPtyDetailAsync(selected.SessionId, cancellationToken);
+        var list = string.Join(
+            Environment.NewLine,
+            state.Sessions.Take(8).Select(session =>
+                $"{(session.IsCurrent ? "*" : "-")} {session.SessionId} | {(session.IsRunning ? "running" : "stopped")} | {session.Command}"));
+        var content = $"Sessions:{Environment.NewLine}{list}{Environment.NewLine}{Environment.NewLine}{detail}{Environment.NewLine}{Environment.NewLine}Commands: /pty <id> focus | /pty close <id> | /pty close-exited";
+
+        _overlay = new TuiOverlayState(
+            TuiOverlayKind.Session,
+            selected is null ? "PTY sessions" : $"PTY details: {selected.SessionId}",
+            content);
+        _focus = TuiFocusTarget.Overlay;
+    }
+
+    private async Task RefreshPtyOverlayAsync()
+    {
+        var selectedSessionId = _overlay?.Title?.StartsWith("PTY details:", StringComparison.Ordinal) == true
+            ? _overlay.Title["PTY details: ".Length..].Trim()
+            : _ptyManager.State.CurrentSessionId;
+        await ShowPtyOverlayAsync(selectedSessionId, focusSession: false, CancellationToken.None);
+    }
+
+    private async Task<string> BuildPtyDetailAsync(string sessionId, CancellationToken cancellationToken)
+    {
+        var state = await _ptyManager.ReadAsync(sessionId, cancellationToken);
+        if (state is null)
+        {
+            return "Selected PTY session was not found.";
+        }
+
+        return string.Join(
+            Environment.NewLine,
+            [
+                "Selected:",
+                $"session={state.SessionId}",
+                $"command={state.Command}",
+                $"cwd={state.WorkingDirectory}",
+                $"running={state.IsRunning}",
+                $"exitCode={(state.ExitCode.HasValue ? state.ExitCode.Value.ToString() : "n/a")}",
+                $"outputClipped={state.IsOutputClipped}",
+                string.Empty,
+                string.IsNullOrWhiteSpace(state.RecentOutput) ? "(no output yet)" : state.RecentOutput.TrimEnd()
+            ]);
+    }
+
+    private void HandlePtyStateChanged(PtyManagerState state)
     {
         if (_currentSession is null)
         {
             return;
         }
 
-        if (state is not null && state.IsRunning)
+        if (state.CurrentSession is not null && state.CurrentSession.IsRunning)
         {
             _activityState = TerminalActivityState.RunningTool;
-            _activityDetail = $"PTY session active: {state.Command}";
+            _activityDetail = $"PTY session active: {state.CurrentSession.Command}";
+        }
+
+        if (_overlay?.Title == "PTY sessions" || (_overlay?.Title?.StartsWith("PTY details:", StringComparison.Ordinal) ?? false))
+        {
+            _ = RefreshPtyOverlayAsync();
         }
 
         MarkContextLiveUpdate();

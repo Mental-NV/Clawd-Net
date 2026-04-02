@@ -46,6 +46,8 @@ public sealed class ConsoleTerminalSession : ITerminalSession
                     return Task.FromResult(PromptInputResult.ToggleHelp());
                 case ConsoleKey.F2:
                     return Task.FromResult(PromptInputResult.ToggleSession());
+                case ConsoleKey.F3:
+                    return Task.FromResult(PromptInputResult.TogglePty());
                 default:
                     if (!char.IsControl(key.KeyChar))
                     {

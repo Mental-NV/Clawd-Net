@@ -101,6 +101,25 @@ public sealed class TuiHostTests : IDisposable
         Assert.Contains(terminal.RenderedFrames, frame => frame.Overlay is not null && frame.Overlay.Contains("assistant: worker finished", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task Tui_pty_overlay_lists_sessions_and_can_focus_selected_session()
+    {
+        var store = new JsonSessionStore(_dataRoot);
+        var terminal = new FakeTerminalSession(["/pty", "/pty pty-2", "exit"]);
+        var ptyManager = new FakePtyManager();
+        ptyManager.Publish(FakePtyManager.NewState("cat", Environment.CurrentDirectory, "first", true, null, false, "pty-1"));
+        ptyManager.Publish(FakePtyManager.NewState("python3", Environment.CurrentDirectory, "second", true, null, false, "pty-2"));
+        var host = new TuiHost(terminal, store, new FakeQueryEngine(), new ConsoleTuiRenderer(new ConsoleTranscriptRenderer()), ptyManager, new FakeTaskManager());
+
+        var result = await host.RunAsync(new ReplLaunchOptions(), CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains(terminal.RenderedFrames, frame => frame.Overlay is not null && frame.Overlay.Contains("PTY details", StringComparison.Ordinal));
+        Assert.Contains(terminal.RenderedFrames, frame => frame.Overlay is not null && frame.Overlay.Contains("pty-1", StringComparison.Ordinal));
+        Assert.Contains(terminal.RenderedFrames, frame => frame.Overlay is not null && frame.Overlay.Contains("pty-2", StringComparison.Ordinal));
+        Assert.Equal("pty-2", ptyManager.State.CurrentSessionId);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dataRoot))

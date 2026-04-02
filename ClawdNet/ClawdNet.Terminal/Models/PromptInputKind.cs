@@ -14,5 +14,6 @@ public enum PromptInputKind
     FocusNext,
     FocusPrevious,
     ToggleHelp,
-    ToggleSession
+    ToggleSession,
+    TogglePty
 }

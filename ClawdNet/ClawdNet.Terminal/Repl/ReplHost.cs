@@ -61,7 +61,7 @@ public sealed class ReplHost : IReplHost
         _viewport = new TerminalViewportState();
         _promptBuffer = string.Empty;
         _promptHistory.ResetNavigation();
-        _ptyManager.SessionChanged += HandlePtySessionChanged;
+        _ptyManager.StateChanged += HandlePtyStateChanged;
         _taskManager.TaskChanged += HandleTaskChanged;
         try
         {
@@ -69,9 +69,9 @@ public sealed class ReplHost : IReplHost
 
             using var interruptRegistration = _terminalSession.RegisterInterruptHandler(() =>
             {
-                if (_ptyManager.CurrentState?.IsRunning == true)
+                if (_ptyManager.State.CurrentSession?.IsRunning == true)
                 {
-                    _ = _ptyManager.CloseAsync(CancellationToken.None);
+                    _ = _ptyManager.CloseAsync(null, CancellationToken.None);
                     return;
                 }
 
@@ -355,7 +355,7 @@ public sealed class ReplHost : IReplHost
         }
         finally
         {
-            _ptyManager.SessionChanged -= HandlePtySessionChanged;
+            _ptyManager.StateChanged -= HandlePtyStateChanged;
             _taskManager.TaskChanged -= HandleTaskChanged;
         }
     }
@@ -371,7 +371,7 @@ public sealed class ReplHost : IReplHost
             case "/help":
                 SetActivity(
                     TerminalActivityState.ShowingHelp,
-                    "Commands: /help, /session, /tasks, /pty, /clear, /bottom, /exit. Keys: Up/Down history, PgUp/PgDn scroll, End bottom.");
+                    "Commands: /help, /session, /tasks, /pty, /clear, /bottom, /exit. Keys: Up/Down history, PgUp/PgDn scroll, End bottom, F3 PTY overlay in TUI.");
                 return true;
             case "/session":
                 SetActivity(
@@ -385,12 +385,12 @@ public sealed class ReplHost : IReplHost
                 SetActivity(TerminalActivityState.Cleared, "Screen cleared. Session history is preserved.");
                 return true;
             case "/pty":
-                var ptyState = _ptyManager.CurrentState;
+                var ptyState = _ptyManager.State;
                 SetActivity(
                     TerminalActivityState.ShowingSession,
-                    ptyState is null
+                    ptyState.CurrentSession is null
                         ? "No active PTY session."
-                        : $"PTY {ptyState.SessionId} | running={ptyState.IsRunning} | command={ptyState.Command}");
+                        : $"PTY {ptyState.CurrentSession.SessionId} | running={ptyState.CurrentSession.IsRunning} | command={ptyState.CurrentSession.Command} | others={Math.Max(0, ptyState.Sessions.Count - 1)}");
                 return true;
             case "/tasks":
                 var tasks = await _taskManager.ListAsync(cancellationToken);
@@ -438,12 +438,12 @@ public sealed class ReplHost : IReplHost
         var footer = _transcriptRenderer.RenderFooter(
             session,
             permissionMode,
-            _ptyManager.CurrentState,
+            _ptyManager.State,
             _viewport.FollowLiveOutput,
             _viewport.HasBufferedLiveOutput,
             error);
         var draft = _transcriptRenderer.RenderDraft(_draft);
-        var pty = _transcriptRenderer.RenderPty(_ptyManager.CurrentState);
+        var pty = _transcriptRenderer.RenderPty(_ptyManager.State);
         var activity = _transcriptRenderer.RenderActivity(_activityState, _activityDetail);
         _terminalSession.Render(new TerminalViewState("ClawdNet interactive mode", transcript, footer, _promptBuffer, _viewport, draft, pty, activity, clearScreen));
     }
@@ -463,7 +463,7 @@ public sealed class ReplHost : IReplHost
         }
     }
 
-    private void HandlePtySessionChanged(PtySessionState? state)
+    private void HandlePtyStateChanged(PtyManagerState state)
     {
         if (_currentSession is null)
         {
@@ -471,9 +471,9 @@ public sealed class ReplHost : IReplHost
         }
 
         MarkLiveUpdate();
-        if (state is not null && state.IsRunning)
+        if (state.CurrentSession is not null && state.CurrentSession.IsRunning)
         {
-            SetActivity(TerminalActivityState.RunningTool, $"PTY session active: {state.Command}");
+            SetActivity(TerminalActivityState.RunningTool, $"PTY session active: {state.CurrentSession.Command}");
         }
 
         Render(_currentSession, _currentPermissionMode, _visibleStartIndex, clearScreen: true);

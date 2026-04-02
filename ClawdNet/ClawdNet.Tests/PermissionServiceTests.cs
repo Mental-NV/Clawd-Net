@@ -61,6 +61,17 @@ public sealed class PermissionServiceTests
     }
 
     [Fact]
+    public void Default_mode_requires_approval_for_pty_focus()
+    {
+        var service = new DefaultPermissionService();
+        var tool = new PtyFocusTool(new FakePtyManager());
+
+        var decision = service.Evaluate(tool, PermissionMode.Default);
+
+        Assert.Equal(PermissionDecisionKind.Ask, decision.Kind);
+    }
+
+    [Fact]
     public void Default_mode_requires_approval_for_task_start()
     {
         var service = new DefaultPermissionService();

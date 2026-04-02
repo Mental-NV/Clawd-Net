@@ -29,4 +29,6 @@ public sealed record PromptInputResult(
     public static PromptInputResult ToggleHelp() => new(PromptInputKind.ToggleHelp);
 
     public static PromptInputResult ToggleSession() => new(PromptInputKind.ToggleSession);
+
+    public static PromptInputResult TogglePty() => new(PromptInputKind.TogglePty);
 }

@@ -4,18 +4,18 @@ using ClawdNet.Core.Models;
 
 namespace ClawdNet.Runtime.Tools;
 
-public sealed class PtyCloseTool : ITool
+public sealed class PtyFocusTool : ITool
 {
     private readonly IPtyManager _ptyManager;
 
-    public PtyCloseTool(IPtyManager ptyManager)
+    public PtyFocusTool(IPtyManager ptyManager)
     {
         _ptyManager = ptyManager;
     }
 
-    public string Name => "pty_close";
+    public string Name => "pty_focus";
 
-    public string Description => "Close the active PTY session.";
+    public string Description => "Focus an existing PTY session for subsequent PTY reads and writes.";
 
     public ToolCategory Category => ToolCategory.Execute;
 
@@ -25,27 +25,26 @@ public sealed class PtyCloseTool : ITool
         ["properties"] = new JsonObject
         {
             ["sessionId"] = new JsonObject { ["type"] = "string" }
-        }
+        },
+        ["required"] = new JsonArray("sessionId")
     };
 
     public async Task<ToolExecutionResult> ExecuteAsync(ToolExecutionRequest request, CancellationToken cancellationToken)
     {
-        PtySessionState? state;
-        var sessionId = request.Input?["sessionId"]?.GetValue<string>();
+        var sessionId = request.Input?["sessionId"]?.GetValue<string>()?.Trim();
+        if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            return new ToolExecutionResult(false, string.Empty, "pty_focus requires a 'sessionId' string.");
+        }
+
         try
         {
-            state = await _ptyManager.CloseAsync(sessionId, cancellationToken);
+            var state = await _ptyManager.FocusAsync(sessionId, cancellationToken);
+            return new ToolExecutionResult(true, $"Focused PTY session {state.SessionId}: {state.Command}");
         }
         catch (Exception ex)
         {
             return new ToolExecutionResult(false, string.Empty, ex.Message);
         }
-
-        if (state is null)
-        {
-            return new ToolExecutionResult(false, string.Empty, "No active PTY session.");
-        }
-
-        return new ToolExecutionResult(true, $"Closed PTY session {state.SessionId}.");
     }
 }

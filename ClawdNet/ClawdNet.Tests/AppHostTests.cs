@@ -242,7 +242,7 @@ public sealed class AppHostTests : IDisposable
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("used pty", result.StdOut);
         Assert.Single(ptyManager.Starts);
-        Assert.Contains("hello from pty", ptyManager.CurrentState?.RecentOutput);
+        Assert.Contains("hello from pty", ptyManager.State.CurrentSession?.RecentOutput);
     }
 
     [Fact]

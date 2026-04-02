@@ -46,30 +46,32 @@ public sealed class ConsoleTranscriptRenderer : ITranscriptRenderer
             : $"[live] {draft.Detail}";
     }
 
-    public string? RenderPty(PtySessionState? state)
+    public string? RenderPty(PtyManagerState? state)
     {
-        if (state is null)
+        var current = state?.CurrentSession;
+        if (current is null)
         {
             return null;
         }
 
-        var header = $"[pty] {state.Command} | running={state.IsRunning} | exitCode={(state.ExitCode.HasValue ? state.ExitCode.Value.ToString() : "n/a")}";
-        var output = string.IsNullOrWhiteSpace(state.RecentOutput) ? "(no output yet)" : state.RecentOutput.TrimEnd();
-        var clipped = state.IsOutputClipped ? $"{Environment.NewLine}[pty] output clipped to recent buffer" : string.Empty;
+        var otherCount = Math.Max(0, state!.Sessions.Count - 1);
+        var header = $"[pty] {current.SessionId} | {current.Command} | running={current.IsRunning} | exitCode={(current.ExitCode.HasValue ? current.ExitCode.Value.ToString() : "n/a")} | others={otherCount}";
+        var output = string.IsNullOrWhiteSpace(current.RecentOutput) ? "(no output yet)" : current.RecentOutput.TrimEnd();
+        var clipped = current.IsOutputClipped ? $"{Environment.NewLine}[pty] output clipped to recent buffer" : string.Empty;
         return $"{header}{Environment.NewLine}{output}{clipped}".TrimEnd();
     }
 
     public string RenderFooter(
         ConversationSession session,
         PermissionMode permissionMode,
-        PtySessionState? ptyState = null,
+        PtyManagerState? ptyState = null,
         bool followLiveOutput = true,
         bool hasBufferedLiveOutput = false,
         string? error = null)
     {
-        var ptyStatus = ptyState is null
+        var ptyStatus = ptyState?.CurrentSession is null
             ? "pty=idle"
-            : $"pty={(ptyState.IsRunning ? "running" : "stopped")}";
+            : $"pty={(ptyState.CurrentSession.IsRunning ? "running" : "stopped")}+{Math.Max(0, ptyState.Sessions.Count - 1)}";
         var followStatus = followLiveOutput
             ? "follow=live"
             : hasBufferedLiveOutput ? "follow=paused*" : "follow=paused";

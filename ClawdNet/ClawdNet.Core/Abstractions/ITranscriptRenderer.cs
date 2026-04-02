@@ -8,12 +8,12 @@ public interface ITranscriptRenderer
 
     string? RenderDraft(StreamingAssistantDraft? draft);
 
-    string? RenderPty(PtySessionState? state);
+    string? RenderPty(PtyManagerState? state);
 
     string RenderFooter(
         ConversationSession session,
         PermissionMode permissionMode,
-        PtySessionState? ptyState = null,
+        PtyManagerState? ptyState = null,
         bool followLiveOutput = true,
         bool hasBufferedLiveOutput = false,
         string? error = null);

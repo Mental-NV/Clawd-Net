@@ -67,6 +67,6 @@ public sealed class PtyStartTool : ITool
 
     private static string FormatState(PtySessionState state)
     {
-        return $"PTY session {state.SessionId} started: {state.Command}{Environment.NewLine}cwd={state.WorkingDirectory}";
+        return $"PTY session {state.SessionId} started: {state.Command}{Environment.NewLine}cwd={state.WorkingDirectory}{Environment.NewLine}current=true";
     }
 }

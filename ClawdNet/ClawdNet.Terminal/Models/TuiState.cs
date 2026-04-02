@@ -14,7 +14,7 @@ public sealed record TuiState(
     TerminalViewportState TranscriptViewport,
     TerminalViewportState ContextViewport,
     StreamingAssistantDraft? Draft = null,
-    PtySessionState? Pty = null,
+    PtyManagerState? Pty = null,
     TerminalActivityState ActivityState = TerminalActivityState.Ready,
     string? ActivityDetail = null,
     string? Error = null,

@@ -74,7 +74,10 @@ public sealed class ConsoleTranscriptRendererTests
             DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow,
             [new ConversationMessage("assistant", "ready", DateTimeOffset.UtcNow)]);
-        var ptyState = new PtySessionState("pty-1", "cat", "/tmp", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, true, null, "out", false);
+        var ptyState = new PtyManagerState(
+            "pty-1",
+            new PtySessionState("pty-1", "cat", "/tmp", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, true, null, "out", false),
+            [new PtySessionSummary("pty-1", "cat", "/tmp", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, true, null, true, false)]);
         var footer = renderer.RenderFooter(session, PermissionMode.Default, ptyState, false, true);
 
         Assert.Contains("pty=running", footer);

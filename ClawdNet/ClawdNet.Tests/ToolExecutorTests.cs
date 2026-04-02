@@ -117,6 +117,8 @@ public sealed class ToolExecutorTests
         var registry = new ToolRegistry(
         [
             new PtyStartTool(manager),
+            new PtyFocusTool(manager),
+            new PtyListTool(manager),
             new PtyWriteTool(manager),
             new PtyReadTool(manager),
             new PtyCloseTool(manager)
@@ -132,6 +134,12 @@ public sealed class ToolExecutorTests
         var read = await executor.ExecuteAsync(
             new ToolExecutionRequest("pty_read", new JsonObject()),
             CancellationToken.None);
+        var list = await executor.ExecuteAsync(
+            new ToolExecutionRequest("pty_list", new JsonObject()),
+            CancellationToken.None);
+        var focus = await executor.ExecuteAsync(
+            new ToolExecutionRequest("pty_focus", new JsonObject { ["sessionId"] = manager.State.CurrentSessionId }),
+            CancellationToken.None);
         var close = await executor.ExecuteAsync(
             new ToolExecutionRequest("pty_close", new JsonObject()),
             CancellationToken.None);
@@ -139,7 +147,10 @@ public sealed class ToolExecutorTests
         Assert.True(start.Success);
         Assert.True(write.Success);
         Assert.True(read.Success);
+        Assert.True(list.Success);
+        Assert.True(focus.Success);
         Assert.Contains("hello", read.Output);
+        Assert.Contains("session=", list.Output);
         Assert.True(close.Success);
     }
 }
