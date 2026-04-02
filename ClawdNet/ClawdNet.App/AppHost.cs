@@ -111,6 +111,7 @@ public sealed class AppHost : IAsyncDisposable
             new TaskStartTool(_taskManager),
             new TaskStatusTool(_taskManager),
             new TaskListTool(_taskManager),
+            new TaskInspectTool(_taskManager),
             new TaskCancelTool(_taskManager)
         ]);
         ITranscriptRenderer transcriptRenderer = new ConsoleTranscriptRenderer();

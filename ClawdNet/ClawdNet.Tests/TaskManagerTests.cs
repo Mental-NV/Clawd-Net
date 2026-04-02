@@ -153,6 +153,30 @@ public sealed class TaskManagerTests : IDisposable
         Assert.Contains(parentSession!.Messages, message => message.Role == "plugin_hook" && message.Content == "task hook ok");
     }
 
+    [Fact]
+    public async Task Task_manager_inspect_returns_recent_events_and_worker_transcript_tail()
+    {
+        var sessionStore = new JsonSessionStore(_dataRoot);
+        var taskStore = new JsonTaskStore(_dataRoot);
+        var engine = new FakeQueryEngine
+        {
+            StreamHandler = request => StreamWorkerAsync(sessionStore, request)
+        };
+        var manager = new TaskManager(taskStore, sessionStore, engine);
+        await manager.InitializeAsync(CancellationToken.None);
+        var parent = await sessionStore.CreateAsync("Parent", "claude-sonnet-4-5", CancellationToken.None);
+
+        var task = await manager.StartAsync(new TaskRequest("Inspect repo", "Scan files", parent.Id), CancellationToken.None);
+        var completed = await WaitForTaskAsync(taskStore, task.Id, ClawdTaskStatus.Completed);
+        var inspection = await manager.InspectAsync(task.Id, CancellationToken.None);
+
+        Assert.NotNull(completed);
+        Assert.NotNull(inspection);
+        Assert.NotEmpty(inspection!.RecentEvents);
+        Assert.Contains("assistant: worker finished", inspection.Worker.TranscriptTail);
+        Assert.True(inspection.Worker.MessageCount > 0);
+    }
+
     private static async Task<TaskRecord?> WaitForTaskAsync(JsonTaskStore store, string taskId, ClawdTaskStatus expectedStatus)
     {
         for (var attempt = 0; attempt < 50; attempt++)
@@ -183,6 +207,36 @@ public sealed class TaskManagerTests : IDisposable
         }
 
         return await store.GetAsync(sessionId, CancellationToken.None);
+    }
+
+    private static async IAsyncEnumerable<QueryStreamEvent> StreamWorkerAsync(JsonSessionStore store, QueryRequest request)
+    {
+        var session = await store.GetAsync(request.SessionId!, CancellationToken.None)
+            ?? throw new InvalidOperationException("Expected worker session.");
+        var withUser = session with
+        {
+            UpdatedAtUtc = DateTimeOffset.UtcNow,
+            Messages =
+            [
+                .. session.Messages,
+                new ConversationMessage("user", request.Prompt, DateTimeOffset.UtcNow)
+            ]
+        };
+        await store.SaveAsync(withUser, CancellationToken.None);
+        yield return new UserTurnAcceptedEvent(withUser);
+
+        var completed = withUser with
+        {
+            UpdatedAtUtc = DateTimeOffset.UtcNow,
+            Messages =
+            [
+                .. withUser.Messages,
+                new ConversationMessage("assistant", "worker finished", DateTimeOffset.UtcNow)
+            ]
+        };
+        await store.SaveAsync(completed, CancellationToken.None);
+        yield return new AssistantMessageCommittedEvent(completed, "worker finished");
+        yield return new TurnCompletedStreamEvent(new QueryExecutionResult(completed, "worker finished", 1));
     }
 
     public void Dispose()

@@ -40,6 +40,30 @@ public sealed class FakeTaskManager : ITaskManager
         return Task.FromResult(_tasks.FirstOrDefault(task => string.Equals(task.Id, taskId, StringComparison.Ordinal)));
     }
 
+    public async Task<IReadOnlyList<TaskEvent>> GetEventsAsync(string taskId, int limit, CancellationToken cancellationToken)
+    {
+        var task = await GetAsync(taskId, cancellationToken);
+        return (task?.Events ?? []).TakeLast(Math.Max(1, limit)).ToArray();
+    }
+
+    public async Task<TaskInspection?> InspectAsync(string taskId, CancellationToken cancellationToken)
+    {
+        var task = await GetAsync(taskId, cancellationToken);
+        if (task is null)
+        {
+            return null;
+        }
+
+        return new TaskInspection(
+            task,
+            (task.Events ?? []).TakeLast(8).ToArray(),
+            new TaskWorkerSnapshot(
+                task.WorkerSessionId,
+                task.WorkerMessageCount,
+                task.WorkerUpdatedAtUtc,
+                task.WorkerTranscriptTail ?? "(no worker transcript)"));
+    }
+
     public Task<IReadOnlyList<TaskRecord>> ListAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -101,6 +125,10 @@ public sealed class FakeTaskManager : ITaskManager
             request.WorkingDirectory,
             message,
             status == ClawdTaskStatus.Completed ? new TaskResult(true, message) : null,
-            [new TaskEvent(status, message, timestamp, status != ClawdTaskStatus.Completed && status != ClawdTaskStatus.Running)]);
+            [new TaskEvent(status, message, timestamp, status != ClawdTaskStatus.Completed && status != ClawdTaskStatus.Running)],
+            "assistant: worker snapshot",
+            2,
+            timestamp,
+            status == ClawdTaskStatus.Interrupted ? message : null);
     }
 }

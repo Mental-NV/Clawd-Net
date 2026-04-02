@@ -284,14 +284,7 @@ public sealed class TuiHost : ITuiHost
                 await ToggleSessionOverlayAsync(new ReplLaunchOptions(_currentSession?.Id, _currentSession?.Model, _currentPermissionMode), cancellationToken);
                 return true;
             case "/tasks":
-                var tasks = await _taskManager.ListAsync(cancellationToken);
-                _overlay = new TuiOverlayState(
-                    TuiOverlayKind.Session,
-                    "Recent tasks",
-                    tasks.Count == 0
-                        ? "No tasks found."
-                        : string.Join(Environment.NewLine, tasks.Take(8).Select(task => $"{task.Id} | {task.Status} | {task.Title}")));
-                _focus = TuiFocusTarget.Overlay;
+                await ShowTasksOverlayAsync(cancellationToken);
                 return true;
             case "/pty":
                 var ptyState = _ptyManager.CurrentState;
@@ -315,6 +308,16 @@ public sealed class TuiHost : ITuiHost
                 _activityDetail = "Returned to live output.";
                 return true;
             default:
+                if (prompt.StartsWith("/tasks ", StringComparison.OrdinalIgnoreCase))
+                {
+                    var taskId = prompt["/tasks ".Length..].Trim();
+                    if (!string.IsNullOrWhiteSpace(taskId))
+                    {
+                        await ShowTaskInspectionOverlayAsync(taskId, cancellationToken);
+                        return true;
+                    }
+                }
+
                 return false;
         }
     }
@@ -598,7 +601,7 @@ public sealed class TuiHost : ITuiHost
             "F1: help" + Environment.NewLine +
             "F2: session details" + Environment.NewLine +
             "Ctrl+C: interrupt PTY or active turn" + Environment.NewLine +
-            "Slash commands: /help /session /tasks /pty /clear /bottom /exit");
+            "Slash commands: /help /session /tasks [/tasks <id>] /pty /clear /bottom /exit");
         _focus = TuiFocusTarget.Overlay;
     }
 
@@ -620,6 +623,57 @@ public sealed class TuiHost : ITuiHost
             $"Permission: {_currentPermissionMode}" + Environment.NewLine +
             $"Messages: {_currentSession?.Messages.Count ?? 0}" + Environment.NewLine +
             $"Recent tasks: {tasks.Count}");
+        _focus = TuiFocusTarget.Overlay;
+    }
+
+    private async Task ShowTasksOverlayAsync(CancellationToken cancellationToken)
+    {
+        var tasks = await _taskManager.ListAsync(cancellationToken);
+        var content = tasks.Count == 0
+            ? "No tasks found."
+            : string.Join(
+                Environment.NewLine,
+                tasks.Take(8).Select(task =>
+                    $"{task.Id} | {task.Status} | {task.Title}{Environment.NewLine}  updated={task.UpdatedAtUtc:O}{Environment.NewLine}  summary={task.Result?.Summary ?? task.LastStatusMessage ?? "(none)"}"));
+        if (tasks.Count > 0)
+        {
+            content = $"{content}{Environment.NewLine}{Environment.NewLine}Use /tasks <id> to inspect a worker transcript.";
+        }
+
+        _overlay = new TuiOverlayState(TuiOverlayKind.Session, "Recent tasks", content);
+        _focus = TuiFocusTarget.Overlay;
+    }
+
+    private async Task ShowTaskInspectionOverlayAsync(string taskId, CancellationToken cancellationToken)
+    {
+        var inspection = await _taskManager.InspectAsync(taskId, cancellationToken);
+        if (inspection is null)
+        {
+            _overlay = new TuiOverlayState(TuiOverlayKind.Error, "Task not found", $"Task '{taskId}' was not found.");
+            _focus = TuiFocusTarget.Overlay;
+            return;
+        }
+
+        var recentEvents = inspection.RecentEvents.Count == 0
+            ? "(none)"
+            : string.Join(Environment.NewLine, inspection.RecentEvents.Select(taskEvent => $"{taskEvent.TimestampUtc:HH:mm:ss} | {taskEvent.Status} | {taskEvent.Message}"));
+        var content = string.Join(
+            Environment.NewLine,
+            [
+                $"Task: {inspection.Task.Id}",
+                $"Status: {inspection.Task.Status}",
+                $"Title: {inspection.Task.Title}",
+                $"WorkerSession: {inspection.Worker.WorkerSessionId}",
+                $"WorkerMessages: {inspection.Worker.MessageCount}",
+                $"WorkerUpdatedAtUtc: {inspection.Worker.UpdatedAtUtc:O}",
+                $"Summary: {inspection.Task.Result?.Summary ?? inspection.Task.LastStatusMessage ?? "(none)"}",
+                "RecentEvents:",
+                recentEvents,
+                "WorkerTranscriptTail:",
+                string.IsNullOrWhiteSpace(inspection.Worker.TranscriptTail) ? "(none)" : inspection.Worker.TranscriptTail
+            ]);
+
+        _overlay = new TuiOverlayState(TuiOverlayKind.Session, $"Task details: {inspection.Task.Id}", content);
         _focus = TuiFocusTarget.Overlay;
     }
 
@@ -657,6 +711,14 @@ public sealed class TuiHost : ITuiHost
 
             _activityState = TerminalActivityState.RunningTool;
             _activityDetail = $"Task {task.Id} | {task.Status} | {taskEvent.Message}";
+            if (_overlay?.Title == "Recent tasks")
+            {
+                await ShowTasksOverlayAsync(CancellationToken.None);
+            }
+            else if (_overlay?.Title == $"Task details: {task.Id}")
+            {
+                await ShowTaskInspectionOverlayAsync(task.Id, CancellationToken.None);
+            }
             MarkContextLiveUpdate();
             Render(clearScreen: true);
         }

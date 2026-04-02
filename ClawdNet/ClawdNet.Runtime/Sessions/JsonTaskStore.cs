@@ -6,6 +6,8 @@ namespace ClawdNet.Runtime.Sessions;
 
 public sealed class JsonTaskStore : ITaskStore
 {
+    private const int MaxEvents = 20;
+    private const int MaxTranscriptTailLength = 1200;
     private readonly string _storePath;
     private readonly SemaphoreSlim _sync = new(1, 1);
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
@@ -141,7 +143,22 @@ public sealed class JsonTaskStore : ITaskStore
             CreatedAtUtc = createdAt,
             UpdatedAtUtc = updatedAt,
             Model = model,
-            Events = task.Events ?? []
+            Events = (task.Events ?? []).TakeLast(MaxEvents).ToArray(),
+            WorkerTranscriptTail = NormalizeTranscript(task.WorkerTranscriptTail),
+            WorkerUpdatedAtUtc = task.WorkerUpdatedAtUtc ?? updatedAt
         };
+    }
+
+    private static string? NormalizeTranscript(string? transcript)
+    {
+        if (string.IsNullOrWhiteSpace(transcript))
+        {
+            return transcript;
+        }
+
+        var trimmed = transcript.Trim();
+        return trimmed.Length <= MaxTranscriptTailLength
+            ? trimmed
+            : trimmed[^MaxTranscriptTailLength..];
     }
 }

@@ -68,7 +68,9 @@ public sealed class TaskStartTool : ITool
             status = task.Status.ToString(),
             title = task.Title,
             workerSessionId = task.WorkerSessionId,
-            summary = task.LastStatusMessage
+            summary = task.LastStatusMessage,
+            workerMessageCount = task.WorkerMessageCount,
+            workerUpdatedAtUtc = task.WorkerUpdatedAtUtc
         }));
     }
 

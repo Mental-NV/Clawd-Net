@@ -5,18 +5,18 @@ using ClawdNet.Core.Models;
 
 namespace ClawdNet.Runtime.Tools;
 
-public sealed class TaskStatusTool : ITool
+public sealed class TaskInspectTool : ITool
 {
     private readonly ITaskManager _taskManager;
 
-    public TaskStatusTool(ITaskManager taskManager)
+    public TaskInspectTool(ITaskManager taskManager)
     {
         _taskManager = taskManager;
     }
 
-    public string Name => "task_status";
+    public string Name => "task_inspect";
 
-    public string Description => "Read one persisted task status and summary.";
+    public string Description => "Inspect one task with recent events and worker transcript tail.";
 
     public ToolCategory Category => ToolCategory.ReadOnly;
 
@@ -35,27 +35,25 @@ public sealed class TaskStatusTool : ITool
         var taskId = request.Input?["taskId"]?.GetValue<string>()?.Trim();
         if (string.IsNullOrWhiteSpace(taskId))
         {
-            return new ToolExecutionResult(false, string.Empty, "task_status requires a 'taskId' string.");
+            return new ToolExecutionResult(false, string.Empty, "task_inspect requires a 'taskId' string.");
         }
 
-        var task = await _taskManager.GetAsync(taskId, cancellationToken);
-        if (task is null)
+        var inspection = await _taskManager.InspectAsync(taskId, cancellationToken);
+        if (inspection is null)
         {
             return new ToolExecutionResult(false, string.Empty, $"Task '{taskId}' was not found.");
         }
 
         return new ToolExecutionResult(true, JsonSerializer.Serialize(new
         {
-            taskId = task.Id,
-            status = task.Status.ToString(),
-            title = task.Title,
-            workerSessionId = task.WorkerSessionId,
-            updatedAtUtc = task.UpdatedAtUtc,
-            lastStatusMessage = task.LastStatusMessage,
-            result = task.Result,
-            workerMessageCount = task.WorkerMessageCount,
-            workerUpdatedAtUtc = task.WorkerUpdatedAtUtc,
-            recentEvents = (task.Events ?? []).TakeLast(5).ToArray()
+            taskId = inspection.Task.Id,
+            status = inspection.Task.Status.ToString(),
+            title = inspection.Task.Title,
+            workerSessionId = inspection.Worker.WorkerSessionId,
+            updatedAtUtc = inspection.Task.UpdatedAtUtc,
+            summary = inspection.Task.Result?.Summary ?? inspection.Task.LastStatusMessage,
+            recentEvents = inspection.RecentEvents,
+            worker = inspection.Worker
         }));
     }
 }

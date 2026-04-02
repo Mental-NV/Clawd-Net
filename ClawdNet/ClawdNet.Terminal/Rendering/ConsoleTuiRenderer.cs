@@ -66,7 +66,13 @@ public sealed class ConsoleTuiRenderer : ITuiRenderer
             builder.AppendLine("tasks");
             foreach (var task in state.RecentTasks.Take(5))
             {
-                builder.AppendLine($"{task.Id} | {task.Status} | {task.Title}");
+                var marker = task.Status == ClawdNet.Core.Models.TaskStatus.Running ? "*" : "-";
+                builder.AppendLine($"{marker} {task.Id} | {task.Status} | {task.Title}");
+                if (!string.IsNullOrWhiteSpace(task.Result?.Summary ?? task.LastStatusMessage))
+                {
+                    builder.AppendLine($"  {task.Result?.Summary ?? task.LastStatusMessage}");
+                }
+                builder.AppendLine($"  updated={task.UpdatedAtUtc:HH:mm:ss} | workerMessages={task.WorkerMessageCount}");
             }
         }
 

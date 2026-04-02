@@ -34,12 +34,16 @@ public sealed class TaskCommandHandler : ICommandHandler
 
         if (string.Equals(action, "show", StringComparison.OrdinalIgnoreCase) && request.Arguments.Count >= 3)
         {
-            var task = await context.TaskManager.GetAsync(request.Arguments[2], cancellationToken);
-            if (task is null)
+            var inspection = await context.TaskManager.InspectAsync(request.Arguments[2], cancellationToken);
+            if (inspection is null)
             {
                 return CommandExecutionResult.Failure($"Task '{request.Arguments[2]}' was not found.", 3);
             }
 
+            var task = inspection.Task;
+            var recentEvents = inspection.RecentEvents.Count == 0
+                ? "(none)"
+                : string.Join(Environment.NewLine, inspection.RecentEvents.Select(taskEvent => $"{taskEvent.TimestampUtc:O} | {taskEvent.Status} | {taskEvent.Message}"));
             var output = string.Join(
                 Environment.NewLine,
                 [
@@ -50,7 +54,13 @@ public sealed class TaskCommandHandler : ICommandHandler
                     $"WorkerSession: {task.WorkerSessionId}",
                     $"Model: {task.Model}",
                     $"UpdatedAtUtc: {task.UpdatedAtUtc:O}",
-                    $"Summary: {task.Result?.Summary ?? task.LastStatusMessage ?? "(none)"}"
+                    $"Summary: {task.Result?.Summary ?? task.LastStatusMessage ?? "(none)"}",
+                    $"WorkerMessages: {inspection.Worker.MessageCount}",
+                    $"WorkerUpdatedAtUtc: {inspection.Worker.UpdatedAtUtc:O}",
+                    "RecentEvents:",
+                    recentEvents,
+                    "WorkerTranscriptTail:",
+                    string.IsNullOrWhiteSpace(inspection.Worker.TranscriptTail) ? "(none)" : inspection.Worker.TranscriptTail
                 ]);
             return CommandExecutionResult.Success(output);
         }

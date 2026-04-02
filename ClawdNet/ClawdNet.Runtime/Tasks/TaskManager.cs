@@ -9,6 +9,8 @@ namespace ClawdNet.Runtime.Tasks;
 public sealed class TaskManager : ITaskManager
 {
     private const int MaxHookSummaryLength = 240;
+    private const int TaskEventLimit = 12;
+    private const int WorkerTranscriptTailLength = 800;
     private readonly ITaskStore _taskStore;
     private readonly IConversationStore _conversationStore;
     private readonly IQueryEngine _queryEngine;
@@ -43,7 +45,8 @@ public sealed class TaskManager : ITaskManager
                 CompletedAtUtc = interruptedAt,
                 LastStatusMessage = interruptedEvent.Message,
                 Result = task.Result ?? new TaskResult(false, interruptedEvent.Message, interruptedEvent.Message),
-                Events = [.. task.Events ?? [], interruptedEvent]
+                Events = TakeRecentEvents([.. task.Events ?? [], interruptedEvent]),
+                InterruptionReason = interruptedEvent.Message
             };
             await _taskStore.SaveAsync(updated, cancellationToken);
         }
@@ -73,7 +76,11 @@ public sealed class TaskManager : ITaskManager
             request.WorkingDirectory,
             startedEvent.Message,
             null,
-            [startedEvent]);
+            [startedEvent],
+            "system: Worker session created.",
+            workerSession.Messages.Count,
+            workerSession.UpdatedAtUtc,
+            null);
 
         await _taskStore.CreateAsync(task, cancellationToken);
         await AppendParentMessageAsync(task.ParentSessionId, "task_started", task.Id, $"{task.Title}: {startedEvent.Message}", false, cancellationToken);
@@ -88,6 +95,31 @@ public sealed class TaskManager : ITaskManager
     public Task<TaskRecord?> GetAsync(string taskId, CancellationToken cancellationToken)
     {
         return _taskStore.GetAsync(taskId, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<TaskEvent>> GetEventsAsync(string taskId, int limit, CancellationToken cancellationToken)
+    {
+        var task = await _taskStore.GetAsync(taskId, cancellationToken);
+        if (task is null)
+        {
+            return [];
+        }
+
+        return (task.Events ?? [])
+            .TakeLast(Math.Max(1, limit))
+            .ToArray();
+    }
+
+    public async Task<TaskInspection?> InspectAsync(string taskId, CancellationToken cancellationToken)
+    {
+        var task = await _taskStore.GetAsync(taskId, cancellationToken);
+        if (task is null)
+        {
+            return null;
+        }
+
+        var worker = await BuildWorkerSnapshotAsync(task, cancellationToken);
+        return new TaskInspection(task, (task.Events ?? []).TakeLast(TaskEventLimit).ToArray(), worker);
     }
 
     public Task<IReadOnlyList<TaskRecord>> ListAsync(CancellationToken cancellationToken)
@@ -143,16 +175,44 @@ public sealed class TaskManager : ITaskManager
         try
         {
             var prompt = BuildWorkerPrompt(request);
-            var result = await _queryEngine.AskAsync(
-                new QueryRequest(
-                    prompt,
-                    task.WorkerSessionId,
-                    task.Model,
-                    request.MaxTurns,
-                    request.PermissionMode,
-                    null,
-                    false),
-                cancellationToken);
+            task = await RecordProgressAsync(task, "Worker launched.", cancellationToken);
+
+            QueryExecutionResult? result = null;
+            await foreach (var streamEvent in _queryEngine.StreamAskAsync(
+                               new QueryRequest(
+                                   prompt,
+                                   task.WorkerSessionId,
+                                   task.Model,
+                                   request.MaxTurns,
+                                   request.PermissionMode,
+                                   null,
+                                   false),
+                               cancellationToken))
+            {
+                switch (streamEvent)
+                {
+                    case UserTurnAcceptedEvent accepted:
+                        task = await UpdateSnapshotAsync(task, accepted.Session, "Worker session created.", cancellationToken);
+                        break;
+                    case AssistantMessageCommittedEvent committed:
+                        task = await UpdateSnapshotAsync(task, committed.Session, "Worker session updated.", cancellationToken);
+                        break;
+                    case ToolResultCommittedEvent committedTool:
+                        task = await UpdateSnapshotAsync(task, committedTool.Session, $"Worker used tool {committedTool.ToolCall.Name}.", cancellationToken);
+                        break;
+                    case TurnCompletedStreamEvent completed:
+                        result = completed.Result;
+                        task = await UpdateSnapshotAsync(task, completed.Result.Session, "Task summary updated.", cancellationToken);
+                        break;
+                    case TurnFailedStreamEvent failed:
+                        throw new InvalidOperationException(failed.Message);
+                }
+            }
+
+            if (result is null)
+            {
+                throw new InvalidOperationException("Worker task completed without a final result.");
+            }
 
             var completedAt = DateTimeOffset.UtcNow;
             var summary = Summarize(result.AssistantText);
@@ -165,7 +225,10 @@ public sealed class TaskManager : ITaskManager
                 CompletedAtUtc = completedAt,
                 LastStatusMessage = completedEvent.Message,
                 Result = taskResult,
-                Events = [.. task.Events ?? [], completedEvent]
+                Events = TakeRecentEvents([.. task.Events ?? [], completedEvent]),
+                WorkerTranscriptTail = BuildTranscriptTail(result.Session),
+                WorkerMessageCount = result.Session.Messages.Count,
+                WorkerUpdatedAtUtc = result.Session.UpdatedAtUtc
             };
             await _taskStore.SaveAsync(updated, cancellationToken);
             await AppendParentMessageAsync(task.ParentSessionId, "task_completed", task.Id, $"{summary}", false, cancellationToken);
@@ -183,7 +246,8 @@ public sealed class TaskManager : ITaskManager
                 CompletedAtUtc = canceledAt,
                 LastStatusMessage = canceledEvent.Message,
                 Result = new TaskResult(false, canceledEvent.Message, canceledEvent.Message),
-                Events = [.. task.Events ?? [], canceledEvent]
+                Events = TakeRecentEvents([.. task.Events ?? [], canceledEvent]),
+                InterruptionReason = canceledEvent.Message
             };
             await _taskStore.SaveAsync(updated, CancellationToken.None);
             await AppendParentMessageAsync(task.ParentSessionId, "task_canceled", task.Id, canceledEvent.Message, true, CancellationToken.None);
@@ -202,7 +266,8 @@ public sealed class TaskManager : ITaskManager
                 CompletedAtUtc = failedAt,
                 LastStatusMessage = summary,
                 Result = new TaskResult(false, summary, ex.Message),
-                Events = [.. task.Events ?? [], failedEvent]
+                Events = TakeRecentEvents([.. task.Events ?? [], failedEvent]),
+                InterruptionReason = ex.Message
             };
             await _taskStore.SaveAsync(updated, CancellationToken.None);
             await AppendParentMessageAsync(task.ParentSessionId, "task_failed", task.Id, summary, true, CancellationToken.None);
@@ -289,7 +354,8 @@ public sealed class TaskManager : ITaskManager
                     CompletedAtUtc = failedAt,
                     LastStatusMessage = failureMessage,
                     Result = new TaskResult(false, failureMessage, hookResult.Message),
-                    Events = [.. task.Events ?? [], failureEvent]
+                    Events = TakeRecentEvents([.. task.Events ?? [], failureEvent]),
+                    InterruptionReason = hookResult.Message
                 };
                 await _taskStore.SaveAsync(failedTask, cancellationToken);
                 await AppendParentMessageAsync(task.ParentSessionId, "task_failed", task.Id, failureMessage, true, cancellationToken);
@@ -297,6 +363,66 @@ public sealed class TaskManager : ITaskManager
                 task = failedTask;
             }
         }
+    }
+
+    private async Task<TaskRecord> RecordProgressAsync(TaskRecord task, string message, CancellationToken cancellationToken)
+    {
+        var timestamp = DateTimeOffset.UtcNow;
+        var progressEvent = new TaskEvent(ClawdTaskStatus.Running, message, timestamp);
+        var updated = task with
+        {
+            Status = ClawdTaskStatus.Running,
+            UpdatedAtUtc = timestamp,
+            LastStatusMessage = message,
+            Events = TakeRecentEvents([.. task.Events ?? [], progressEvent])
+        };
+        await _taskStore.SaveAsync(updated, cancellationToken);
+        await AppendParentMessageAsync(task.ParentSessionId, "task_updated", task.Id, message, false, cancellationToken);
+        TaskChanged?.Invoke(updated, progressEvent);
+        return updated;
+    }
+
+    private async Task<TaskRecord> UpdateSnapshotAsync(
+        TaskRecord task,
+        ConversationSession workerSession,
+        string message,
+        CancellationToken cancellationToken)
+    {
+        var timestamp = DateTimeOffset.UtcNow;
+        var progressEvent = new TaskEvent(ClawdTaskStatus.Running, message, timestamp);
+        var updated = task with
+        {
+            Status = ClawdTaskStatus.Running,
+            UpdatedAtUtc = timestamp,
+            LastStatusMessage = message,
+            Events = TakeRecentEvents([.. task.Events ?? [], progressEvent]),
+            WorkerTranscriptTail = BuildTranscriptTail(workerSession),
+            WorkerMessageCount = workerSession.Messages.Count,
+            WorkerUpdatedAtUtc = workerSession.UpdatedAtUtc
+        };
+        await _taskStore.SaveAsync(updated, cancellationToken);
+        await AppendParentMessageAsync(task.ParentSessionId, "task_updated", task.Id, message, false, cancellationToken);
+        TaskChanged?.Invoke(updated, progressEvent);
+        return updated;
+    }
+
+    private async Task<TaskWorkerSnapshot> BuildWorkerSnapshotAsync(TaskRecord task, CancellationToken cancellationToken)
+    {
+        var workerSession = await _conversationStore.GetAsync(task.WorkerSessionId, cancellationToken);
+        if (workerSession is null)
+        {
+            return new TaskWorkerSnapshot(
+                task.WorkerSessionId,
+                task.WorkerMessageCount,
+                task.WorkerUpdatedAtUtc,
+                task.WorkerTranscriptTail ?? "(worker session unavailable)");
+        }
+
+        return new TaskWorkerSnapshot(
+            workerSession.Id,
+            workerSession.Messages.Count,
+            workerSession.UpdatedAtUtc,
+            BuildTranscriptTail(workerSession));
     }
 
     private static string BuildWorkerPrompt(TaskRequest request)
@@ -343,6 +469,27 @@ public sealed class TaskManager : ITaskManager
         }
 
         return $"{trimmed[..237]}...";
+    }
+
+    private static IReadOnlyList<TaskEvent> TakeRecentEvents(IEnumerable<TaskEvent> events)
+    {
+        return events.TakeLast(TaskEventLimit).ToArray();
+    }
+
+    private static string BuildTranscriptTail(ConversationSession session)
+    {
+        var tail = string.Join(
+            Environment.NewLine,
+            session.Messages
+                .TakeLast(8)
+                .Select(message => $"{message.Role}: {message.Content}"));
+
+        if (tail.Length <= WorkerTranscriptTailLength)
+        {
+            return tail;
+        }
+
+        return tail[^WorkerTranscriptTailLength..];
     }
 
     private sealed record RunningTaskHandle(

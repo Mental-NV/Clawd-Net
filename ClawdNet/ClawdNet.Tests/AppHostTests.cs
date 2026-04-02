@@ -591,6 +591,43 @@ public sealed class AppHostTests : IDisposable
         Assert.Contains(pluginRuntime.CommandInvocations, invocation => invocation.Arguments[0] == "demo-run");
     }
 
+    [Fact]
+    public async Task Task_show_reports_recent_events_and_worker_transcript_tail()
+    {
+        var taskManager = new FakeTaskManager();
+        var task = new TaskRecord(
+            "task-1",
+            TaskKind.Worker,
+            "Inspect repo",
+            "Scan files",
+            "parent-1",
+            "worker-1",
+            "claude-sonnet-4-5",
+            PermissionMode.Default,
+            ClawdTaskStatus.Completed,
+            DateTimeOffset.UtcNow.AddMinutes(-2),
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            null,
+            "/tmp",
+            "Task completed successfully.",
+            new TaskResult(true, "Task completed successfully."),
+            [new TaskEvent(ClawdTaskStatus.Running, "Worker launched.", DateTimeOffset.UtcNow.AddMinutes(-1))],
+            "assistant: worker finished",
+            3,
+            DateTimeOffset.UtcNow,
+            null);
+        taskManager.Publish(task, task.Events![0]);
+        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient(), taskManager: taskManager);
+
+        var result = await host.RunAsync(["task", "show", "task-1"], CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("RecentEvents:", result.StdOut);
+        Assert.Contains("WorkerTranscriptTail:", result.StdOut);
+        Assert.Contains("assistant: worker finished", result.StdOut);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dataRoot))

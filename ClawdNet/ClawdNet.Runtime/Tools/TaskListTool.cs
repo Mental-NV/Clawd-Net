@@ -42,7 +42,9 @@ public sealed class TaskListTool : ITool
                 title = task.Title,
                 updatedAtUtc = task.UpdatedAtUtc,
                 workerSessionId = task.WorkerSessionId,
-                summary = task.Result?.Summary ?? task.LastStatusMessage
+                summary = task.Result?.Summary ?? task.LastStatusMessage,
+                workerMessageCount = task.WorkerMessageCount,
+                workerUpdatedAtUtc = task.WorkerUpdatedAtUtc
             });
         return new ToolExecutionResult(true, JsonSerializer.Serialize(payload));
     }

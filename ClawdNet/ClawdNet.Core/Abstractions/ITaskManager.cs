@@ -12,6 +12,10 @@ public interface ITaskManager : IAsyncDisposable
 
     Task<TaskRecord?> GetAsync(string taskId, CancellationToken cancellationToken);
 
+    Task<IReadOnlyList<TaskEvent>> GetEventsAsync(string taskId, int limit, CancellationToken cancellationToken);
+
+    Task<TaskInspection?> InspectAsync(string taskId, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<TaskRecord>> ListAsync(CancellationToken cancellationToken);
 
     Task<TaskRecord?> CancelAsync(string taskId, CancellationToken cancellationToken);

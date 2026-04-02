@@ -17,4 +17,8 @@ public sealed record TaskRecord(
     string? WorkingDirectory = null,
     string? LastStatusMessage = null,
     TaskResult? Result = null,
-    IReadOnlyList<TaskEvent>? Events = null);
+    IReadOnlyList<TaskEvent>? Events = null,
+    string? WorkerTranscriptTail = null,
+    int WorkerMessageCount = 0,
+    DateTimeOffset? WorkerUpdatedAtUtc = null,
+    string? InterruptionReason = null);
