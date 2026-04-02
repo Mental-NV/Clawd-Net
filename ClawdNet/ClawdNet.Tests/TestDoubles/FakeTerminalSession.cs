@@ -19,9 +19,17 @@ public sealed class FakeTerminalSession : ITerminalSession
 
     public List<TerminalViewState> RenderedViews { get; } = [];
 
+    public List<TerminalFrame> RenderedFrames { get; } = [];
+
     public List<string> ErrorLines { get; } = [];
 
     public int ClearCount { get; private set; }
+
+    public int EnterAlternateScreenCount { get; private set; }
+
+    public int LeaveAlternateScreenCount { get; private set; }
+
+    public TerminalSize TerminalSize { get; set; } = new(120, 40);
 
     public Action? InterruptHandler { get; private set; }
 
@@ -70,6 +78,26 @@ public sealed class FakeTerminalSession : ITerminalSession
     public void Render(TerminalViewState viewState)
     {
         RenderedViews.Add(viewState);
+    }
+
+    public void RenderFrame(TerminalFrame frame)
+    {
+        RenderedFrames.Add(frame);
+    }
+
+    public void EnterAlternateScreen()
+    {
+        EnterAlternateScreenCount++;
+    }
+
+    public void LeaveAlternateScreen()
+    {
+        LeaveAlternateScreenCount++;
+    }
+
+    public TerminalSize GetTerminalSize()
+    {
+        return TerminalSize;
     }
 
     public void ClearVisible()

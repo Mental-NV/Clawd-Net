@@ -5,9 +5,14 @@ public enum PromptInputKind
     Submit,
     EndOfStream,
     BufferChanged,
+    InsertLineBreak,
     HistoryPrevious,
     HistoryNext,
     ScrollPageUp,
     ScrollPageDown,
-    ScrollBottom
+    ScrollBottom,
+    FocusNext,
+    FocusPrevious,
+    ToggleHelp,
+    ToggleSession
 }

@@ -17,6 +17,7 @@ using ClawdNet.Terminal.Abstractions;
 using ClawdNet.Terminal.Console;
 using ClawdNet.Terminal.Repl;
 using ClawdNet.Terminal.Rendering;
+using ClawdNet.Terminal.Tui;
 
 namespace ClawdNet.App;
 
@@ -25,6 +26,7 @@ public sealed class AppHost : IAsyncDisposable
     private readonly CommandDispatcher _dispatcher;
     private readonly CommandContext _context;
     private readonly IReplHost _replHost;
+    private readonly ITuiHost _tuiHost;
     private readonly IToolRegistry _toolRegistry;
     private readonly ITaskStore _taskStore;
     private readonly ITaskManager _taskManager;
@@ -37,6 +39,7 @@ public sealed class AppHost : IAsyncDisposable
     private readonly SemaphoreSlim _taskInitializationLock = new(1, 1);
     private readonly SemaphoreSlim _mcpInitializationLock = new(1, 1);
     private readonly SemaphoreSlim _lspInitializationLock = new(1, 1);
+    private readonly IFeatureGate _featureGate;
     private bool _pluginsInitialized;
     private bool _tasksInitialized;
     private bool _mcpInitialized;
@@ -47,6 +50,7 @@ public sealed class AppHost : IAsyncDisposable
         string dataRoot,
         IAnthropicMessageClient? anthropicMessageClient = null,
         IProcessRunner? processRunner = null,
+        IFeatureGate? featureGate = null,
         IPluginCatalog? pluginCatalog = null,
         IPluginRuntime? pluginRuntime = null,
         IMcpClient? mcpClient = null,
@@ -55,9 +59,10 @@ public sealed class AppHost : IAsyncDisposable
         ITaskStore? taskStore = null,
         ITaskManager? taskManager = null,
         IReplHost? replHost = null,
+        ITuiHost? tuiHost = null,
         ITerminalSession? terminalSession = null)
     {
-        IFeatureGate featureGate = new DictionaryFeatureGate();
+        _featureGate = featureGate ?? new DictionaryFeatureGate();
         processRunner ??= new SystemProcessRunner();
         var builtInCommands = new[]
         {
@@ -109,10 +114,12 @@ public sealed class AppHost : IAsyncDisposable
             new TaskCancelTool(_taskManager)
         ]);
         ITranscriptRenderer transcriptRenderer = new ConsoleTranscriptRenderer();
+        ITuiRenderer tuiRenderer = new ConsoleTuiRenderer(transcriptRenderer);
         terminalSession ??= new ConsoleTerminalSession();
         _replHost = replHost ?? new ReplHost(terminalSession, conversationStore, queryEngine, transcriptRenderer, _ptyManager, _taskManager);
+        _tuiHost = tuiHost ?? new TuiHost(terminalSession, conversationStore, queryEngine, tuiRenderer, _ptyManager, _taskManager);
 
-        _context = new CommandContext(featureGate, _toolRegistry, toolExecutor, conversationStore, _taskStore, _taskManager, queryEngine, _mcpClient, _lspClient, _pluginCatalog, _pluginRuntime, permissionService, transcriptRenderer, version);
+        _context = new CommandContext(_featureGate, _toolRegistry, toolExecutor, conversationStore, _taskStore, _taskManager, queryEngine, _mcpClient, _lspClient, _pluginCatalog, _pluginRuntime, permissionService, transcriptRenderer, version);
         _dispatcher = new CommandDispatcher(
         [
             new AskCommandHandler(),
@@ -139,9 +146,12 @@ public sealed class AppHost : IAsyncDisposable
         await EnsureTasksInitializedAsync(cancellationToken);
         await EnsureMcpInitializedAsync(cancellationToken);
         await EnsureLspInitializedAsync(cancellationToken);
-        if (ShouldLaunchRepl(args))
+        if (ShouldLaunchInteractive(args))
         {
-            return await _replHost.RunAsync(ParseReplLaunchOptions(args), cancellationToken);
+            var options = ParseReplLaunchOptions(args);
+            return _featureGate.IsEnabled("legacy-repl")
+                ? await _replHost.RunAsync(options, cancellationToken)
+                : await _tuiHost.RunAsync(options, cancellationToken);
         }
 
         return await _dispatcher.DispatchAsync(_context, new CommandRequest(args), cancellationToken);
@@ -183,7 +193,7 @@ public sealed class AppHost : IAsyncDisposable
         }
     }
 
-    private static bool ShouldLaunchRepl(IReadOnlyList<string> args)
+    private static bool ShouldLaunchInteractive(IReadOnlyList<string> args)
     {
         if (args.Count == 0)
         {

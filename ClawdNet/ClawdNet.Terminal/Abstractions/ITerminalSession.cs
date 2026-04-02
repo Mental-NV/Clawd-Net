@@ -12,6 +12,14 @@ public interface ITerminalSession
 
     void Render(TerminalViewState viewState);
 
+    void RenderFrame(TerminalFrame frame);
+
+    void EnterAlternateScreen();
+
+    void LeaveAlternateScreen();
+
+    TerminalSize GetTerminalSize();
+
     void ClearVisible();
 
     void WriteErrorLine(string text);

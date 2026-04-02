@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using ClawdNet.App;
 using ClawdNet.Core.Models;
+using ClawdNet.Runtime.FeatureGates;
 using ClawdNet.Tests.TestDoubles;
 using ClawdTaskStatus = ClawdNet.Core.Models.TaskStatus;
 
@@ -28,15 +29,37 @@ public sealed class AppHostTests : IDisposable
     }
 
     [Fact]
-    public async Task No_args_launches_repl()
+    public async Task No_args_launches_tui_by_default()
     {
         var replHost = new FakeReplHost();
-        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient(), replHost: replHost);
+        var tuiHost = new FakeTuiHost();
+        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient(), replHost: replHost, tuiHost: tuiHost);
+
+        var result = await host.RunAsync([], CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Empty(replHost.Launches);
+        Assert.Single(tuiHost.Launches);
+    }
+
+    [Fact]
+    public async Task No_args_can_launch_legacy_repl_via_feature_gate()
+    {
+        var replHost = new FakeReplHost();
+        var tuiHost = new FakeTuiHost();
+        var host = new AppHost(
+            "1.0.0",
+            _dataRoot,
+            new FakeAnthropicMessageClient(),
+            featureGate: new DictionaryFeatureGate(["legacy-repl"]),
+            replHost: replHost,
+            tuiHost: tuiHost);
 
         var result = await host.RunAsync([], CancellationToken.None);
 
         Assert.Equal(0, result.ExitCode);
         Assert.Single(replHost.Launches);
+        Assert.Empty(tuiHost.Launches);
     }
 
     [Fact]

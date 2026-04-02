@@ -10,6 +10,8 @@ public sealed record PromptInputResult(
 
     public static PromptInputResult BufferChanged(string text) => new(PromptInputKind.BufferChanged, text);
 
+    public static PromptInputResult InsertLineBreak(string text) => new(PromptInputKind.InsertLineBreak, text);
+
     public static PromptInputResult HistoryPrevious() => new(PromptInputKind.HistoryPrevious);
 
     public static PromptInputResult HistoryNext() => new(PromptInputKind.HistoryNext);
@@ -19,4 +21,12 @@ public sealed record PromptInputResult(
     public static PromptInputResult ScrollPageDown() => new(PromptInputKind.ScrollPageDown);
 
     public static PromptInputResult ScrollBottom() => new(PromptInputKind.ScrollBottom);
+
+    public static PromptInputResult FocusNext() => new(PromptInputKind.FocusNext);
+
+    public static PromptInputResult FocusPrevious() => new(PromptInputKind.FocusPrevious);
+
+    public static PromptInputResult ToggleHelp() => new(PromptInputKind.ToggleHelp);
+
+    public static PromptInputResult ToggleSession() => new(PromptInputKind.ToggleSession);
 }
