@@ -51,7 +51,8 @@ Unless explicitly redirected, execute future work in this order:
   - slice 2 landed: `docs/PLAN-05.md` (/pty attach, /pty detach commands)
   - slice 3 landed: `docs/PLAN-06.md` (PTY transcript persistence)
   - slice 4 landed: `docs/PLAN-07.md` (long-running PTY ergonomics: timeout, duration, line counting, background tracking, TUI enhancements)
-  - remaining: true pseudo-terminal, terminal-mode behavior, PTY overlay/full-screen mode
+  - slice 5 landed: `docs/PLAN-08.md` (true pseudo-terminal via Porta.Pty, terminal-mode behavior, PTY resize support)
+  - remaining: PTY overlay/full-screen mode, output pagination/scrolling, special key handling
 
 ## Next Milestones
 

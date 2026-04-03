@@ -24,7 +24,18 @@ public sealed class PtyManager : IPtyManager
         await _sync.WaitAsync(cancellationToken);
         try
         {
-            var session = await SystemPtySession.StartAsync(command, workingDirectory, _transcriptStore, cancellationToken, timeout, isBackground);
+            IPtySession session;
+            try
+            {
+                // Try true PTY first
+                session = await TruePtySession.StartAsync(command, workingDirectory, _transcriptStore, cancellationToken, timeout, isBackground);
+            }
+            catch
+            {
+                // Fall back to pipe-based mode if PTY allocation fails
+                session = await SystemPtySession.StartAsync(command, workingDirectory, _transcriptStore, cancellationToken, timeout, isBackground);
+            }
+
             _sessions[session.Snapshot.SessionId] = session;
             _currentSessionId = session.Snapshot.SessionId;
             session.StateChanged += HandleSessionStateChanged;

@@ -146,6 +146,10 @@ This keeps the edit experience safe and understandable without implementing a fu
 PTY support exists as a distinct long-lived execution surface.
 
 - PTY is not a replacement for the existing one-shot `shell` path.
+- PTY sessions use a true pseudo-terminal device via Porta.Pty (`Porta.Pty` NuGet package).
+- Porta.Pty provides cross-platform PTY support: forkpty/openpty on Linux/macOS, ConPTY on Windows.
+- The `TruePtySession` implementation runs commands directly in the PTY (not wrapped in a shell).
+- If true PTY allocation fails, the system falls back to the pipe-based `SystemPtySession`.
 - PTY sessions are process-local and conservative.
 - PTY startup remains validated and permission-gated.
 - PTY output is bounded and clipped for in-memory display (4096 chars).
@@ -319,6 +323,8 @@ These defaults are now part of the working project baseline:
 - patch-based edit review is the preferred model editing path
 - edit approval is batch-based and coarse
 - PTY remains bounded, clipped, and process-local
+- PTY sessions use true pseudo-terminal devices via Porta.Pty (with pipe-based fallback)
+- Porta.Pty provides cross-platform PTY: Linux/macOS (forkpty), Windows (ConPTY)
 - PTY transcripts are persisted to disk with bounded storage (1000 chunks/session)
 - PTY transcript replay is available for ordered output retrieval
 - PTY sessions support optional timeouts with automatic process termination
@@ -339,8 +345,7 @@ The following areas have been intentionally deferred:
 - exact screen-for-screen TypeScript parity
 - deeper autonomous orchestration and task graphs
 - durable resume for running tasks
-- true pseudo-terminal (node-pty or equivalent)
-- PTY overlay/full-screen terminal mode
+- PTY overlay/full-screen terminal mode — in progress
 - PTY output pagination/scrolling in TUI
 - graceful interrupt signaling (SIGINT vs SIGTERM)
 - plugin-defined agents and broader marketplace or install flows
