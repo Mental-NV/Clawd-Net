@@ -2,8 +2,11 @@
 set -euo pipefail
 
 PROJECT_DIR="${HOME}/projects/Clawd-Net"
+RALPH_DIR="${PROJECT_DIR}/ralph"
 PLAN_FILE="${PROJECT_DIR}/docs/PLAN.md"
 MISSION_FILE="${PROJECT_DIR}/docs/MISSION.txt"
+RENDERER_FILE="${RALPH_DIR}/qwen_pretty_stream.py"
+RAW_LOG_DIR="${RALPH_DIR}/logs/qwen-stream"
 MAX_ITERATIONS=10
 
 usage() {
@@ -58,6 +61,11 @@ fi
 
 if [[ ! -f "${MISSION_FILE}" ]]; then
   echo "Error: mission file not found: ${MISSION_FILE}"
+  exit 1
+fi
+
+if [[ ! -f "${RENDERER_FILE}" ]]; then
+  echo "Error: renderer file not found: ${RENDERER_FILE}"
   exit 1
 fi
 
@@ -151,6 +159,8 @@ check_sync_and_push_if_needed() {
 
 iteration=0
 
+mkdir -p "${RAW_LOG_DIR}"
+
 while true; do
   iteration=$((iteration + 1))
 
@@ -173,6 +183,12 @@ while true; do
   ensure_clean_worktree
   check_sync_and_push_if_needed
 
-  echo "Launching qwen (--continue)..."
-  qwen --continue --yolo --prompt "$(cat "${MISSION_FILE}")"
+  echo "Launching qwen (stream-json, partial messages)..."
+  qwen --yolo \
+    --output-format stream-json \
+    --include-partial-messages \
+    --prompt "$(cat "${MISSION_FILE}")" \
+  | python3 -u "${RENDERER_FILE}" \
+      --mode normal \
+      --raw-log-dir "${RAW_LOG_DIR}"
 done
