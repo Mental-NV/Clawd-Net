@@ -48,7 +48,8 @@ Unless explicitly redirected, execute future work in this order:
 
 - [/] Full TUI Parity v3
   - slice 1 landed: `docs/PLAN-04.md` (/status, /rename, /context commands)
-  - slice 2 in progress: root positional prompt, startup session resume, more slash commands
+  - slice 2 landed: `docs/PLAN-04.md` (root positional prompt shorthand)
+  - remaining: startup session resume, more slash commands (/model, /effort, /permissions, /config, /diff, /copy)
 
 ## Next Milestones
 
