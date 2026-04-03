@@ -78,7 +78,10 @@ public sealed class ConsoleTuiRenderer : ITuiRenderer
             {
                 var marker = task.Status == ClawdNet.Core.Models.TaskStatus.Running ? "*" : "-";
                 var progressSuffix = task.ProgressPercent.HasValue ? $" | progress={task.ProgressPercent}%" : "";
-                builder.AppendLine($"{marker} {task.Id} | {task.Status} | depth={task.Depth} | children={task.ChildTaskIds?.Count ?? 0} | {task.Title}{progressSuffix}");
+                var depSuffix = (task.DependsOnTaskIds?.Count ?? 0) > 0
+                    ? $" | deps={string.Join(",", task.DependsOnTaskIds!.Take(2))}"
+                    : "";
+                builder.AppendLine($"{marker} {task.Id} | {task.Status} | depth={task.Depth} | children={task.ChildTaskIds?.Count ?? 0}{depSuffix} | {task.Title}{progressSuffix}");
                 if (!string.IsNullOrWhiteSpace(task.Result?.Summary ?? task.LastStatusMessage))
                 {
                     builder.AppendLine($"  {task.Result?.Summary ?? task.LastStatusMessage}");

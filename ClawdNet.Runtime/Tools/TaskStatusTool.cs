@@ -58,6 +58,8 @@ public sealed class TaskStatusTool : ITool
             lastStatusMessage = task.LastStatusMessage,
             progressPercent = task.ProgressPercent,
             progressMessage = task.ProgressMessage,
+            dependsOnTaskIds = task.DependsOnTaskIds ?? [],
+            dependencyCount = task.DependsOnTaskIds?.Count ?? 0,
             result = task.Result,
             childTaskIds = task.ChildTaskIds ?? [],
             childTaskCount = task.ChildTaskIds?.Count ?? 0,

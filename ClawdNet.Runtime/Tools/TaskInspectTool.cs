@@ -58,6 +58,8 @@ public sealed class TaskInspectTool : ITool
             summary = inspection.Task.Result?.Summary ?? inspection.Task.LastStatusMessage,
             progressPercent = inspection.Task.ProgressPercent,
             progressMessage = inspection.Task.ProgressMessage,
+            dependsOnTaskIds = inspection.Task.DependsOnTaskIds ?? [],
+            dependencyCount = inspection.Task.DependsOnTaskIds?.Count ?? 0,
             recentEvents = inspection.RecentEvents,
             childTasks = inspection.Children.Select(child => new
             {

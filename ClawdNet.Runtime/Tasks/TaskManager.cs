@@ -8,7 +8,7 @@ namespace ClawdNet.Runtime.Tasks;
 
 public sealed class TaskManager : ITaskManager
 {
-    private const int MaxDelegationDepth = 1;
+    private const int MaxDelegationDepth = 2;
     private const int MaxHookSummaryLength = 240;
     private const int TaskEventLimit = 12;
     private const int WorkerTranscriptTailLength = 800;
@@ -114,7 +114,8 @@ public sealed class TaskManager : ITaskManager
             null,
             provider,
             null,
-            null);
+            null,
+            request.DependsOnTaskIds ?? []);
 
         await _taskStore.CreateAsync(task, cancellationToken);
         if (parentTask is not null)
@@ -249,6 +250,21 @@ public sealed class TaskManager : ITaskManager
         try
         {
             var prompt = BuildWorkerPrompt(task, request);
+
+            // Resolve dependencies before executing
+            var dependencyIds = request.DependsOnTaskIds ?? [];
+            if (dependencyIds.Count > 0)
+            {
+                task = await RecordProgressAsync(task, $"Waiting for {dependencyIds.Count} dependency task(s).", cancellationToken);
+                var depOutcome = await WaitForDependencyTasksAsync(dependencyIds, cancellationToken);
+                if (depOutcome.HasFailures)
+                {
+                    throw new InvalidOperationException($"Dependency task failure: {depOutcome.Summary}");
+                }
+
+                task = await RecordProgressAsync(task, "Dependencies satisfied.", cancellationToken);
+            }
+
             task = await RecordProgressAsync(task, "Worker launched.", cancellationToken);
 
             // Set up timeout if specified
@@ -623,6 +639,74 @@ public sealed class TaskManager : ITaskManager
             .ToArray();
     }
 
+    private async Task<DependencyTaskOutcome> WaitForDependencyTasksAsync(IReadOnlyList<string> dependencyIds, CancellationToken cancellationToken)
+    {
+        // Check if any dependencies are still running/pending
+        while (true)
+        {
+            var dependencies = new List<TaskRecord>();
+            foreach (var depId in dependencyIds)
+            {
+                var dep = await _taskStore.GetAsync(depId, cancellationToken);
+                if (dep is not null)
+                {
+                    dependencies.Add(dep);
+                }
+            }
+
+            var activeDeps = dependencies
+                .Where(d => d.Status == ClawdTaskStatus.Running || d.Status == ClawdTaskStatus.Pending)
+                .ToArray();
+
+            if (activeDeps.Length == 0)
+            {
+                // All dependencies are terminal; check for failures
+                var failedDeps = dependencies
+                    .Where(d => d.Status is ClawdTaskStatus.Failed or ClawdTaskStatus.Canceled or ClawdTaskStatus.Interrupted)
+                    .ToArray();
+                return new DependencyTaskOutcome(
+                    failedDeps,
+                    failedDeps.Length > 0,
+                    failedDeps.Length == 0
+                        ? "all dependencies satisfied"
+                        : string.Join(", ", failedDeps.Select(d => $"{d.Id}:{d.Status}")));
+            }
+
+            // Wait for active dependencies using TaskCompletionSource pattern
+            var completionSources = new List<TaskCompletionSource<bool>>();
+            foreach (var activeDep in activeDeps)
+            {
+                if (_running.TryGetValue(activeDep.Id, out var handle))
+                {
+                    var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    handle.ChildCompletionSources.Add(tcs);
+                    completionSources.Add(tcs);
+                }
+            }
+
+            if (completionSources.Count > 0)
+            {
+                try
+                {
+                    await Task.WhenAll(completionSources.Select(s => s.Task)).WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    return new DependencyTaskOutcome([], false, "dependency wait canceled");
+                }
+                catch (TimeoutException)
+                {
+                    // Re-check status on timeout
+                }
+            }
+            else
+            {
+                // Dependencies are running but we don't have handles; poll briefly
+                await Task.Delay(100, cancellationToken);
+            }
+        }
+    }
+
     private async Task LinkChildTaskAsync(TaskRecord parentTask, TaskRecord childTask, CancellationToken cancellationToken)
     {
         var linked = parentTask with
@@ -748,6 +832,11 @@ public sealed class TaskManager : ITaskManager
     private sealed record ChildTaskOutcome(
         IReadOnlyList<TaskRecord> CompletedChildren,
         IReadOnlyList<TaskRecord> FailedChildren,
+        bool HasFailures,
+        string Summary);
+
+    private sealed record DependencyTaskOutcome(
+        IReadOnlyList<TaskRecord> FailedDependencies,
         bool HasFailures,
         string Summary);
 }

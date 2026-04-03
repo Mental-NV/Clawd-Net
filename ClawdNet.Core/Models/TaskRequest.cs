@@ -11,4 +11,5 @@ public sealed record TaskRequest(
     PermissionMode PermissionMode = PermissionMode.Default,
     int MaxTurns = 8,
     string? Provider = null,
-    int? MaxDurationSeconds = null);
+    int? MaxDurationSeconds = null,
+    IReadOnlyList<string>? DependsOnTaskIds = null);

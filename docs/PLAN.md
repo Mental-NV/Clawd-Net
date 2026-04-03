@@ -46,13 +46,13 @@ Unless explicitly redirected, execute future work in this order:
 
 ## Active Milestone
 
-- [ ] Advanced Orchestration v3
-  - slice 1 landed: `docs/PLAN-01.md` (parent-child delegation, hierarchy inspection)
-  - slice 2 landed: `docs/PLAN-02.md` (busy-poll replacement, timeout, progress tracking, stream events)
+- [/] Full TUI Parity v3
+  - slice 1 landed: `docs/PLAN-04.md` (/status, /rename, /context commands)
+  - slice 2 in progress: root positional prompt, startup session resume, more slash commands
 
 ## Next Milestones
 
-### [/] Advanced Orchestration v3
+### [v] Advanced Orchestration v3
 
 - Priority: `P1`
 - Effort: `4-6 weeks`
@@ -79,7 +79,8 @@ Unless explicitly redirected, execute future work in this order:
 - Current progress:
   - slice 1 landed bounded parent-child task delegation and hierarchy inspection
   - slice 2 landed busy-poll replacement, task timeout, progress tracking, and stream event coverage
-  - broader task-graph and orchestration supervision work remains
+  - slice 3 landed multi-level task graphs (depth 2), task dependency declarations, dependency resolution, and dependency visibility across tools and TUI
+  - milestone exit criteria met
 
 ### [ ] Full TUI Parity v3
 

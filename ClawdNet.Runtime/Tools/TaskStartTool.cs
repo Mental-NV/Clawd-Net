@@ -33,7 +33,8 @@ public sealed class TaskStartTool : ITool
             ["provider"] = new JsonObject { ["type"] = "string" },
             ["model"] = new JsonObject { ["type"] = "string" },
             ["permissionMode"] = new JsonObject { ["type"] = "string" },
-            ["maxDurationSeconds"] = new JsonObject { ["type"] = "integer" }
+            ["maxDurationSeconds"] = new JsonObject { ["type"] = "integer" },
+            ["dependsOnTaskIds"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["type"] = "string" } }
         },
         ["required"] = new JsonArray("title", "goal")
     };
@@ -61,6 +62,12 @@ public sealed class TaskStartTool : ITool
         try
         {
             var maxDurationSeconds = request.Input?["maxDurationSeconds"]?.GetValue<int>();
+            var dependsOnTaskIds = request.Input?["dependsOnTaskIds"] as JsonArray;
+            var depIds = dependsOnTaskIds?
+                .Where(e => e is not null)
+                .Select(e => e!.GetValue<string>())
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .ToArray();
             task = await _taskManager.StartAsync(
                 new TaskRequest(
                     title,
@@ -72,7 +79,8 @@ public sealed class TaskStartTool : ITool
                     request.Input?["model"]?.GetValue<string>(),
                     permissionMode,
                     Provider: request.Input?["provider"]?.GetValue<string>(),
-                    MaxDurationSeconds: maxDurationSeconds),
+                    MaxDurationSeconds: maxDurationSeconds,
+                    DependsOnTaskIds: depIds),
                 cancellationToken);
         }
         catch (InvalidOperationException ex)
@@ -94,6 +102,8 @@ public sealed class TaskStartTool : ITool
             summary = task.LastStatusMessage,
             progressPercent = task.ProgressPercent,
             progressMessage = task.ProgressMessage,
+            dependsOnTaskIds = task.DependsOnTaskIds ?? [],
+            dependencyCount = task.DependsOnTaskIds?.Count ?? 0,
             childTaskCount = task.ChildTaskIds?.Count ?? 0,
             workerMessageCount = task.WorkerMessageCount,
             workerUpdatedAtUtc = task.WorkerUpdatedAtUtc

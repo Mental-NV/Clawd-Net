@@ -49,6 +49,8 @@ public sealed class TaskListTool : ITool
                 summary = task.Result?.Summary ?? task.LastStatusMessage,
                 progressPercent = task.ProgressPercent,
                 progressMessage = task.ProgressMessage,
+                dependsOnTaskIds = task.DependsOnTaskIds ?? [],
+                dependencyCount = task.DependsOnTaskIds?.Count ?? 0,
                 childTaskCount = task.ChildTaskIds?.Count ?? 0,
                 workerMessageCount = task.WorkerMessageCount,
                 workerUpdatedAtUtc = task.WorkerUpdatedAtUtc

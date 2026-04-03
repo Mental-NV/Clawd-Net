@@ -137,6 +137,47 @@ public sealed class TuiHostTests : IDisposable
         Assert.Equal("pty-2", ptyManager.State.CurrentSessionId);
     }
 
+    [Fact]
+    public async Task Tui_rename_slash_command_updates_session_title()
+    {
+        var store = new JsonSessionStore(_dataRoot);
+        var terminal = new FakeTerminalSession(["/rename New Title", "exit"]);
+        var host = new TuiHost(terminal, store, new FakeQueryEngine(), new ConsoleTuiRenderer(new ConsoleTranscriptRenderer()), new FakePtyManager(), new FakeTaskManager());
+
+        var result = await host.RunAsync(new ReplLaunchOptions(), CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        var sessions = await store.ListAsync(CancellationToken.None);
+        Assert.Single(sessions);
+        Assert.Equal("New Title", sessions[0].Title);
+    }
+
+    [Fact]
+    public async Task Tui_status_slash_command_shows_session_info()
+    {
+        var store = new JsonSessionStore(_dataRoot);
+        var terminal = new FakeTerminalSession(["/status", "exit"]);
+        var host = new TuiHost(terminal, store, new FakeQueryEngine(), new ConsoleTuiRenderer(new ConsoleTranscriptRenderer()), new FakePtyManager(), new FakeTaskManager());
+
+        var result = await host.RunAsync(new ReplLaunchOptions(), CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains(terminal.RenderedFrames, frame => frame.Overlay is not null && frame.Overlay.Contains("Session Status", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Tui_context_slash_command_shows_context_info()
+    {
+        var store = new JsonSessionStore(_dataRoot);
+        var terminal = new FakeTerminalSession(["/context", "exit"]);
+        var host = new TuiHost(terminal, store, new FakeQueryEngine(), new ConsoleTuiRenderer(new ConsoleTranscriptRenderer()), new FakePtyManager(), new FakeTaskManager());
+
+        var result = await host.RunAsync(new ReplLaunchOptions(), CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains(terminal.RenderedFrames, frame => frame.Overlay is not null && frame.Overlay.Contains("Session Context", StringComparison.Ordinal));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dataRoot))

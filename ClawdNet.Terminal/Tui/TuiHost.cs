@@ -367,6 +367,12 @@ public sealed class TuiHost : ITuiHost
                 _activityState = TerminalActivityState.Ready;
                 _activityDetail = "Returned to live output.";
                 return true;
+            case "/status":
+                await ShowSessionStatusAsync(cancellationToken);
+                return true;
+            case "/context":
+                await ShowSessionContextAsync(cancellationToken);
+                return true;
             default:
                 if (prompt.StartsWith("/tasks ", StringComparison.OrdinalIgnoreCase))
                 {
@@ -453,6 +459,21 @@ public sealed class TuiHost : ITuiHost
                     if (!string.IsNullOrWhiteSpace(args))
                     {
                         await ShowPtyDrawerAsync(args, focusSession: true, cancellationToken);
+                        return true;
+                    }
+                }
+
+                if (prompt.StartsWith("/rename ", StringComparison.OrdinalIgnoreCase))
+                {
+                    var newName = prompt["/rename ".Length..].Trim();
+                    if (!string.IsNullOrWhiteSpace(newName) && _currentSession is not null)
+                    {
+                        var updated = _currentSession with { Title = newName, UpdatedAtUtc = DateTimeOffset.UtcNow };
+                        _currentSession = updated;
+                        await _conversationStore.SaveAsync(updated, cancellationToken);
+                        _activityState = TerminalActivityState.Ready;
+                        _activityDetail = $"Session renamed to '{newName}'.";
+                        AddActivityFeed($"session | rename | '{newName}'");
                         return true;
                     }
                 }
@@ -1315,6 +1336,7 @@ public sealed class TuiHost : ITuiHost
             $"rootTask={inspection.Task.RootTaskId ?? inspection.Task.Id}",
             $"depth={inspection.Task.Depth}",
             $"childTasks={inspection.Children.Count}",
+            $"dependsOn={string.Join(", ", inspection.Task.DependsOnTaskIds ?? Array.Empty<string>())}",
             $"workerSession={inspection.Worker.WorkerSessionId}",
             $"workerMessages={inspection.Worker.MessageCount}",
             $"updated={inspection.Worker.UpdatedAtUtc:O}",
@@ -1374,5 +1396,74 @@ public sealed class TuiHost : ITuiHost
             _owner.AddActivityFeed($"approval | {(approved ? "approved" : "denied")} | {toolCall.Name}");
             return approved;
         }
+    }
+
+    private async Task ShowSessionStatusAsync(CancellationToken cancellationToken)
+    {
+        if (_currentSession is null)
+        {
+            _activityState = TerminalActivityState.Error;
+            _activityDetail = "No active session.";
+            return;
+        }
+
+        var tasks = await _taskManager.ListAsync(cancellationToken);
+        var sessionTasks = tasks.Where(t => string.Equals(t.ParentSessionId, _currentSession.Id, StringComparison.Ordinal)).ToArray();
+        var runningTasks = sessionTasks.Count(t => t.Status == ClawdNet.Core.Models.TaskStatus.Running);
+        var completedTasks = sessionTasks.Count(t => t.Status == ClawdNet.Core.Models.TaskStatus.Completed);
+
+        var lines = new List<string>
+        {
+            $"session={_currentSession.Id}",
+            $"title={_currentSession.Title}",
+            $"provider={_currentSession.Provider}",
+            $"model={_currentSession.Model}",
+            $"permissionMode={_currentPermissionMode}",
+            $"messages={_currentSession.Messages.Count}",
+            $"tasks={sessionTasks.Length} (running={runningTasks}, completed={completedTasks})",
+            $"created={_currentSession.CreatedAtUtc:O}",
+            $"updated={_currentSession.UpdatedAtUtc:O}"
+        };
+
+        _activityState = TerminalActivityState.ShowingSession;
+        _activityDetail = $"Session status: {_currentSession.Title} | {_currentSession.Provider}/{_currentSession.Model}";
+        _overlay = new TuiOverlayState(TuiOverlayKind.Session, "Session Status", _activityDetail,
+            [new TuiOverlaySection("Status", lines)]);
+        _focus = TuiFocusTarget.Overlay;
+        Render(clearScreen: true);
+    }
+
+    private Task ShowSessionContextAsync(CancellationToken cancellationToken)
+    {
+        if (_currentSession is null)
+        {
+            _activityState = TerminalActivityState.Error;
+            _activityDetail = "No active session.";
+            return Task.CompletedTask;
+        }
+
+        var userMessages = _currentSession.Messages.Count(m => m.Role == "user");
+        var assistantMessages = _currentSession.Messages.Count(m => m.Role == "assistant");
+        var toolMessages = _currentSession.Messages.Count(m => m.Role.StartsWith("tool_") || m.Role == "task_started" || m.Role == "task_completed");
+
+        var lines = new List<string>
+        {
+            $"session={_currentSession.Id}",
+            $"provider={_currentSession.Provider}",
+            $"model={_currentSession.Model}",
+            $"permissionMode={_currentPermissionMode}",
+            $"userMessages={userMessages}",
+            $"assistantMessages={assistantMessages}",
+            $"systemMessages={toolMessages}",
+            $"totalMessages={_currentSession.Messages.Count}"
+        };
+
+        _activityState = TerminalActivityState.ShowingSession;
+        _activityDetail = $"Context: {_currentSession.Messages.Count} messages | {userMessages} user, {assistantMessages} assistant";
+        _overlay = new TuiOverlayState(TuiOverlayKind.Session, "Session Context", _activityDetail,
+            [new TuiOverlaySection("Context", lines)]);
+        _focus = TuiFocusTarget.Overlay;
+        Render(clearScreen: true);
+        return Task.CompletedTask;
     }
 }

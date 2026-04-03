@@ -246,11 +246,14 @@ public sealed class TaskManagerTests : IDisposable
         await manager.InitializeAsync(CancellationToken.None);
         var parentSession = await sessionStore.CreateAsync("Parent", "claude-sonnet-4-5", CancellationToken.None);
 
-        var parentTask = await manager.StartAsync(new TaskRequest("Parent task", "Do parent work", parentSession.Id), CancellationToken.None);
-        var childTask = await manager.StartAsync(new TaskRequest("Child task", "Do child work", parentSession.Id, parentTask.Id), CancellationToken.None);
+        // Create a 3-level task tree: root -> child -> grandchild (depth 0 -> 1 -> 2)
+        var rootTask = await manager.StartAsync(new TaskRequest("Root task", "Do root work", parentSession.Id), CancellationToken.None);
+        var childTask = await manager.StartAsync(new TaskRequest("Child task", "Do child work", parentSession.Id, rootTask.Id), CancellationToken.None);
+        var grandchildTask = await manager.StartAsync(new TaskRequest("Grandchild task", "Do grandchild work", parentSession.Id, childTask.Id), CancellationToken.None);
 
+        // Attempting depth 3 (great-grandchild) should fail
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-            await manager.StartAsync(new TaskRequest("Grandchild task", "Do grandchild work", parentSession.Id, childTask.Id), CancellationToken.None));
+            await manager.StartAsync(new TaskRequest("Great-grandchild task", "Too deep", parentSession.Id, grandchildTask.Id), CancellationToken.None));
 
         Assert.Contains("nested", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -314,6 +317,101 @@ public sealed class TaskManagerTests : IDisposable
 
         var completed = await WaitForTaskAsync(taskStore, task.Id, ClawdTaskStatus.Completed);
         Assert.NotNull(completed);
+    }
+
+    [Fact]
+    public async Task Task_manager_supports_multi_level_delegation()
+    {
+        var sessionStore = new JsonSessionStore(_dataRoot);
+        var taskStore = new JsonTaskStore(_dataRoot);
+        var engine = new FakeQueryEngine
+        {
+            Handler = async request =>
+            {
+                await Task.Delay(100);
+                var worker = await sessionStore.GetAsync(request.SessionId!, CancellationToken.None)
+                    ?? throw new InvalidOperationException("Expected worker session.");
+                var updated = worker with
+                {
+                    UpdatedAtUtc = DateTimeOffset.UtcNow,
+                    Messages =
+                    [
+                        .. worker.Messages,
+                        new ConversationMessage("assistant", "done", DateTimeOffset.UtcNow)
+                    ]
+                };
+                await sessionStore.SaveAsync(updated, CancellationToken.None);
+                return new QueryExecutionResult(updated, "done", 1);
+            }
+        };
+        var manager = new TaskManager(taskStore, sessionStore, engine);
+        await manager.InitializeAsync(CancellationToken.None);
+        var parentSession = await sessionStore.CreateAsync("Parent", "claude-sonnet-4-5", CancellationToken.None);
+
+        // Create 3 levels: root -> child -> grandchild
+        var rootTask = await manager.StartAsync(new TaskRequest("Root", "Root work", parentSession.Id), CancellationToken.None);
+        var childTask = await manager.StartAsync(new TaskRequest("Child", "Child work", parentSession.Id, rootTask.Id), CancellationToken.None);
+        var grandchildTask = await manager.StartAsync(new TaskRequest("Grandchild", "Grandchild work", parentSession.Id, childTask.Id), CancellationToken.None);
+
+        Assert.Equal(0, rootTask.Depth);
+        Assert.Equal(1, childTask.Depth);
+        Assert.Equal(2, grandchildTask.Depth);
+        Assert.Equal(rootTask.Id, childTask.ParentTaskId);
+        Assert.Equal(childTask.Id, grandchildTask.ParentTaskId);
+        Assert.Equal(rootTask.Id, grandchildTask.RootTaskId);
+
+        // All should complete
+        var completedGrandchild = await WaitForTaskAsync(taskStore, grandchildTask.Id, ClawdTaskStatus.Completed);
+        var completedChild = await WaitForTaskAsync(taskStore, childTask.Id, ClawdTaskStatus.Completed);
+        var completedRoot = await WaitForTaskAsync(taskStore, rootTask.Id, ClawdTaskStatus.Completed);
+
+        Assert.NotNull(completedGrandchild);
+        Assert.NotNull(completedChild);
+        Assert.NotNull(completedRoot);
+    }
+
+    [Fact]
+    public async Task Task_manager_stores_dependency_information()
+    {
+        var sessionStore = new JsonSessionStore(_dataRoot);
+        var taskStore = new JsonTaskStore(_dataRoot);
+        var engine = new FakeQueryEngine
+        {
+            Handler = async request =>
+            {
+                var worker = await sessionStore.GetAsync(request.SessionId!, CancellationToken.None)
+                    ?? throw new InvalidOperationException("Expected worker session.");
+                var updated = worker with
+                {
+                    UpdatedAtUtc = DateTimeOffset.UtcNow,
+                    Messages =
+                    [
+                        .. worker.Messages,
+                        new ConversationMessage("assistant", "done", DateTimeOffset.UtcNow)
+                    ]
+                };
+                await sessionStore.SaveAsync(updated, CancellationToken.None);
+                return new QueryExecutionResult(updated, "done", 1);
+            }
+        };
+        var manager = new TaskManager(taskStore, sessionStore, engine);
+        await manager.InitializeAsync(CancellationToken.None);
+        var parentSession = await sessionStore.CreateAsync("Parent", "claude-sonnet-4-5", CancellationToken.None);
+
+        // Create two tasks
+        var depTask = await manager.StartAsync(new TaskRequest("Dependency", "Dep work", parentSession.Id), CancellationToken.None);
+        var mainTask = await manager.StartAsync(new TaskRequest("Main", "Main work", parentSession.Id, DependsOnTaskIds: new[] { depTask.Id }), CancellationToken.None);
+
+        // Verify dependency info is stored
+        var storedMain = await taskStore.GetAsync(mainTask.Id, CancellationToken.None);
+        Assert.NotNull(storedMain);
+        Assert.Contains(depTask.Id, storedMain!.DependsOnTaskIds ?? []);
+
+        // Both should complete (dependency already completed when main starts)
+        var completedDep = await WaitForTaskAsync(taskStore, depTask.Id, ClawdTaskStatus.Completed);
+        var completedMain = await WaitForTaskAsync(taskStore, mainTask.Id, ClawdTaskStatus.Completed);
+        Assert.NotNull(completedDep);
+        Assert.NotNull(completedMain);
     }
 
     private static async Task<TaskRecord?> WaitForTaskAsync(JsonTaskStore store, string taskId, ClawdTaskStatus expectedStatus)

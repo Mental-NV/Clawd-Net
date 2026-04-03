@@ -28,4 +28,5 @@ public sealed record TaskRecord(
     string? InterruptionReason = null,
     string? Provider = null,
     int? ProgressPercent = null,
-    string? ProgressMessage = null);
+    string? ProgressMessage = null,
+    IReadOnlyList<string>? DependsOnTaskIds = null);
