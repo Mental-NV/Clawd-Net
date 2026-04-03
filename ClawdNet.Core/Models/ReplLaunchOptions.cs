@@ -5,4 +5,6 @@ public sealed record ReplLaunchOptions(
     string? Model = null,
     PermissionMode PermissionMode = PermissionMode.Default,
     string? Provider = null,
-    string? InitialPrompt = null);
+    string? InitialPrompt = null,
+    bool Continue = false,
+    string? ResumeQuery = null);

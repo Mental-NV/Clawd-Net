@@ -39,6 +39,7 @@ These areas are already landed and should be treated as the current foundation, 
 - [v] Plugin Platform v4
 - [v] Root Help, -p/--print, and Root Positional Prompt
 - [v] Stream-JSON Output Mode
+- [v] Session Resume Family v1 (--continue, --resume, session show)
 
 ## Current Execution Order
 

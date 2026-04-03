@@ -8,21 +8,24 @@ public sealed class SessionCommandHandler : ICommandHandler
 {
     public string Name => "session";
 
-    public string HelpSummary => "Create and list conversation sessions";
+    public string HelpSummary => "Create, list, and inspect conversation sessions";
 
     public string HelpText => """
 Usage: clawdnet session new [title]
        clawdnet session list
+       clawdnet session show <id>
 
 Manage conversation sessions.
 
 Commands:
   new [title]    Create a new session with an optional title
   list           List all sessions
+  show <id>      Show session details including recent messages
 
 Examples:
   clawdnet session new "Debug Session"
   clawdnet session list
+  clawdnet session show abc123def
 """;
 
     public bool CanHandle(CommandRequest request)
@@ -72,6 +75,45 @@ Examples:
             return CommandExecutionResult.Success(string.Join(Environment.NewLine, lines));
         }
 
-        return CommandExecutionResult.Failure("Supported session commands: session new [title], session list.");
+        if (string.Equals(action, "show", StringComparison.OrdinalIgnoreCase))
+        {
+            if (request.Arguments.Count < 3)
+            {
+                return CommandExecutionResult.Failure("Session ID is required. Usage: session show <id>");
+            }
+
+            var sessionId = string.Join(' ', request.Arguments.Skip(2));
+            var session = await context.ConversationStore.GetAsync(sessionId, cancellationToken);
+            if (session is null)
+            {
+                return CommandExecutionResult.Failure($"Session '{sessionId}' not found.", 3);
+            }
+
+            var lines = new List<string>
+            {
+                $"ID:        {session.Id}",
+                $"Title:     {session.Title}",
+                $"Provider:  {session.Provider}",
+                $"Model:     {session.Model}",
+                $"Created:   {session.CreatedAtUtc:O}",
+                $"Updated:   {session.UpdatedAtUtc:O}",
+                $"Messages:  {session.Messages.Count}",
+                string.Empty,
+                "Recent messages:"
+            };
+
+            // Show last 10 messages
+            var recentMessages = session.Messages.TakeLast(10).ToList();
+            foreach (var msg in recentMessages)
+            {
+                var role = msg.Role.ToUpperInvariant();
+                var content = msg.Content.Length > 200 ? msg.Content[..200] + "..." : msg.Content;
+                lines.Add($"  [{role}] {content}");
+            }
+
+            return CommandExecutionResult.Success(string.Join(Environment.NewLine, lines));
+        }
+
+        return CommandExecutionResult.Failure("Supported session commands: session new [title], session list, session show <id>.");
     }
 }

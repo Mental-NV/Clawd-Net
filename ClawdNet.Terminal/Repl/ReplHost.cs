@@ -467,6 +467,96 @@ public sealed class ReplHost : IReplHost
 
     private async Task<ConversationSession> LoadOrCreateSessionAsync(ReplLaunchOptions options, CancellationToken cancellationToken)
     {
+        // Handle --resume [value] first
+        if (options.ResumeQuery is not null)
+        {
+            if (string.IsNullOrWhiteSpace(options.ResumeQuery))
+            {
+                // --resume without value: resume the most recent session
+                var mostRecent = await _conversationStore.GetMostRecentAsync(cancellationToken);
+                if (mostRecent is null)
+                {
+                    throw new ConversationStoreException("No sessions found to resume. Create a session first with 'session new' or start a new conversation.");
+                }
+
+                var provider = await _providerCatalog.ResolveAsync(
+                    string.IsNullOrWhiteSpace(options.Provider) ? mostRecent.Provider : options.Provider,
+                    cancellationToken);
+                var resolvedModel = ResolveModel(mostRecent, options.Model, provider.Name, provider.DefaultModel);
+                var updated = mostRecent with
+                {
+                    Provider = provider.Name,
+                    Model = resolvedModel
+                };
+                if (!string.Equals(mostRecent.Provider, updated.Provider, StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(mostRecent.Model, updated.Model, StringComparison.Ordinal))
+                {
+                    await _conversationStore.SaveAsync(updated, cancellationToken);
+                }
+
+                return updated;
+            }
+
+            // --resume with value: search for matching sessions
+            var matches = await _conversationStore.SearchAsync(options.ResumeQuery, cancellationToken);
+            if (matches.Count == 0)
+            {
+                throw new ConversationStoreException($"No sessions found matching '{options.ResumeQuery}'.");
+            }
+
+            if (matches.Count > 1)
+            {
+                var matchList = string.Join(Environment.NewLine, matches.Take(5).Select(m => $"  {m.Id} | {m.Title} | {m.UpdatedAtUtc:O}"));
+                throw new ConversationStoreException($"Multiple sessions match '{options.ResumeQuery}':{Environment.NewLine}{matchList}{Environment.NewLine}Use a more specific query or --continue for the most recent.");
+            }
+
+            var matchedSession = matches[0];
+            var matchedProvider = await _providerCatalog.ResolveAsync(
+                string.IsNullOrWhiteSpace(options.Provider) ? matchedSession.Provider : options.Provider,
+                cancellationToken);
+            var matchedModel = ResolveModel(matchedSession, options.Model, matchedProvider.Name, matchedProvider.DefaultModel);
+            var matchedUpdated = matchedSession with
+            {
+                Provider = matchedProvider.Name,
+                Model = matchedModel
+            };
+            if (!string.Equals(matchedSession.Provider, matchedUpdated.Provider, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(matchedSession.Model, matchedUpdated.Model, StringComparison.Ordinal))
+            {
+                await _conversationStore.SaveAsync(matchedUpdated, cancellationToken);
+            }
+
+            return matchedUpdated;
+        }
+
+        // Handle --continue
+        if (options.Continue)
+        {
+            var mostRecent = await _conversationStore.GetMostRecentAsync(cancellationToken);
+            if (mostRecent is null)
+            {
+                throw new ConversationStoreException("No sessions found to continue. Create a session first with 'session new' or start a new conversation.");
+            }
+
+            var provider = await _providerCatalog.ResolveAsync(
+                string.IsNullOrWhiteSpace(options.Provider) ? mostRecent.Provider : options.Provider,
+                cancellationToken);
+            var resolvedModel = ResolveModel(mostRecent, options.Model, provider.Name, provider.DefaultModel);
+            var updated = mostRecent with
+            {
+                Provider = provider.Name,
+                Model = resolvedModel
+            };
+            if (!string.Equals(mostRecent.Provider, updated.Provider, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(mostRecent.Model, updated.Model, StringComparison.Ordinal))
+            {
+                await _conversationStore.SaveAsync(updated, cancellationToken);
+            }
+
+            return updated;
+        }
+
+        // Existing --session logic
         if (!string.IsNullOrWhiteSpace(options.SessionId))
         {
             var existing = await _conversationStore.GetAsync(options.SessionId, cancellationToken);
@@ -493,6 +583,7 @@ public sealed class ReplHost : IReplHost
             return updated;
         }
 
+        // Default: create a new session
         var resolvedProvider = await _providerCatalog.ResolveAsync(options.Provider, cancellationToken);
         var model = !string.IsNullOrWhiteSpace(options.Model)
             ? options.Model!

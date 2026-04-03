@@ -25,6 +25,9 @@ dotnet run --project ClawdNet.App -- --help
 dotnet run --project ClawdNet.App
 dotnet run --project ClawdNet.App -- --provider openai --model gpt-4o-mini
 dotnet run --project ClawdNet.App -- --session <session-id>
+dotnet run --project ClawdNet.App -- --continue
+dotnet run --project ClawdNet.App -- --resume
+dotnet run --project ClawdNet.App -- --resume "session-name-or-id"
 dotnet run --project ClawdNet.App -- --model claude-sonnet-4-5
 dotnet run --project ClawdNet.App -- --permission-mode accept-edits
 dotnet run --project ClawdNet.App -- "Summarize this project"
@@ -40,6 +43,7 @@ dotnet run --project ClawdNet.App -- platform open /absolute/path/to/file.cs --l
 dotnet run --project ClawdNet.App -- platform browse https://example.com
 dotnet run --project ClawdNet.App -- session new "First Slice"
 dotnet run --project ClawdNet.App -- session list
+dotnet run --project ClawdNet.App -- session show <session-id>
 dotnet run --project ClawdNet.App -- task list
 dotnet run --project ClawdNet.App -- task show <task-id>
 dotnet run --project ClawdNet.App -- task cancel <task-id>
@@ -71,6 +75,8 @@ export OPENAI_API_KEY=your_key_here
 - `clawdnet <prompt>` (root positional prompt shorthand)
 - `clawdnet -p <prompt>`, `clawdnet --print <prompt>` (headless print mode)
 - `clawdnet --session <id>`
+- `clawdnet --continue`, `clawdnet -c` (resume most recent session)
+- `clawdnet --resume [query]`, `clawdnet -r [query]` (resume by ID/name search)
 - `clawdnet --provider <name>`
 - `clawdnet --model <name>`
 - `clawdnet --permission-mode <mode>`
@@ -91,6 +97,7 @@ export OPENAI_API_KEY=your_key_here
 - `platform browse <url>`
 - `session new [title]`
 - `session list`
+- `session show <id>`
 - `task list`
 - `task show <id>`
 - `task cancel <id>`

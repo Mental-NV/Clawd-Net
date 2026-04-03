@@ -98,6 +98,66 @@ public sealed class JsonSessionStore : IConversationStore
         }
     }
 
+    public async Task<ConversationSession?> GetMostRecentAsync(CancellationToken cancellationToken)
+    {
+        await _sync.WaitAsync(cancellationToken);
+        try
+        {
+            var sessions = await ReadSessionsAsync(cancellationToken);
+            return sessions
+                .OrderByDescending(session => session.UpdatedAtUtc)
+                .FirstOrDefault();
+        }
+        finally
+        {
+            _sync.Release();
+        }
+    }
+
+    public async Task<IReadOnlyList<ConversationSession>> SearchAsync(string query, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return await ListAsync(cancellationToken);
+        }
+
+        await _sync.WaitAsync(cancellationToken);
+        try
+        {
+            var sessions = await ReadSessionsAsync(cancellationToken);
+            var normalizedQuery = query.Trim().ToLowerInvariant();
+
+            // Exact ID match takes priority
+            var exactIdMatch = sessions.FirstOrDefault(s =>
+                string.Equals(s.Id, query, StringComparison.OrdinalIgnoreCase));
+            if (exactIdMatch is not null)
+            {
+                return [exactIdMatch];
+            }
+
+            // Prefix match on ID
+            var prefixMatches = sessions
+                .Where(s => s.Id.StartsWith(normalizedQuery, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(s => s.UpdatedAtUtc)
+                .ToList();
+            if (prefixMatches.Count > 0)
+            {
+                return prefixMatches;
+            }
+
+            // Substring match on title
+            var titleMatches = sessions
+                .Where(s => s.Title.IndexOf(normalizedQuery, StringComparison.OrdinalIgnoreCase) >= 0)
+                .OrderByDescending(s => s.UpdatedAtUtc)
+                .ToList();
+            return titleMatches;
+        }
+        finally
+        {
+            _sync.Release();
+        }
+    }
+
     private async Task<List<ConversationSession>> ReadSessionsAsync(CancellationToken cancellationToken)
     {
         if (!File.Exists(_storePath))

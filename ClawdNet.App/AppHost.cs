@@ -295,6 +295,8 @@ public sealed class AppHost : IAsyncDisposable
         string? model = null;
         string? initialPrompt = null;
         var permissionMode = PermissionMode.Default;
+        var continueFlag = false;
+        string? resumeQuery = null;
 
         for (var index = 0; index < args.Count; index++)
         {
@@ -312,12 +314,23 @@ public sealed class AppHost : IAsyncDisposable
                 case "--permission-mode" when index + 1 < args.Count:
                     permissionMode = ParsePermissionMode(args[++index]);
                     break;
+                case "-c" or "--continue":
+                    continueFlag = true;
+                    break;
+                case "-r" when index + 1 < args.Count:
+                case "--resume" when index + 1 < args.Count:
+                    resumeQuery = args[++index];
+                    break;
+                case "-r" or "--resume":
+                    // -r/--resume without value: signal resume mode with no specific query
+                    resumeQuery = string.Empty;
+                    break;
                 default:
                     // Treat a single non-flag argument as a positional prompt
                     if (args.Count == 1 && !args[0].StartsWith("-", StringComparison.Ordinal))
                     {
                         initialPrompt = args[0];
-                        options = new ReplLaunchOptions(sessionId, model, permissionMode, provider, initialPrompt);
+                        options = new ReplLaunchOptions(sessionId, model, permissionMode, provider, initialPrompt, continueFlag, resumeQuery);
                         return true;
                     }
                     options = new ReplLaunchOptions();
@@ -325,7 +338,7 @@ public sealed class AppHost : IAsyncDisposable
             }
         }
 
-        options = new ReplLaunchOptions(sessionId, model, permissionMode, provider, initialPrompt);
+        options = new ReplLaunchOptions(sessionId, model, permissionMode, provider, initialPrompt, continueFlag, resumeQuery);
         return true;
     }
 
