@@ -30,6 +30,7 @@ Options:
   --system-prompt <text>      Override the system prompt for this query
   --system-prompt-file <path> Load system prompt from a file
   --settings <file-or-json>   Load settings from a file or inline JSON
+  --add-dir <paths...>        Additional directories to scan for .claude/ config
 
 Examples:
   clawdnet ask "What is 2+2?"
@@ -42,6 +43,7 @@ Examples:
   clawdnet ask --disallowed-tools "shell" "inspect this"
   clawdnet ask --system-prompt "You are a helpful coding assistant" "explain this"
   clawdnet ask --system-prompt-file /path/to/prompt.txt "explain this"
+  clawdnet ask --add-dir /path/to/other/project "explain this"
 """;
 
     public bool CanHandle(CommandRequest request)
@@ -176,6 +178,7 @@ Examples:
         string? systemPrompt = null;
         string? systemPromptFile = null;
         string? settingsFile = null;
+        var addDirs = new List<string>();
         var promptParts = new List<string>();
 
         for (var index = 0; index < args.Length; index++)
@@ -218,6 +221,9 @@ Examples:
                 case "--settings" when index + 1 < args.Length:
                     settingsFile = args[++index];
                     break;
+                case "--add-dir" when index + 1 < args.Length:
+                    addDirs.AddRange(ParseToolList(args[++index]));
+                    break;
                 default:
                     promptParts.Add(args[index]);
                     break;
@@ -252,7 +258,8 @@ Examples:
             allowedTools.Count > 0 ? allowedTools : null,
             disallowedTools.Count > 0 ? disallowedTools : null,
             systemPrompt,
-            settingsFile);
+            settingsFile,
+            addDirs.Count > 0 ? addDirs : null);
     }
 
     private static List<string> ParseToolList(string value)
@@ -357,5 +364,6 @@ Examples:
         IReadOnlyCollection<string>? AllowedTools,
         IReadOnlyCollection<string>? DisallowedTools,
         string? SystemPrompt,
-        string? SettingsFile);
+        string? SettingsFile,
+        IReadOnlyCollection<string>? AddDirs);
 }

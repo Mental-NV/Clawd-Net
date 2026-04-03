@@ -1,4 +1,5 @@
 using ClawdNet.Core.Abstractions;
+using ClawdNet.Core.Services;
 
 namespace ClawdNet.Core.Models;
 
@@ -18,4 +19,7 @@ public sealed record CommandContext(
     IPlatformLauncher PlatformLauncher,
     IPermissionService PermissionService,
     ITranscriptRenderer TranscriptRenderer,
-    string Version);
+    string Version,
+    LegacySettingsLoader? LegacySettingsLoader = null,
+    MemoryFileLoader? MemoryFileLoader = null,
+    ProjectMcpConfigLoader? ProjectMcpConfigLoader = null);

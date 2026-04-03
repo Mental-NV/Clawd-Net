@@ -20,7 +20,7 @@ public sealed class AppHostTests : IDisposable
     [Fact]
     public async Task Version_command_returns_product_version()
     {
-        var host = new AppHost("1.2.3", _dataRoot, new FakeAnthropicMessageClient());
+        var host = new AppHost("1.2.3", _dataRoot, null, new FakeAnthropicMessageClient());
 
         var result = await host.RunAsync(["--version"], CancellationToken.None);
 
@@ -33,7 +33,7 @@ public sealed class AppHostTests : IDisposable
     {
         var replHost = new FakeReplHost();
         var tuiHost = new FakeTuiHost();
-        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient(), replHost: replHost, tuiHost: tuiHost);
+        var host = new AppHost("1.0.0", _dataRoot, null, new FakeAnthropicMessageClient(), replHost: replHost, tuiHost: tuiHost);
 
         var result = await host.RunAsync([], CancellationToken.None);
 
@@ -50,7 +50,7 @@ public sealed class AppHostTests : IDisposable
         var host = new AppHost(
             "1.0.0",
             _dataRoot,
-            new FakeAnthropicMessageClient(),
+            null, new FakeAnthropicMessageClient(),
             featureGate: new DictionaryFeatureGate(["legacy-repl"]),
             replHost: replHost,
             tuiHost: tuiHost);
@@ -65,7 +65,7 @@ public sealed class AppHostTests : IDisposable
     [Fact]
     public async Task Session_new_creates_persisted_session()
     {
-        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient());
+        var host = new AppHost("1.0.0", _dataRoot, null, new FakeAnthropicMessageClient());
 
         var createResult = await host.RunAsync(["session", "new", "Migration", "Slice"], CancellationToken.None);
         var listResult = await host.RunAsync(["session", "list"], CancellationToken.None);
@@ -81,7 +81,7 @@ public sealed class AppHostTests : IDisposable
     {
         var client = new FakeAnthropicMessageClient(
             new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("Hello from ClawdNet")], "end_turn"));
-        var host = new AppHost("1.0.0", _dataRoot, client);
+        var host = new AppHost("1.0.0", _dataRoot, null, client);
 
         var result = await host.RunAsync(["ask", "hello"], CancellationToken.None);
 
@@ -95,7 +95,7 @@ public sealed class AppHostTests : IDisposable
     {
         var client = new FakeAnthropicMessageClient(
             new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("json-response")], "end_turn"));
-        var host = new AppHost("1.0.0", _dataRoot, client);
+        var host = new AppHost("1.0.0", _dataRoot, null, client);
 
         var result = await host.RunAsync(["ask", "--json", "hello"], CancellationToken.None);
         using var document = JsonDocument.Parse(result.StdOut);
@@ -108,7 +108,7 @@ public sealed class AppHostTests : IDisposable
     [Fact]
     public async Task Ask_with_missing_session_returns_stable_error()
     {
-        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient());
+        var host = new AppHost("1.0.0", _dataRoot, null, new FakeAnthropicMessageClient());
 
         var result = await host.RunAsync(["ask", "--session", "missing", "hello"], CancellationToken.None);
 
@@ -121,7 +121,7 @@ public sealed class AppHostTests : IDisposable
     {
         var client = new FakeAnthropicMessageClient(
             new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("permission-mode")], "end_turn"));
-        var host = new AppHost("1.0.0", _dataRoot, client);
+        var host = new AppHost("1.0.0", _dataRoot, null, client);
 
         var result = await host.RunAsync(["ask", "--permission-mode", "bypass-permissions", "hello"], CancellationToken.None);
 
@@ -163,7 +163,7 @@ public sealed class AppHostTests : IDisposable
                 ],
                 "tool_use"),
             new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("patch denied")], "end_turn"));
-        var host = new AppHost("1.0.0", _dataRoot, client);
+        var host = new AppHost("1.0.0", _dataRoot, null, client);
 
         var result = await host.RunAsync(["ask", "edit the file"], CancellationToken.None);
 
@@ -207,7 +207,7 @@ public sealed class AppHostTests : IDisposable
                 ],
                 "tool_use"),
             new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("patch applied")], "end_turn"));
-        var host = new AppHost("1.0.0", _dataRoot, client, lspClient: lspClient);
+        var host = new AppHost("1.0.0", _dataRoot, null, client, lspClient: lspClient);
 
         var result = await host.RunAsync(["ask", "--permission-mode", "accept-edits", "edit the file"], CancellationToken.None);
 
@@ -235,7 +235,7 @@ public sealed class AppHostTests : IDisposable
                 [new ToolUseContentBlock("tool-3", "pty_read", new JsonObject())],
                 "tool_use"),
             new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("used pty")], "end_turn"));
-        var host = new AppHost("1.0.0", _dataRoot, client, ptyManager: ptyManager);
+        var host = new AppHost("1.0.0", _dataRoot, null, client, ptyManager: ptyManager);
 
         var result = await host.RunAsync(["ask", "--permission-mode", "bypass-permissions", "use pty"], CancellationToken.None);
 
@@ -273,7 +273,7 @@ public sealed class AppHostTests : IDisposable
             [new TaskEvent(ClawdTaskStatus.Running, "Task started.", timestamp)],
             []);
         taskManager.Publish(task, task.Events!.Last());
-        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient(), taskManager: taskManager);
+        var host = new AppHost("1.0.0", _dataRoot, null, new FakeAnthropicMessageClient(), taskManager: taskManager);
 
         var list = await host.RunAsync(["task", "list"], CancellationToken.None);
         var show = await host.RunAsync(["task", "show", "task-1"], CancellationToken.None);
@@ -306,7 +306,7 @@ public sealed class AppHostTests : IDisposable
                 ],
                 "tool_use"),
             new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("task started")], "end_turn"));
-        var host = new AppHost("1.0.0", _dataRoot, client, taskManager: taskManager);
+        var host = new AppHost("1.0.0", _dataRoot, null, client, taskManager: taskManager);
 
         var result = await host.RunAsync(["ask", "--permission-mode", "bypass-permissions", "start a background task"], CancellationToken.None);
 
@@ -330,7 +330,7 @@ public sealed class AppHostTests : IDisposable
                 new McpToolDefinition("demo", "echo", "Echo from MCP", new JsonObject(), true)
             ]
         };
-        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient(), mcpClient: mcpClient);
+        var host = new AppHost("1.0.0", _dataRoot, null, new FakeAnthropicMessageClient(), mcpClient: mcpClient);
 
         var result = await host.RunAsync(["mcp", "list"], CancellationToken.None);
 
@@ -371,7 +371,7 @@ public sealed class AppHostTests : IDisposable
                 [new ToolUseContentBlock("tool-1", "mcp.demo.echo", new JsonObject { ["text"] = "hello" })],
                 "tool_use"),
             new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("used mcp")], "end_turn"));
-        var host = new AppHost("1.0.0", _dataRoot, anthropicClient, mcpClient: mcpClient);
+        var host = new AppHost("1.0.0", _dataRoot, null, anthropicClient, mcpClient: mcpClient);
 
         var result = await host.RunAsync(["ask", "try mcp"], CancellationToken.None);
 
@@ -392,7 +392,7 @@ public sealed class AppHostTests : IDisposable
                 new LspServerState("csharp", true, true, [".cs"])
             ]
         };
-        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient(), lspClient: lspClient);
+        var host = new AppHost("1.0.0", _dataRoot, null, new FakeAnthropicMessageClient(), lspClient: lspClient);
 
         var result = await host.RunAsync(["lsp", "list"], CancellationToken.None);
 
@@ -421,7 +421,7 @@ public sealed class AppHostTests : IDisposable
                 [new ToolUseContentBlock("tool-1", "lsp_definition", new JsonObject { ["path"] = "/tmp/a.cs", ["line"] = 1, ["character"] = 2 })],
                 "tool_use"),
             new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("used lsp")], "end_turn"));
-        var host = new AppHost("1.0.0", _dataRoot, anthropicClient, lspClient: lspClient);
+        var host = new AppHost("1.0.0", _dataRoot, null, anthropicClient, lspClient: lspClient);
 
         var result = await host.RunAsync(["ask", "use lsp"], CancellationToken.None);
 
@@ -452,7 +452,7 @@ public sealed class AppHostTests : IDisposable
                     [new PluginError("manifest-invalid", "bad json")])
             ]
         };
-        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient(), pluginCatalog: pluginCatalog);
+        var host = new AppHost("1.0.0", _dataRoot, null, new FakeAnthropicMessageClient(), pluginCatalog: pluginCatalog);
 
         var result = await host.RunAsync(["plugin", "list"], CancellationToken.None);
 
@@ -514,7 +514,7 @@ public sealed class AppHostTests : IDisposable
                 [new ToolUseContentBlock("tool-1", "mcp.demo.echo.echo", new JsonObject { ["text"] = "hello" })],
                 "tool_use"),
             new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("reloaded plugin tool")], "end_turn"));
-        var host = new AppHost("1.0.0", _dataRoot, anthropicClient, pluginCatalog: pluginCatalog, mcpClient: mcpClient, lspClient: lspClient);
+        var host = new AppHost("1.0.0", _dataRoot, null, anthropicClient, pluginCatalog: pluginCatalog, mcpClient: mcpClient, lspClient: lspClient);
 
         var reloadResult = await host.RunAsync(["plugin", "reload"], CancellationToken.None);
         var askResult = await host.RunAsync(["ask", "use reloaded plugin"], CancellationToken.None);
@@ -587,7 +587,7 @@ public sealed class AppHostTests : IDisposable
                     [])
             ]
         };
-        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient(), pluginCatalog: pluginCatalog);
+        var host = new AppHost("1.0.0", _dataRoot, null, new FakeAnthropicMessageClient(), pluginCatalog: pluginCatalog);
 
         var result = await host.RunAsync(["plugin", "show", "demo"], CancellationToken.None);
 
@@ -649,7 +649,7 @@ public sealed class AppHostTests : IDisposable
                 [new ToolUseContentBlock("tool-1", "plugin.demo.inspect", new JsonObject { ["value"] = "hello" })],
                 "tool_use"),
             new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("plugin tool used")], "end_turn"));
-        var host = new AppHost("1.0.0", _dataRoot, anthropicClient, pluginCatalog: pluginCatalog, pluginRuntime: pluginRuntime);
+        var host = new AppHost("1.0.0", _dataRoot, null, anthropicClient, pluginCatalog: pluginCatalog, pluginRuntime: pluginRuntime);
 
         var result = await host.RunAsync(["ask", "use plugin tool"], CancellationToken.None);
 
@@ -667,7 +667,7 @@ public sealed class AppHostTests : IDisposable
                 ? new PluginCommandResult(true, "plugin command ok", string.Empty, 0)
                 : null
         };
-        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient(), pluginRuntime: pluginRuntime);
+        var host = new AppHost("1.0.0", _dataRoot, null, new FakeAnthropicMessageClient(), pluginRuntime: pluginRuntime);
 
         var result = await host.RunAsync(["demo-run", "hello"], CancellationToken.None);
 
@@ -707,7 +707,7 @@ public sealed class AppHostTests : IDisposable
             DateTimeOffset.UtcNow,
             null);
         taskManager.Publish(task, task.Events![0]);
-        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient(), taskManager: taskManager);
+        var host = new AppHost("1.0.0", _dataRoot, null, new FakeAnthropicMessageClient(), taskManager: taskManager);
 
         var result = await host.RunAsync(["task", "show", "task-1"], CancellationToken.None);
 
@@ -725,7 +725,7 @@ public sealed class AppHostTests : IDisposable
         providerCatalog.Providers.Add(new ProviderDefinition("anthropic", ProviderKind.Anthropic, true, "ANTHROPIC_API_KEY", DefaultModel: "claude-sonnet-4-5"));
         providerCatalog.Providers.Add(new ProviderDefinition("openai", ProviderKind.OpenAI, true, "OPENAI_API_KEY", DefaultModel: "gpt-4o-mini"));
         providerCatalog.DefaultProviderName = "openai";
-        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient(), providerCatalog: providerCatalog);
+        var host = new AppHost("1.0.0", _dataRoot, null, new FakeAnthropicMessageClient(), providerCatalog: providerCatalog);
 
         var listResult = await host.RunAsync(["provider", "list"], CancellationToken.None);
         var showResult = await host.RunAsync(["provider", "show", "openai"], CancellationToken.None);
@@ -749,7 +749,7 @@ public sealed class AppHostTests : IDisposable
         var host = new AppHost(
             "1.0.0",
             _dataRoot,
-            new FakeAnthropicMessageClient(),
+            null, new FakeAnthropicMessageClient(),
             providerCatalog: providerCatalog,
             modelClientFactory: modelClientFactory);
 
@@ -766,7 +766,7 @@ public sealed class AppHostTests : IDisposable
     public async Task Platform_commands_route_through_platform_launcher()
     {
         var platformLauncher = new FakePlatformLauncher();
-        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient(), platformLauncher: platformLauncher);
+        var host = new AppHost("1.0.0", _dataRoot, null, new FakeAnthropicMessageClient(), platformLauncher: platformLauncher);
 
         var openResult = await host.RunAsync(["platform", "open", "/tmp/demo.cs", "--line", "12", "--column", "4"], CancellationToken.None);
         var browseResult = await host.RunAsync(["platform", "browse", "https://example.com"], CancellationToken.None);
@@ -791,7 +791,7 @@ public sealed class AppHostTests : IDisposable
                 [new ToolUseContentBlock("tool-1", "open_url", new JsonObject { ["url"] = "https://example.com" })],
                 "tool_use"),
             new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("opened link")], "end_turn"));
-        var host = new AppHost("1.0.0", _dataRoot, client, platformLauncher: platformLauncher);
+        var host = new AppHost("1.0.0", _dataRoot, null, client, platformLauncher: platformLauncher);
 
         var result = await host.RunAsync(["ask", "--permission-mode", "bypass-permissions", "open the docs"], CancellationToken.None);
 

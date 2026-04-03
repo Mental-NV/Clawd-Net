@@ -1,11 +1,16 @@
 using ClawdNet.App;
+using ClawdNet.Core.Services;
 
 var version = typeof(Program).Assembly.GetName().Version?.ToString() ?? "0.1.0";
 var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
 var dataRoot = string.IsNullOrWhiteSpace(localAppData)
     ? Path.Combine(AppContext.BaseDirectory, ".clawdnet")
     : Path.Combine(localAppData, "ClawdNet");
-await using var host = new AppHost(version, dataRoot);
+
+// Resolve legacy config directory for compatibility with legacy TypeScript CLI
+var legacyConfigDir = LegacyConfigPaths.GetLegacyConfigDir();
+
+await using var host = new AppHost(version, dataRoot, legacyConfigDir);
 var result = await host.RunAsync(args, CancellationToken.None);
 
 if (!string.IsNullOrWhiteSpace(result.StdOut))

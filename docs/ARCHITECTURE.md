@@ -291,6 +291,20 @@ Current config categories include:
 
 When configuration files are absent, the project prefers sane defaults or in-memory built-ins rather than forcing an initial setup ceremony.
 
+### Legacy Config Compatibility
+
+The .NET CLI includes a compatibility layer for the legacy TypeScript CLI configuration layout:
+
+- `CLAUDE_CONFIG_DIR` env var overrides the legacy config root (defaults to `~/.claude/`)
+- Legacy settings are loaded and merged from `~/.claude/settings.json`, `.claude/settings.json`, and `.claude/settings.local.json` with later sources overriding earlier ones
+- `CLAUDE.md` memory files are loaded from user (`~/.claude/CLAUDE.md`) and project (`{cwd}/CLAUDE.md`, `{cwd}/.claude/CLAUDE.md`) paths, plus rules directories (`~/.claude/rules/*.md`, `{cwd}/.claude/rules/*.md`)
+- Project `.mcp.json` files are loaded from the current directory and parent directories (closest wins on name conflicts)
+- The `--add-dir` flag on the `ask` command adds extra directories to scan for `.claude/` config files
+- `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` disables automatic CLAUDE.md loading
+- Legacy JSONL transcripts under `~/.claude/projects/` are readable for session resume
+- Legacy config loading is additive; .NET config files take precedence when both exist
+- Missing legacy files are handled gracefully with no errors
+
 ## Rollout and Compatibility Decisions
 
 Several rollout choices have been consistent across milestones:

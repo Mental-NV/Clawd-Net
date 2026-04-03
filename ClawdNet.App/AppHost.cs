@@ -46,6 +46,9 @@ public sealed class AppHost : IAsyncDisposable
     private readonly SemaphoreSlim _mcpInitializationLock = new(1, 1);
     private readonly SemaphoreSlim _lspInitializationLock = new(1, 1);
     private readonly IFeatureGate _featureGate;
+    private readonly LegacySettingsLoader _legacySettingsLoader;
+    private readonly MemoryFileLoader _memoryFileLoader;
+    private readonly ProjectMcpConfigLoader _projectMcpConfigLoader;
     private bool _pluginsInitialized;
     private bool _tasksInitialized;
     private bool _mcpInitialized;
@@ -54,6 +57,7 @@ public sealed class AppHost : IAsyncDisposable
     public AppHost(
         string version,
         string dataRoot,
+        string? legacyConfigDir = null,
         IAnthropicMessageClient? anthropicMessageClient = null,
         IProviderCatalog? providerCatalog = null,
         IModelClientFactory? modelClientFactory = null,
@@ -72,6 +76,9 @@ public sealed class AppHost : IAsyncDisposable
         ITerminalSession? terminalSession = null)
     {
         _featureGate = featureGate ?? new DictionaryFeatureGate();
+        _legacySettingsLoader = new LegacySettingsLoader();
+        _memoryFileLoader = new MemoryFileLoader();
+        _projectMcpConfigLoader = new ProjectMcpConfigLoader();
         processRunner ??= new SystemProcessRunner();
         var builtInCommands = new[]
         {
@@ -176,7 +183,7 @@ public sealed class AppHost : IAsyncDisposable
         _replHost = replHost ?? new ReplHost(terminalSession, conversationStore, queryEngine, transcriptRenderer, _ptyManager, _taskManager, _providerCatalog, _platformLauncher);
         _tuiHost = tuiHost ?? new TuiHost(terminalSession, conversationStore, queryEngine, tuiRenderer, _ptyManager, _taskManager, _providerCatalog, _platformLauncher);
 
-        _context = new CommandContext(_featureGate, _toolRegistry, toolExecutor, conversationStore, _taskStore, _taskManager, queryEngine, _providerCatalog, _mcpClient, _lspClient, _pluginCatalog, _pluginRuntime, _platformLauncher, permissionService, transcriptRenderer, version);
+        _context = new CommandContext(_featureGate, _toolRegistry, toolExecutor, conversationStore, _taskStore, _taskManager, queryEngine, _providerCatalog, _mcpClient, _lspClient, _pluginCatalog, _pluginRuntime, _platformLauncher, permissionService, transcriptRenderer, version, _legacySettingsLoader, _memoryFileLoader, _projectMcpConfigLoader);
 
         _handlers =
         [

@@ -41,12 +41,13 @@ These areas are already landed and should be treated as the current foundation, 
 - [v] Stream-JSON Output Mode
 - [v] Session Resume Family v1 (--continue, --resume, session show)
 - [v] Remaining P0 Parity Gaps (tool filtering, system prompt injection, auth CLI)
+- [v] Legacy Config Compatibility Layer
 
 ## Current Execution Order
 
 Unless explicitly redirected, execute future work in this order:
 
-1. Provider and Platform Expansion v2
+1. Provider and Platform Expansion v2 (already complete — see Next Milestones)
 
 ## Active Milestone
 
@@ -75,9 +76,35 @@ None — all roadmap milestones are complete.
   - `--append-system-prompt` and `--append-system-prompt-file` are deferred
   - OAuth/keychain auth from legacy CLI is documented as deferred in PARITY.md
 
+### [v] PLAN-19: Legacy Config Compatibility Layer
+
+- Priority: `P0`
+- Effort: `1 week`
+- Risk: `Medium`
+- Status: Complete
+- Delivered:
+  - `CLAUDE_CONFIG_DIR` env var support for overriding the legacy config root
+  - Legacy settings loading: `~/.claude/settings.json`, `.claude/settings.json`, `.claude/settings.local.json`
+  - `CLAUDE.md` memory file loading (user, project, local, rules directories)
+  - `.mcp.json` project-level MCP config loading with parent directory walk
+  - `--add-dir <paths...>` flag on ask command for extra directories to scan for `.claude/` config
+  - Legacy JSONL transcript reader for session resume from `~/.claude/projects/`
+  - `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` env var to disable automatic memory file loading
+  - All loaders handle missing files gracefully with no errors
+  - 46 new unit tests covering all config compatibility services
+- Validation:
+  - `dotnet build` passed
+  - `dotnet test` passed (260 tests, +46 new)
+  - All new services tested: `LegacyConfigPaths`, `LegacySettingsLoader`, `MemoryFileLoader`, `ProjectMcpConfigLoader`, `LegacyTranscriptReader`
+- Notes:
+  - Managed/policy settings (`/etc/claude-code/`) are deferred
+  - Memory system (`MEMORY.md`, auto-memory directories, team memory sync) is deferred
+  - Plugin marketplace from `~/.claude/plugins/` is deferred
+  - Legacy transcript import is read-only; transcripts are not migrated to .NET format
+
 ## Next Milestones
 
-### [ ] Provider and Platform Expansion v2
+### [v] Provider and Platform Expansion v2
 
 - Priority: `P5`
 - Effort: `2-4 weeks`
