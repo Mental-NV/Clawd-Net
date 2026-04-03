@@ -46,8 +46,9 @@ Unless explicitly redirected, execute future work in this order:
 
 ## Active Milestone
 
-- [/] Advanced Orchestration v3
-  - active execution record: `docs/PLAN-01.md`
+- [ ] Advanced Orchestration v3
+  - slice 1 landed: `docs/PLAN-01.md` (parent-child delegation, hierarchy inspection)
+  - slice 2 landed: `docs/PLAN-02.md` (busy-poll replacement, timeout, progress tracking, stream events)
 
 ## Next Milestones
 
@@ -77,6 +78,7 @@ Unless explicitly redirected, execute future work in this order:
   - existing task, PTY, plugin, and query flows still pass regression coverage
 - Current progress:
   - slice 1 landed bounded parent-child task delegation and hierarchy inspection
+  - slice 2 landed busy-poll replacement, task timeout, progress tracking, and stream event coverage
   - broader task-graph and orchestration supervision work remains
 
 ### [ ] Full TUI Parity v3

@@ -10,4 +10,5 @@ public sealed record TaskRequest(
     string? Model = null,
     PermissionMode PermissionMode = PermissionMode.Default,
     int MaxTurns = 8,
-    string? Provider = null);
+    string? Provider = null,
+    int? MaxDurationSeconds = null);

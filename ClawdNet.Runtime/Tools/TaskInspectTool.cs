@@ -56,6 +56,8 @@ public sealed class TaskInspectTool : ITool
             workerSessionId = inspection.Worker.WorkerSessionId,
             updatedAtUtc = inspection.Task.UpdatedAtUtc,
             summary = inspection.Task.Result?.Summary ?? inspection.Task.LastStatusMessage,
+            progressPercent = inspection.Task.ProgressPercent,
+            progressMessage = inspection.Task.ProgressMessage,
             recentEvents = inspection.RecentEvents,
             childTasks = inspection.Children.Select(child => new
             {
@@ -63,7 +65,9 @@ public sealed class TaskInspectTool : ITool
                 status = child.Status.ToString(),
                 title = child.Title,
                 updatedAtUtc = child.UpdatedAtUtc,
-                summary = child.Result?.Summary ?? child.LastStatusMessage
+                summary = child.Result?.Summary ?? child.LastStatusMessage,
+                progressPercent = child.ProgressPercent,
+                progressMessage = child.ProgressMessage
             }),
             worker = inspection.Worker
         }));

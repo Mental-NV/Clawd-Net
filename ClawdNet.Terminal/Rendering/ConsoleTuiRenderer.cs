@@ -77,10 +77,15 @@ public sealed class ConsoleTuiRenderer : ITuiRenderer
             foreach (var task in state.RecentTasks.Take(5))
             {
                 var marker = task.Status == ClawdNet.Core.Models.TaskStatus.Running ? "*" : "-";
-                builder.AppendLine($"{marker} {task.Id} | {task.Status} | depth={task.Depth} | children={task.ChildTaskIds?.Count ?? 0} | {task.Title}");
+                var progressSuffix = task.ProgressPercent.HasValue ? $" | progress={task.ProgressPercent}%" : "";
+                builder.AppendLine($"{marker} {task.Id} | {task.Status} | depth={task.Depth} | children={task.ChildTaskIds?.Count ?? 0} | {task.Title}{progressSuffix}");
                 if (!string.IsNullOrWhiteSpace(task.Result?.Summary ?? task.LastStatusMessage))
                 {
                     builder.AppendLine($"  {task.Result?.Summary ?? task.LastStatusMessage}");
+                }
+                if (!string.IsNullOrWhiteSpace(task.ProgressMessage))
+                {
+                    builder.AppendLine($"  progress: {task.ProgressMessage}");
                 }
                 builder.AppendLine($"  parent={(task.ParentTaskId ?? "root")} | updated={task.UpdatedAtUtc:HH:mm:ss} | workerMessages={task.WorkerMessageCount}");
             }

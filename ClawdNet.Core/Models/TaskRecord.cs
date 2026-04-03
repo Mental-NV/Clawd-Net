@@ -26,4 +26,6 @@ public sealed record TaskRecord(
     int WorkerMessageCount = 0,
     DateTimeOffset? WorkerUpdatedAtUtc = null,
     string? InterruptionReason = null,
-    string? Provider = null);
+    string? Provider = null,
+    int? ProgressPercent = null,
+    string? ProgressMessage = null);

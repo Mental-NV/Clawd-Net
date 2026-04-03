@@ -1124,7 +1124,19 @@ public sealed class TuiHost : ITuiHost
 
             _activityState = TerminalActivityState.RunningTool;
             _activityDetail = $"Task {task.Id} | {task.Status} | {taskEvent.Message}";
-            AddActivityFeed($"task | {task.Id} | {taskEvent.Message}");
+            AddActivityFeed($"task | {task.Id} | {task.Status} | {taskEvent.Message}");
+
+            // Add aggregate orchestration status
+            var allTasks = await _taskManager.ListAsync(CancellationToken.None);
+            var sessionTasks = allTasks.Where(t => string.Equals(t.ParentSessionId, task.ParentSessionId, StringComparison.Ordinal)).ToArray();
+            var running = sessionTasks.Count(t => t.Status == ClawdNet.Core.Models.TaskStatus.Running);
+            var pending = sessionTasks.Count(t => t.Status == ClawdNet.Core.Models.TaskStatus.Pending);
+            var completed = sessionTasks.Count(t => t.Status == ClawdNet.Core.Models.TaskStatus.Completed);
+            if (running > 0 || pending > 0)
+            {
+                AddActivityFeed($"orchestration | running={running} pending={pending} completed={completed}");
+            }
+
             if (_drawer?.Kind == TuiDrawerKind.Tasks)
             {
                 await ShowTaskDrawerAsync(_selectedTaskId ?? task.Id, CancellationToken.None);

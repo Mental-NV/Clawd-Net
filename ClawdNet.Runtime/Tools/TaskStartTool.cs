@@ -32,7 +32,8 @@ public sealed class TaskStartTool : ITool
             ["cwd"] = new JsonObject { ["type"] = "string" },
             ["provider"] = new JsonObject { ["type"] = "string" },
             ["model"] = new JsonObject { ["type"] = "string" },
-            ["permissionMode"] = new JsonObject { ["type"] = "string" }
+            ["permissionMode"] = new JsonObject { ["type"] = "string" },
+            ["maxDurationSeconds"] = new JsonObject { ["type"] = "integer" }
         },
         ["required"] = new JsonArray("title", "goal")
     };
@@ -59,6 +60,7 @@ public sealed class TaskStartTool : ITool
         TaskRecord task;
         try
         {
+            var maxDurationSeconds = request.Input?["maxDurationSeconds"]?.GetValue<int>();
             task = await _taskManager.StartAsync(
                 new TaskRequest(
                     title,
@@ -69,7 +71,8 @@ public sealed class TaskStartTool : ITool
                     request.Input?["cwd"]?.GetValue<string>(),
                     request.Input?["model"]?.GetValue<string>(),
                     permissionMode,
-                    Provider: request.Input?["provider"]?.GetValue<string>()),
+                    Provider: request.Input?["provider"]?.GetValue<string>(),
+                    MaxDurationSeconds: maxDurationSeconds),
                 cancellationToken);
         }
         catch (InvalidOperationException ex)
@@ -84,10 +87,13 @@ public sealed class TaskStartTool : ITool
             rootTaskId = task.RootTaskId,
             depth = task.Depth,
             provider = task.Provider,
+            model = task.Model,
             status = task.Status.ToString(),
             title = task.Title,
             workerSessionId = task.WorkerSessionId,
             summary = task.LastStatusMessage,
+            progressPercent = task.ProgressPercent,
+            progressMessage = task.ProgressMessage,
             childTaskCount = task.ChildTaskIds?.Count ?? 0,
             workerMessageCount = task.WorkerMessageCount,
             workerUpdatedAtUtc = task.WorkerUpdatedAtUtc

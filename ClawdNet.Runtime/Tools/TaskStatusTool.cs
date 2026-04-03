@@ -56,6 +56,8 @@ public sealed class TaskStatusTool : ITool
             workerSessionId = task.WorkerSessionId,
             updatedAtUtc = task.UpdatedAtUtc,
             lastStatusMessage = task.LastStatusMessage,
+            progressPercent = task.ProgressPercent,
+            progressMessage = task.ProgressMessage,
             result = task.Result,
             childTaskIds = task.ChildTaskIds ?? [],
             childTaskCount = task.ChildTaskIds?.Count ?? 0,

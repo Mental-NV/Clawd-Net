@@ -255,9 +255,75 @@ public sealed class TaskManagerTests : IDisposable
         Assert.Contains("nested", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task Task_manager_records_timeout_cancellation()
+    {
+        var sessionStore = new JsonSessionStore(_dataRoot);
+        var taskStore = new JsonTaskStore(_dataRoot);
+        var engine = new FakeQueryEngine
+        {
+            StreamHandler = request => StreamNeverCompletingAsync()
+        };
+        var manager = new TaskManager(taskStore, sessionStore, engine);
+        await manager.InitializeAsync(CancellationToken.None);
+        var parent = await sessionStore.CreateAsync("Parent", "claude-sonnet-4-5", CancellationToken.None);
+
+        // Start a task with a 1-second timeout
+        var task = await manager.StartAsync(new TaskRequest("Timeout task", "Wait forever", parent.Id, MaxDurationSeconds: 1), CancellationToken.None);
+
+        // Wait for it to timeout (poll longer since timeout + processing takes time)
+        var completed = await WaitForTaskStatusAsync(taskStore, task.Id, ClawdTaskStatus.Canceled, 100);
+
+        Assert.NotNull(completed);
+        Assert.Equal(ClawdTaskStatus.Canceled, completed!.Status);
+        Assert.Contains("timed out", completed.LastStatusMessage ?? "", StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Task_manager_transitions_from_pending_to_running()
+    {
+        var sessionStore = new JsonSessionStore(_dataRoot);
+        var taskStore = new JsonTaskStore(_dataRoot);
+        var engine = new FakeQueryEngine
+        {
+            Handler = async request =>
+            {
+                var worker = await sessionStore.GetAsync(request.SessionId!, CancellationToken.None)
+                    ?? throw new InvalidOperationException("Expected worker session.");
+                var updated = worker with
+                {
+                    UpdatedAtUtc = DateTimeOffset.UtcNow,
+                    Messages =
+                    [
+                        .. worker.Messages,
+                        new ConversationMessage("assistant", "done", DateTimeOffset.UtcNow)
+                    ]
+                };
+                await sessionStore.SaveAsync(updated, CancellationToken.None);
+                return new QueryExecutionResult(updated, "done", 1);
+            }
+        };
+        var manager = new TaskManager(taskStore, sessionStore, engine);
+        await manager.InitializeAsync(CancellationToken.None);
+        var parent = await sessionStore.CreateAsync("Parent", "claude-sonnet-4-5", CancellationToken.None);
+
+        var task = await manager.StartAsync(new TaskRequest("Test task", "Test work", parent.Id), CancellationToken.None);
+
+        // Task should be returned with Running status
+        Assert.Equal(ClawdTaskStatus.Running, task.Status);
+
+        var completed = await WaitForTaskAsync(taskStore, task.Id, ClawdTaskStatus.Completed);
+        Assert.NotNull(completed);
+    }
+
     private static async Task<TaskRecord?> WaitForTaskAsync(JsonTaskStore store, string taskId, ClawdTaskStatus expectedStatus)
     {
-        for (var attempt = 0; attempt < 50; attempt++)
+        return await WaitForTaskStatusAsync(store, taskId, expectedStatus, 50);
+    }
+
+    private static async Task<TaskRecord?> WaitForTaskStatusAsync(JsonTaskStore store, string taskId, ClawdTaskStatus expectedStatus, int maxAttempts)
+    {
+        for (var attempt = 0; attempt < maxAttempts; attempt++)
         {
             var task = await store.GetAsync(taskId, CancellationToken.None);
             if (task?.Status == expectedStatus)
@@ -323,5 +389,13 @@ public sealed class TaskManagerTests : IDisposable
         {
             Directory.Delete(_dataRoot, recursive: true);
         }
+    }
+
+    private static async IAsyncEnumerable<QueryStreamEvent> StreamNeverCompletingAsync(
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        yield return new UserTurnAcceptedEvent(
+            new ConversationSession("worker", "Worker", "claude-sonnet-4-5", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, []));
+        await Task.Delay(Timeout.Infinite, cancellationToken);
     }
 }

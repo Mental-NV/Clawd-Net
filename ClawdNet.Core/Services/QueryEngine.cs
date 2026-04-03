@@ -716,6 +716,13 @@ public sealed class QueryEngine : IQueryEngine
                         new TaskEvent(ClawdNet.Core.Models.TaskStatus.Canceled, summary ?? task.LastStatusMessage ?? "Task canceled.", DateTimeOffset.UtcNow, true)));
                     break;
             }
+
+            if (IsTaskListOrInspect(toolName))
+            {
+                events.Add(new TaskUpdatedStreamEvent(
+                    task,
+                    new TaskEvent(task.Status, GetTaskListInspectMessage(toolName, summary, task.LastStatusMessage), DateTimeOffset.UtcNow)));
+            }
         }
         catch
         {
@@ -775,6 +782,23 @@ public sealed class QueryEngine : IQueryEngine
             root.TryGetProperty("childTaskIds", out var childTaskIdsElement) && childTaskIdsElement.ValueKind == JsonValueKind.Array
                 ? childTaskIdsElement.EnumerateArray().Select(element => element.GetString()).Where(value => !string.IsNullOrWhiteSpace(value)).Cast<string>().ToArray()
                 : [],
-            Provider: root.TryGetProperty("provider", out var providerElement) ? providerElement.GetString() ?? "anthropic" : "anthropic");
+            Provider: root.TryGetProperty("provider", out var providerElement) ? providerElement.GetString() ?? "anthropic" : "anthropic",
+            ProgressPercent: root.TryGetProperty("progressPercent", out var ppEl) && ppEl.ValueKind == JsonValueKind.Number && ppEl.TryGetInt32(out var pp) ? pp : null,
+            ProgressMessage: root.TryGetProperty("progressMessage", out var pmEl) && pmEl.ValueKind == JsonValueKind.String ? pmEl.GetString() : null);
+    }
+
+    private static bool IsTaskListOrInspect(string toolName)
+    {
+        return toolName.Equals("task_list", StringComparison.OrdinalIgnoreCase)
+            || toolName.Equals("task_inspect", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetTaskListInspectMessage(string toolName, string? summary, string? lastStatusMessage)
+    {
+        var message = summary ?? lastStatusMessage;
+        if (!string.IsNullOrWhiteSpace(message)) return message;
+        return toolName.Equals("task_list", StringComparison.OrdinalIgnoreCase)
+            ? "Task list refreshed."
+            : "Task inspection updated.";
     }
 }
