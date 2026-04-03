@@ -173,9 +173,6 @@ while true; do
   ensure_clean_worktree
   check_sync_and_push_if_needed
 
-  echo "Launching qwen..."
-  qwen --yolo \
-    --output-format stream-json \
-    --include-partial-messages \
-    --prompt "$(cat "${MISSION_FILE}")"
+  echo "Launching qwen (--continue)..."
+  qwen --continue --yolo --prompt "$(cat "${MISSION_FILE}")"
 done
