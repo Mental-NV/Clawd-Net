@@ -535,6 +535,10 @@ public sealed class QueryEngine : IQueryEngine
 
         public Task<ToolExecutionResult> ExecuteToolAsync(PluginToolInvocation invocation, CancellationToken cancellationToken)
             => Task.FromResult(new ToolExecutionResult(false, string.Empty, $"Plugin tool '{invocation.QualifiedToolName}' is unavailable."));
+
+        public PluginHealthMetrics GetHealthMetrics(string pluginName) => new();
+
+        public IReadOnlyDictionary<string, PluginHealthMetrics> GetAllHealthMetrics() => new Dictionary<string, PluginHealthMetrics>();
     }
 
     private sealed class FixedProviderCatalog : IProviderCatalog

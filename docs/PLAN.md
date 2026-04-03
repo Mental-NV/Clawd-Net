@@ -48,7 +48,8 @@ Unless explicitly redirected, execute future work in this order:
 
 - [/] Plugin Platform v4
   - slice 1 landed: `docs/PLAN-11.md` (plugin lifecycle management: install/uninstall/enable/disable commands)
-  - remaining: additional hook kinds, plugin configuration API, health/status reporting
+  - slice 2 landed: `docs/PLAN-12.md` (additional hook kinds, plugin health metrics tracking, `plugin status` command)
+  - remaining: plugin configuration API
 
 ## Next Milestones
 

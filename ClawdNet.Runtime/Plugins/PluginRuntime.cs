@@ -13,6 +13,7 @@ public sealed class PluginRuntime : IPluginRuntime
     {
         WriteIndented = false
     };
+    private readonly Dictionary<string, PluginHealthMetrics> _healthMetrics = new(StringComparer.OrdinalIgnoreCase);
 
     public PluginRuntime(
         IPluginCatalog pluginCatalog,
@@ -22,6 +23,22 @@ public sealed class PluginRuntime : IPluginRuntime
         _pluginCatalog = pluginCatalog;
         _processRunner = processRunner;
         _reservedCommands = new HashSet<string>(reservedCommands, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Gets health metrics for a specific plugin.
+    /// </summary>
+    public PluginHealthMetrics GetHealthMetrics(string pluginName)
+    {
+        return _healthMetrics.GetValueOrDefault(pluginName) ?? new PluginHealthMetrics();
+    }
+
+    /// <summary>
+    /// Gets health metrics for all loaded plugins.
+    /// </summary>
+    public IReadOnlyDictionary<string, PluginHealthMetrics> GetAllHealthMetrics()
+    {
+        return new Dictionary<string, PluginHealthMetrics>(_healthMetrics, StringComparer.OrdinalIgnoreCase);
     }
 
     public Task ReloadAsync(CancellationToken cancellationToken)
@@ -76,6 +93,9 @@ public sealed class PluginRuntime : IPluginRuntime
 
     public async Task<ToolExecutionResult> ExecuteToolAsync(PluginToolInvocation invocation, CancellationToken cancellationToken)
     {
+        // Track tool invocation
+        TrackToolInvocation(invocation.Plugin.Name);
+
         var payload = JsonSerializer.Serialize(new
         {
             plugin = new { id = invocation.Plugin.Id, name = invocation.Plugin.Name, path = invocation.Plugin.Path },
@@ -105,6 +125,9 @@ public sealed class PluginRuntime : IPluginRuntime
 
     private async Task<PluginCommandResult> ExecuteCommandAsync(PluginCommandInvocation invocation, CancellationToken cancellationToken)
     {
+        // Track command invocation
+        TrackCommandInvocation(invocation.Plugin.Name);
+
         var payload = JsonSerializer.Serialize(new
         {
             plugin = new { id = invocation.Plugin.Id, name = invocation.Plugin.Name, path = invocation.Plugin.Path },
@@ -148,7 +171,30 @@ public sealed class PluginRuntime : IPluginRuntime
                 hook.Environment,
                 payload),
             cancellationToken);
-        return ParseHookResult(plugin, hook, result);
+        var hookResult = ParseHookResult(plugin, hook, result);
+
+        // Track hook invocation
+        TrackHookInvocation(plugin.Name, hookResult.Success);
+
+        return hookResult;
+    }
+
+    private void TrackToolInvocation(string pluginName)
+    {
+        var current = _healthMetrics.GetValueOrDefault(pluginName) ?? new PluginHealthMetrics();
+        _healthMetrics[pluginName] = current.WithToolInvocation();
+    }
+
+    private void TrackCommandInvocation(string pluginName)
+    {
+        var current = _healthMetrics.GetValueOrDefault(pluginName) ?? new PluginHealthMetrics();
+        _healthMetrics[pluginName] = current.WithCommandInvocation();
+    }
+
+    private void TrackHookInvocation(string pluginName, bool succeeded)
+    {
+        var current = _healthMetrics.GetValueOrDefault(pluginName) ?? new PluginHealthMetrics();
+        _healthMetrics[pluginName] = current.WithHookInvocation(succeeded);
     }
 
     private static PluginCommandResult ParseCommandResult(ProcessResult result)

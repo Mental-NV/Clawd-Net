@@ -26,31 +26,42 @@ public sealed class PluginCommandHandler : ICommandHandler
 
         return request.Arguments[1].ToLowerInvariant() switch
         {
-            "list" => await ListAsync(context.PluginCatalog, cancellationToken),
+            "list" => await ListAsync(context, cancellationToken),
             "show" => await ShowAsync(context.PluginCatalog, request, cancellationToken),
             "reload" => await ReloadAsync(context, cancellationToken),
             "install" => await InstallAsync(context, request, cancellationToken),
             "uninstall" => await UninstallAsync(context, request, cancellationToken),
             "enable" => await EnableAsync(context, request, cancellationToken),
             "disable" => await DisableAsync(context, request, cancellationToken),
+            "status" => await StatusAsync(context, request, cancellationToken),
             _ => CommandExecutionResult.Failure($"Unknown plugin subcommand '{request.Arguments[1]}'.")
         };
     }
 
-    private static async Task<CommandExecutionResult> ListAsync(IPluginCatalog pluginCatalog, CancellationToken cancellationToken)
+    private static async Task<CommandExecutionResult> ListAsync(CommandContext context, CancellationToken cancellationToken)
     {
-        await pluginCatalog.ReloadAsync(cancellationToken);
-        if (pluginCatalog.Plugins.Count == 0)
+        await context.PluginCatalog.ReloadAsync(cancellationToken);
+        if (context.PluginCatalog.Plugins.Count == 0)
         {
             return CommandExecutionResult.Success("No plugins discovered.");
         }
 
-        var lines = pluginCatalog.Plugins.Select(plugin =>
+        var lines = context.PluginCatalog.Plugins.Select(plugin =>
         {
+            var health = context.PluginRuntime.GetHealthMetrics(plugin.Name);
+            var healthIndicator = health.HealthStatus switch
+            {
+                "healthy" => "✓",
+                "idle" => "-",
+                "degraded" => "⚠",
+                "errors" => "✗",
+                _ => "?"
+            };
             var errors = plugin.Errors.Count == 0
                 ? string.Empty
                 : $" | errors={string.Join("; ", plugin.Errors.Select(error => $"{error.Code}:{error.Message}"))}";
-            return $"{plugin.Name} | enabled={plugin.Enabled} | valid={plugin.IsValid} | mcp={plugin.McpServers.Count} | lsp={plugin.LspServers.Count} | tools={plugin.Tools.Count} | commands={plugin.Commands.Count} | hooks={plugin.Hooks.Count}{errors}";
+            var totalInvocations = health.ToolInvocationCount + health.CommandInvocationCount + health.HookInvocationCount;
+            return $"{healthIndicator} {plugin.Name} | enabled={plugin.Enabled} | valid={plugin.IsValid} | mcp={plugin.McpServers.Count} | lsp={plugin.LspServers.Count} | tools={plugin.Tools.Count} | commands={plugin.Commands.Count} | hooks={plugin.Hooks.Count} | invocations={totalInvocations}{errors}";
         });
         return CommandExecutionResult.Success(string.Join(Environment.NewLine, lines));
     }
@@ -224,5 +235,71 @@ public sealed class PluginCommandHandler : ICommandHandler
         {
             return CommandExecutionResult.Failure($"Failed to disable plugin: {ex.Message}");
         }
+    }
+
+    private static async Task<CommandExecutionResult> StatusAsync(CommandContext context, CommandRequest request, CancellationToken cancellationToken)
+    {
+        if (request.Arguments.Count < 3)
+        {
+            return CommandExecutionResult.Failure("plugin status requires a plugin name: plugin status <name>.");
+        }
+
+        var pluginName = request.Arguments[2];
+        await context.PluginCatalog.ReloadAsync(cancellationToken);
+
+        var plugin = context.PluginCatalog.Plugins.FirstOrDefault(candidate =>
+            string.Equals(candidate.Name, pluginName, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(candidate.Id, pluginName, StringComparison.OrdinalIgnoreCase));
+        if (plugin is null)
+        {
+            return CommandExecutionResult.Failure($"Plugin '{pluginName}' was not found.", 3);
+        }
+
+        var health = context.PluginRuntime.GetHealthMetrics(pluginName);
+        var hookDetails = plugin.Hooks.Select(hook =>
+        {
+            var marker = hook.Enabled ? "+" : "-";
+            return $"  {marker} {hook.Kind} => {hook.Command} | blocking={hook.Blocking}";
+        }).ToArray();
+
+        var toolDetails = plugin.Tools.Select(tool =>
+        {
+            var marker = tool.Enabled ? "+" : "-";
+            return $"  {marker} plugin.{plugin.Name}.{tool.Name} => {tool.Command} | category={tool.Category}";
+        }).ToArray();
+
+        var commandDetails = plugin.Commands.Select(command =>
+        {
+            var marker = command.Enabled ? "+" : "-";
+            return $"  {marker} {command.Name} => {command.Command}";
+        }).ToArray();
+
+        var output = string.Join(
+            Environment.NewLine,
+            [
+                $"Plugin: {plugin.Name}",
+                $"Id: {plugin.Id}",
+                $"Path: {plugin.Path}",
+                $"Enabled: {plugin.Enabled}",
+                $"Valid: {plugin.IsValid}",
+                $"Health: {health.HealthStatus} (hooks: {health.HookSuccessCount} succeeded, {health.HookFailureCount} failed)",
+                $"",
+                $"Invocation Summary:",
+                $"  Tools: {health.ToolInvocationCount} (last: {(health.LastToolInvocationUtc.HasValue ? health.LastToolInvocationUtc.Value.ToString("HH:mm:ss") : "never")})",
+                $"  Commands: {health.CommandInvocationCount} (last: {(health.LastCommandInvocationUtc.HasValue ? health.LastCommandInvocationUtc.Value.ToString("HH:mm:ss") : "never")})",
+                $"  Hooks: {health.HookInvocationCount} (last: {(health.LastActivityUtc.HasValue ? health.LastActivityUtc.Value.ToString("HH:mm:ss") : "never")})",
+                $"",
+                $"Tools ({plugin.Tools.Count}):",
+                .. toolDetails.Any() ? toolDetails : ["  (none)"],
+                $"",
+                $"Commands ({plugin.Commands.Count}):",
+                .. commandDetails.Any() ? commandDetails : ["  (none)"],
+                $"",
+                $"Hooks ({plugin.Hooks.Count}):",
+                .. hookDetails.Any() ? hookDetails : ["  (none)"],
+                $"",
+                $"Errors: {(plugin.Errors.Count == 0 ? "(none)" : string.Join(Environment.NewLine, plugin.Errors.Select(error => $"  {error.Code}: {error.Message}")))}"
+            ]);
+        return CommandExecutionResult.Success(output);
     }
 }

@@ -42,4 +42,10 @@ public sealed class FakePluginRuntime : IPluginRuntime
         ToolInvocations.Add(invocation);
         return Task.FromResult(ToolHandler(invocation));
     }
+
+    public PluginHealthMetrics GetHealthMetrics(string pluginName)
+        => new PluginHealthMetrics();
+
+    public IReadOnlyDictionary<string, PluginHealthMetrics> GetAllHealthMetrics()
+        => new Dictionary<string, PluginHealthMetrics>();
 }

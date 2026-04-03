@@ -455,6 +455,26 @@ public sealed class PluginCatalog : IPluginCatalog
             case "after-task-completion":
                 kind = PluginHookKind.AfterTaskCompletion;
                 return true;
+            case "beforetoolcall":
+            case "before-tool-call":
+                kind = PluginHookKind.BeforeToolCall;
+                return true;
+            case "aftertoolcall":
+            case "after-tool-call":
+                kind = PluginHookKind.AfterToolCall;
+                return true;
+            case "onstartup":
+            case "on-startup":
+                kind = PluginHookKind.OnStartup;
+                return true;
+            case "onshutdown":
+            case "on-shutdown":
+                kind = PluginHookKind.OnShutdown;
+                return true;
+            case "onsessioncreated":
+            case "on-session-created":
+                kind = PluginHookKind.OnSessionCreated;
+                return true;
             default:
                 kind = default;
                 return false;
