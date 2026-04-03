@@ -38,12 +38,16 @@ public sealed class TaskListTool : ITool
             .Select(task => new
             {
                 taskId = task.Id,
+                parentTaskId = task.ParentTaskId,
+                rootTaskId = task.RootTaskId,
+                depth = task.Depth,
                 provider = task.Provider,
                 status = task.Status.ToString(),
                 title = task.Title,
                 updatedAtUtc = task.UpdatedAtUtc,
                 workerSessionId = task.WorkerSessionId,
                 summary = task.Result?.Summary ?? task.LastStatusMessage,
+                childTaskCount = task.ChildTaskIds?.Count ?? 0,
                 workerMessageCount = task.WorkerMessageCount,
                 workerUpdatedAtUtc = task.WorkerUpdatedAtUtc
             });

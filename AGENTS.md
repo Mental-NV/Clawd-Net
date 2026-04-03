@@ -12,6 +12,7 @@ The source system is a TypeScript + React + Ink CLI. The target system is a .NET
 - Prefer small, reversible changes over broad rewrites.
 - Preserve existing behavior unless a deliberate deviation is recorded.
 - Do not claim completion without running the required validation commands.
+- Commit validated execution-slice changes on the current branch before moving on.
 - Update documentation when behavior, architecture, or migration status changes.
 
 ## Code quality rules
@@ -32,6 +33,7 @@ The source system is a TypeScript + React + Ink CLI. The target system is a .NET
 
 - [PLAN.md](./docs/PLAN.md) is the living execution plan.
 - [PARITY.md](./docs/PARITY.md) is the source of truth for migration parity status.
+- Work through [PLAN.md](./docs/PLAN.md) milestone by milestone until all roadmap items are complete, unless the user explicitly redirects.
 - If task status, migration status, or roadmap state changes, update [PLAN.md](./docs/PLAN.md).
 - If behavior, parity, or compatibility changes, update [PARITY.md](./docs/PARITY.md).
 - If project-wide rules, assumptions, or defaults change, update [ARCHITECTURE.md](./docs/ARCHITECTURE.md).

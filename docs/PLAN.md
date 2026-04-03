@@ -9,6 +9,8 @@ Use this file to decide what to build next. Use [ARCHITECTURE.md](./ARCHITECTURE
 - Keep future milestones in execution priority order.
 - Mark exactly one milestone as `[/]` when active.
 - Mark a milestone as `[v]` only after implementation is complete and local verification has passed.
+- Keep executing roadmap items until all remaining milestones are complete, unless the user explicitly redirects or stops the work.
+- After each completed execution slice, commit the validated slice changes on the current branch before starting the next slice.
 - If a milestone changes a project-wide default or architectural constraint, update [ARCHITECTURE.md](./ARCHITECTURE.md) in the same change.
 - Keep this file execution-focused: priority, dependencies, concrete deliverables, risks, and exit criteria.
 
@@ -44,11 +46,12 @@ Unless explicitly redirected, execute future work in this order:
 
 ## Active Milestone
 
-- [ ] No milestone is currently marked in progress.
+- [/] Advanced Orchestration v3
+  - active execution record: `docs/PLAN-01.md`
 
 ## Next Milestones
 
-### [ ] Advanced Orchestration v3
+### [/] Advanced Orchestration v3
 
 - Priority: `P1`
 - Effort: `4-6 weeks`
@@ -72,6 +75,9 @@ Unless explicitly redirected, execute future work in this order:
   - parent-child relationships are inspectable and understandable
   - task lifecycle remains stable across CLI, TUI, and persisted records
   - existing task, PTY, plugin, and query flows still pass regression coverage
+- Current progress:
+  - slice 1 landed bounded parent-child task delegation and hierarchy inspection
+  - broader task-graph and orchestration supervision work remains
 
 ### [ ] Full TUI Parity v3
 

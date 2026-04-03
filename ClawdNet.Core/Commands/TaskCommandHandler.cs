@@ -28,7 +28,7 @@ public sealed class TaskCommandHandler : ICommandHandler
             }
 
             var lines = tasks.Select(task =>
-                $"{task.Id} | {task.Status} | {task.Title} | provider={task.Provider} | model={task.Model} | worker={task.WorkerSessionId} | {task.UpdatedAtUtc:O}");
+                $"{task.Id} | {task.Status} | depth={task.Depth} | parentTask={task.ParentTaskId ?? "(root)"} | children={task.ChildTaskIds?.Count ?? 0} | {task.Title} | provider={task.Provider} | model={task.Model} | worker={task.WorkerSessionId} | {task.UpdatedAtUtc:O}");
             return CommandExecutionResult.Success(string.Join(Environment.NewLine, lines));
         }
 
@@ -51,15 +51,23 @@ public sealed class TaskCommandHandler : ICommandHandler
                     $"Status: {task.Status}",
                     $"Title: {task.Title}",
                     $"ParentSession: {task.ParentSessionId}",
+                    $"ParentTask: {task.ParentTaskId ?? "(root)"}",
+                    $"RootTask: {task.RootTaskId ?? task.Id}",
+                    $"Depth: {task.Depth}",
                     $"WorkerSession: {task.WorkerSessionId}",
                     $"Provider: {task.Provider}",
                     $"Model: {task.Model}",
                     $"UpdatedAtUtc: {task.UpdatedAtUtc:O}",
                     $"Summary: {task.Result?.Summary ?? task.LastStatusMessage ?? "(none)"}",
+                    $"ChildTasks: {inspection.Children.Count}",
                     $"WorkerMessages: {inspection.Worker.MessageCount}",
                     $"WorkerUpdatedAtUtc: {inspection.Worker.UpdatedAtUtc:O}",
                     "RecentEvents:",
                     recentEvents,
+                    "ChildTaskSummary:",
+                    inspection.Children.Count == 0
+                        ? "(none)"
+                        : string.Join(Environment.NewLine, inspection.Children.Select(child => $"{child.Id} | {child.Status} | {child.Title} | {child.UpdatedAtUtc:O}")),
                     "WorkerTranscriptTail:",
                     string.IsNullOrWhiteSpace(inspection.Worker.TranscriptTail) ? "(none)" : inspection.Worker.TranscriptTail
                 ]);

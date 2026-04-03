@@ -965,7 +965,7 @@ public sealed class TuiHost : ITuiHost
             .Select(task => new TuiDrawerItem(
                 task.Id,
                 $"{task.Title} ({task.Id})",
-                $"{task.Status} | updated={task.UpdatedAtUtc:HH:mm:ss}",
+                $"{task.Status} | depth={task.Depth} | parent={(task.ParentTaskId ?? "root")} | children={task.ChildTaskIds?.Count ?? 0} | updated={task.UpdatedAtUtc:HH:mm:ss}",
                 task.Status == ClawdNet.Core.Models.TaskStatus.Running,
                 selected is not null && string.Equals(selected.Id, task.Id, StringComparison.Ordinal)))
             .ToArray();
@@ -1299,6 +1299,10 @@ public sealed class TuiHost : ITuiHost
             $"task={inspection.Task.Id}",
             $"status={inspection.Task.Status}",
             $"title={inspection.Task.Title}",
+            $"parentTask={inspection.Task.ParentTaskId ?? "(root)"}",
+            $"rootTask={inspection.Task.RootTaskId ?? inspection.Task.Id}",
+            $"depth={inspection.Task.Depth}",
+            $"childTasks={inspection.Children.Count}",
             $"workerSession={inspection.Worker.WorkerSessionId}",
             $"workerMessages={inspection.Worker.MessageCount}",
             $"updated={inspection.Worker.UpdatedAtUtc:O}",
@@ -1307,6 +1311,16 @@ public sealed class TuiHost : ITuiHost
             "Recent events:"
         };
         lines.AddRange(inspection.RecentEvents.Take(8).Select(taskEvent => $"{taskEvent.TimestampUtc:HH:mm:ss} | {taskEvent.Status} | {taskEvent.Message}"));
+        lines.Add(string.Empty);
+        lines.Add("Child tasks:");
+        if (inspection.Children.Count == 0)
+        {
+            lines.Add("(none)");
+        }
+        else
+        {
+            lines.AddRange(inspection.Children.Select(child => $"{child.Id} | {child.Status} | {child.Title} | updated={child.UpdatedAtUtc:HH:mm:ss}"));
+        }
         lines.Add(string.Empty);
         lines.Add("Worker transcript:");
         lines.Add(string.IsNullOrWhiteSpace(inspection.Worker.TranscriptTail) ? "(none)" : inspection.Worker.TranscriptTail);

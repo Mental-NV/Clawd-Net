@@ -47,6 +47,9 @@ public sealed class TaskStatusTool : ITool
         return new ToolExecutionResult(true, JsonSerializer.Serialize(new
         {
             taskId = task.Id,
+            parentTaskId = task.ParentTaskId,
+            rootTaskId = task.RootTaskId,
+            depth = task.Depth,
             provider = task.Provider,
             status = task.Status.ToString(),
             title = task.Title,
@@ -54,6 +57,8 @@ public sealed class TaskStatusTool : ITool
             updatedAtUtc = task.UpdatedAtUtc,
             lastStatusMessage = task.LastStatusMessage,
             result = task.Result,
+            childTaskIds = task.ChildTaskIds ?? [],
+            childTaskCount = task.ChildTaskIds?.Count ?? 0,
             workerMessageCount = task.WorkerMessageCount,
             workerUpdatedAtUtc = task.WorkerUpdatedAtUtc,
             recentEvents = (task.Events ?? []).TakeLast(5).ToArray()

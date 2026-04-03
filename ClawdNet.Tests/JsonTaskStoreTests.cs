@@ -28,9 +28,13 @@ public sealed class JsonTaskStoreTests : IDisposable
             null,
             null,
             null,
+            0,
+            null,
+            null,
             "Task started.",
             null,
-            [new TaskEvent(ClawdTaskStatus.Running, "Task started.", timestamp)]);
+            [new TaskEvent(ClawdTaskStatus.Running, "Task started.", timestamp)],
+            []);
 
         await store.CreateAsync(record, CancellationToken.None);
         await store.AppendEventAsync("task-1", new TaskEvent(ClawdTaskStatus.Completed, "Task completed.", timestamp.AddSeconds(1)), CancellationToken.None);

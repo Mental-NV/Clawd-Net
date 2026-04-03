@@ -83,15 +83,31 @@ public sealed class TuiHostTests : IDisposable
             DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow,
             null,
+            null,
+            0,
+            null,
             "/tmp",
             "Task completed successfully.",
             new TaskResult(true, "Task completed successfully."),
             [new TaskEvent(ClawdNet.Core.Models.TaskStatus.Running, "Worker launched.", DateTimeOffset.UtcNow.AddMinutes(-1))],
+            [],
             "assistant: worker finished",
             3,
             DateTimeOffset.UtcNow,
             null);
         taskManager.Publish(task, task.Events![0]);
+        var childTask = task with
+        {
+            Id = "task-2",
+            Title = "Child task",
+            ParentTaskId = "task-1",
+            RootTaskId = "task-1",
+            Depth = 1,
+            Status = ClawdNet.Core.Models.TaskStatus.Running,
+            LastStatusMessage = "Child running"
+        };
+        taskManager.Publish(task with { ChildTaskIds = ["task-2"] }, task.Events![0]);
+        taskManager.Publish(childTask, new TaskEvent(ClawdNet.Core.Models.TaskStatus.Running, "Child running", DateTimeOffset.UtcNow));
         var host = new TuiHost(terminal, store, new FakeQueryEngine(), new ConsoleTuiRenderer(new ConsoleTranscriptRenderer()), new FakePtyManager(), taskManager);
 
         var result = await host.RunAsync(new ReplLaunchOptions(), CancellationToken.None);
@@ -99,6 +115,7 @@ public sealed class TuiHostTests : IDisposable
         Assert.Equal(0, result.ExitCode);
         Assert.Contains(terminal.RenderedFrames, frame => frame.DrawerPane is not null && frame.DrawerPane.Contains("Tasks", StringComparison.Ordinal));
         Assert.Contains(terminal.RenderedFrames, frame => frame.DrawerPane is not null && frame.DrawerPane.Contains("assistant: worker finished", StringComparison.Ordinal));
+        Assert.Contains(terminal.RenderedFrames, frame => frame.DrawerPane is not null && frame.DrawerPane.Contains("Child task", StringComparison.Ordinal));
     }
 
     [Fact]

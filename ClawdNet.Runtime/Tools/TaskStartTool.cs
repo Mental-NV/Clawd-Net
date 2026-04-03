@@ -27,6 +27,7 @@ public sealed class TaskStartTool : ITool
         {
             ["title"] = new JsonObject { ["type"] = "string" },
             ["goal"] = new JsonObject { ["type"] = "string" },
+            ["parentTaskId"] = new JsonObject { ["type"] = "string" },
             ["parentSummary"] = new JsonObject { ["type"] = "string" },
             ["cwd"] = new JsonObject { ["type"] = "string" },
             ["provider"] = new JsonObject { ["type"] = "string" },
@@ -40,7 +41,7 @@ public sealed class TaskStartTool : ITool
     {
         if (string.IsNullOrWhiteSpace(request.SessionId))
         {
-            return new ToolExecutionResult(false, string.Empty, "task_start requires a parent session id.");
+            return new ToolExecutionResult(false, string.Empty, "task_start requires a current session id.");
         }
 
         var title = request.Input?["title"]?.GetValue<string>()?.Trim();
@@ -50,28 +51,44 @@ public sealed class TaskStartTool : ITool
             return new ToolExecutionResult(false, string.Empty, "task_start requires 'title' and 'goal' strings.");
         }
 
+        var currentTask = await _taskManager.GetByWorkerSessionIdAsync(request.SessionId, cancellationToken);
+        var parentSessionId = currentTask?.ParentSessionId ?? request.SessionId;
+        var parentTaskId = currentTask?.Id ?? request.Input?["parentTaskId"]?.GetValue<string>()?.Trim();
         var overrideMode = request.Input?["permissionMode"]?.GetValue<string>();
         var permissionMode = ParsePermissionMode(overrideMode) ?? request.PermissionMode;
-        var task = await _taskManager.StartAsync(
-            new TaskRequest(
-                title,
-                goal,
-                request.SessionId,
-                request.Input?["parentSummary"]?.GetValue<string>(),
-                request.Input?["cwd"]?.GetValue<string>(),
-                request.Input?["model"]?.GetValue<string>(),
-                permissionMode,
-                Provider: request.Input?["provider"]?.GetValue<string>()),
-            cancellationToken);
+        TaskRecord task;
+        try
+        {
+            task = await _taskManager.StartAsync(
+                new TaskRequest(
+                    title,
+                    goal,
+                    parentSessionId,
+                    parentTaskId,
+                    request.Input?["parentSummary"]?.GetValue<string>(),
+                    request.Input?["cwd"]?.GetValue<string>(),
+                    request.Input?["model"]?.GetValue<string>(),
+                    permissionMode,
+                    Provider: request.Input?["provider"]?.GetValue<string>()),
+                cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new ToolExecutionResult(false, string.Empty, ex.Message);
+        }
 
         return new ToolExecutionResult(true, JsonSerializer.Serialize(new
         {
             taskId = task.Id,
+            parentTaskId = task.ParentTaskId,
+            rootTaskId = task.RootTaskId,
+            depth = task.Depth,
             provider = task.Provider,
             status = task.Status.ToString(),
             title = task.Title,
             workerSessionId = task.WorkerSessionId,
             summary = task.LastStatusMessage,
+            childTaskCount = task.ChildTaskIds?.Count ?? 0,
             workerMessageCount = task.WorkerMessageCount,
             workerUpdatedAtUtc = task.WorkerUpdatedAtUtc
         }));

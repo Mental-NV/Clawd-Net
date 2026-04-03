@@ -403,9 +403,13 @@ public sealed class ReplHostTests : IDisposable
             timestamp,
             null,
             null,
+            0,
+            null,
+            null,
             "Worker finished successfully.",
             new TaskResult(true, "Worker finished successfully."),
-            [new TaskEvent(ClawdTaskStatus.Completed, "Worker finished successfully.", timestamp)]);
+            [new TaskEvent(ClawdTaskStatus.Completed, "Worker finished successfully.", timestamp)],
+            []);
         taskManager.Publish(task, task.Events!.Last());
         var result = await runTask;
 

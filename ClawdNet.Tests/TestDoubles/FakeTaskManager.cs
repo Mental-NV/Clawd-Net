@@ -40,6 +40,12 @@ public sealed class FakeTaskManager : ITaskManager
         return Task.FromResult(_tasks.FirstOrDefault(task => string.Equals(task.Id, taskId, StringComparison.Ordinal)));
     }
 
+    public Task<TaskRecord?> GetByWorkerSessionIdAsync(string workerSessionId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(_tasks.FirstOrDefault(task => string.Equals(task.WorkerSessionId, workerSessionId, StringComparison.Ordinal)));
+    }
+
     public async Task<IReadOnlyList<TaskEvent>> GetEventsAsync(string taskId, int limit, CancellationToken cancellationToken)
     {
         var task = await GetAsync(taskId, cancellationToken);
@@ -61,7 +67,8 @@ public sealed class FakeTaskManager : ITaskManager
                 task.WorkerSessionId,
                 task.WorkerMessageCount,
                 task.WorkerUpdatedAtUtc,
-                task.WorkerTranscriptTail ?? "(no worker transcript)"));
+                task.WorkerTranscriptTail ?? "(no worker transcript)"),
+            _tasks.Where(child => string.Equals(child.ParentTaskId, task.Id, StringComparison.Ordinal)).OrderByDescending(child => child.UpdatedAtUtc).ToArray());
     }
 
     public Task<IReadOnlyList<TaskRecord>> ListAsync(CancellationToken cancellationToken)
@@ -121,11 +128,15 @@ public sealed class FakeTaskManager : ITaskManager
             timestamp,
             timestamp,
             status is ClawdTaskStatus.Completed or ClawdTaskStatus.Canceled or ClawdTaskStatus.Failed or ClawdTaskStatus.Interrupted ? timestamp : null,
+            request.ParentTaskId,
+            request.ParentTaskId,
+            string.IsNullOrWhiteSpace(request.ParentTaskId) ? 0 : 1,
             request.ParentSummary,
             request.WorkingDirectory,
             message,
             status == ClawdTaskStatus.Completed ? new TaskResult(true, message) : null,
             [new TaskEvent(status, message, timestamp, status != ClawdTaskStatus.Completed && status != ClawdTaskStatus.Running)],
+            [],
             "assistant: worker snapshot",
             2,
             timestamp,

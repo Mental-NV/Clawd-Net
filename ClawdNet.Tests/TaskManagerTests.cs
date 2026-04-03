@@ -72,9 +72,13 @@ public sealed class TaskManagerTests : IDisposable
                 null,
                 null,
                 null,
+                0,
+                null,
+                null,
                 "Task started.",
                 null,
-                [new TaskEvent(ClawdTaskStatus.Running, "Task started.", timestamp)]),
+                [new TaskEvent(ClawdTaskStatus.Running, "Task started.", timestamp)],
+                []),
             CancellationToken.None);
         var manager = new TaskManager(taskStore, sessionStore, new FakeQueryEngine());
 
@@ -175,6 +179,80 @@ public sealed class TaskManagerTests : IDisposable
         Assert.NotEmpty(inspection!.RecentEvents);
         Assert.Contains("assistant: worker finished", inspection.Worker.TranscriptTail);
         Assert.True(inspection.Worker.MessageCount > 0);
+    }
+
+    [Fact]
+    public async Task Task_manager_can_link_child_tasks_to_a_parent_task()
+    {
+        var sessionStore = new JsonSessionStore(_dataRoot);
+        var taskStore = new JsonTaskStore(_dataRoot);
+        var engine = new FakeQueryEngine
+        {
+            Handler = async request =>
+            {
+                await Task.Delay(150);
+                var worker = await sessionStore.GetAsync(request.SessionId!, CancellationToken.None)
+                    ?? throw new InvalidOperationException("Expected worker session.");
+                var updated = worker with
+                {
+                    UpdatedAtUtc = DateTimeOffset.UtcNow,
+                    Messages =
+                    [
+                        .. worker.Messages,
+                        new ConversationMessage("assistant", $"done:{request.Prompt}", DateTimeOffset.UtcNow)
+                    ]
+                };
+                await sessionStore.SaveAsync(updated, CancellationToken.None);
+                return new QueryExecutionResult(updated, $"done:{request.Prompt}", 1);
+            }
+        };
+        var manager = new TaskManager(taskStore, sessionStore, engine);
+        await manager.InitializeAsync(CancellationToken.None);
+        var parentSession = await sessionStore.CreateAsync("Parent", "claude-sonnet-4-5", CancellationToken.None);
+
+        var parentTask = await manager.StartAsync(new TaskRequest("Parent task", "Do parent work", parentSession.Id), CancellationToken.None);
+        var childTask = await manager.StartAsync(new TaskRequest("Child task", "Do child work", parentSession.Id, parentTask.Id), CancellationToken.None);
+
+        var completedChild = await WaitForTaskAsync(taskStore, childTask.Id, ClawdTaskStatus.Completed);
+        var completedParent = await WaitForTaskAsync(taskStore, parentTask.Id, ClawdTaskStatus.Completed);
+        var inspection = await manager.InspectAsync(parentTask.Id, CancellationToken.None);
+
+        Assert.NotNull(completedChild);
+        Assert.NotNull(completedParent);
+        Assert.Equal(parentTask.Id, completedChild!.ParentTaskId);
+        Assert.Equal(1, completedChild.Depth);
+        Assert.NotNull(completedParent!.ChildTaskIds);
+        Assert.Contains(childTask.Id, completedParent.ChildTaskIds!);
+        Assert.NotNull(inspection);
+        Assert.Contains(inspection!.Children, child => child.Id == childTask.Id);
+    }
+
+    [Fact]
+    public async Task Task_manager_rejects_child_task_nesting_beyond_supported_depth()
+    {
+        var sessionStore = new JsonSessionStore(_dataRoot);
+        var taskStore = new JsonTaskStore(_dataRoot);
+        var engine = new FakeQueryEngine
+        {
+            Handler = async request =>
+            {
+                await Task.Delay(200);
+                var worker = await sessionStore.GetAsync(request.SessionId!, CancellationToken.None)
+                    ?? throw new InvalidOperationException("Expected worker session.");
+                return new QueryExecutionResult(worker, "done", 1);
+            }
+        };
+        var manager = new TaskManager(taskStore, sessionStore, engine);
+        await manager.InitializeAsync(CancellationToken.None);
+        var parentSession = await sessionStore.CreateAsync("Parent", "claude-sonnet-4-5", CancellationToken.None);
+
+        var parentTask = await manager.StartAsync(new TaskRequest("Parent task", "Do parent work", parentSession.Id), CancellationToken.None);
+        var childTask = await manager.StartAsync(new TaskRequest("Child task", "Do child work", parentSession.Id, parentTask.Id), CancellationToken.None);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await manager.StartAsync(new TaskRequest("Grandchild task", "Do grandchild work", parentSession.Id, childTask.Id), CancellationToken.None));
+
+        Assert.Contains("nested", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<TaskRecord?> WaitForTaskAsync(JsonTaskStore store, string taskId, ClawdTaskStatus expectedStatus)

@@ -265,9 +265,13 @@ public sealed class AppHostTests : IDisposable
             null,
             null,
             null,
+            0,
+            null,
+            null,
             "Task started.",
             null,
-            [new TaskEvent(ClawdTaskStatus.Running, "Task started.", timestamp)]);
+            [new TaskEvent(ClawdTaskStatus.Running, "Task started.", timestamp)],
+            []);
         taskManager.Publish(task, task.Events!.Last());
         var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient(), taskManager: taskManager);
 
@@ -690,10 +694,14 @@ public sealed class AppHostTests : IDisposable
             DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow,
             null,
+            null,
+            0,
+            null,
             "/tmp",
             "Task completed successfully.",
             new TaskResult(true, "Task completed successfully."),
             [new TaskEvent(ClawdTaskStatus.Running, "Worker launched.", DateTimeOffset.UtcNow.AddMinutes(-1))],
+            [],
             "assistant: worker finished",
             3,
             DateTimeOffset.UtcNow,

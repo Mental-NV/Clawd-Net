@@ -123,6 +123,11 @@ public sealed class JsonTaskStore : ITaskStore
         }
 
         await using var stream = File.OpenRead(_storePath);
+        if (stream.Length == 0)
+        {
+            return [];
+        }
+
         var tasks = await JsonSerializer.DeserializeAsync<List<TaskRecord>>(stream, _jsonOptions, cancellationToken);
         return tasks?.Select(Normalize).ToList() ?? [];
     }
@@ -145,7 +150,10 @@ public sealed class JsonTaskStore : ITaskStore
             UpdatedAtUtc = updatedAt,
             Model = model,
             Provider = provider,
+            RootTaskId = string.IsNullOrWhiteSpace(task.RootTaskId) ? task.Id : task.RootTaskId,
+            Depth = Math.Max(0, task.Depth),
             Events = (task.Events ?? []).TakeLast(MaxEvents).ToArray(),
+            ChildTaskIds = (task.ChildTaskIds ?? []).Distinct(StringComparer.Ordinal).ToArray(),
             WorkerTranscriptTail = NormalizeTranscript(task.WorkerTranscriptTail),
             WorkerUpdatedAtUtc = task.WorkerUpdatedAtUtc ?? updatedAt
         };

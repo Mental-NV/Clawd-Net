@@ -764,11 +764,17 @@ public sealed class QueryEngine : IQueryEngine
             now,
             now,
             status is ClawdNet.Core.Models.TaskStatus.Completed or ClawdNet.Core.Models.TaskStatus.Canceled or ClawdNet.Core.Models.TaskStatus.Failed or ClawdNet.Core.Models.TaskStatus.Interrupted ? now : null,
+            root.TryGetProperty("parentTaskId", out var parentTaskElement) ? parentTaskElement.GetString() : null,
+            root.TryGetProperty("rootTaskId", out var rootTaskElement) ? rootTaskElement.GetString() : null,
+            root.TryGetProperty("depth", out var depthElement) && depthElement.TryGetInt32(out var depth) ? depth : 0,
             null,
             null,
             summary,
             summary is null ? null : new TaskResult(status == ClawdNet.Core.Models.TaskStatus.Completed, summary, status == ClawdNet.Core.Models.TaskStatus.Completed ? null : summary),
             [],
+            root.TryGetProperty("childTaskIds", out var childTaskIdsElement) && childTaskIdsElement.ValueKind == JsonValueKind.Array
+                ? childTaskIdsElement.EnumerateArray().Select(element => element.GetString()).Where(value => !string.IsNullOrWhiteSpace(value)).Cast<string>().ToArray()
+                : [],
             Provider: root.TryGetProperty("provider", out var providerElement) ? providerElement.GetString() ?? "anthropic" : "anthropic");
     }
 }

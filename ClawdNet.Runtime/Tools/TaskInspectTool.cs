@@ -47,6 +47,9 @@ public sealed class TaskInspectTool : ITool
         return new ToolExecutionResult(true, JsonSerializer.Serialize(new
         {
             taskId = inspection.Task.Id,
+            parentTaskId = inspection.Task.ParentTaskId,
+            rootTaskId = inspection.Task.RootTaskId,
+            depth = inspection.Task.Depth,
             provider = inspection.Task.Provider,
             status = inspection.Task.Status.ToString(),
             title = inspection.Task.Title,
@@ -54,6 +57,14 @@ public sealed class TaskInspectTool : ITool
             updatedAtUtc = inspection.Task.UpdatedAtUtc,
             summary = inspection.Task.Result?.Summary ?? inspection.Task.LastStatusMessage,
             recentEvents = inspection.RecentEvents,
+            childTasks = inspection.Children.Select(child => new
+            {
+                taskId = child.Id,
+                status = child.Status.ToString(),
+                title = child.Title,
+                updatedAtUtc = child.UpdatedAtUtc,
+                summary = child.Result?.Summary ?? child.LastStatusMessage
+            }),
             worker = inspection.Worker
         }));
     }

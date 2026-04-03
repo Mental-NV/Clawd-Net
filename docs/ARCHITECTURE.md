@@ -161,16 +161,19 @@ Current interrupt priority is an explicit product default:
 Worker tasks are first-class records backed by their own worker sessions.
 
 - Parent and worker conversations are separate sessions linked by task metadata.
+- Direct parent-child task relationships are supported for bounded delegated work.
 - Worker tasks run through the same query engine, tool stack, permissions, and persistence behavior as normal turns.
 - Tasks are persisted; active execution is process-local.
 - Worker tasks inherit the parent session's provider and model unless they are explicitly overridden.
 - Read-only worker inspection is supported.
 - Running or pending tasks discovered on startup are normalized to interrupted instead of being resumed automatically.
+- Parent tasks can supervise direct child tasks and wait for child completion before finalizing.
 
 Current task scope is intentionally bounded:
 
 - no task graph engine
-- no worker-to-worker spawning
+- no arbitrary worker-to-worker recursion
+- delegated child-task spawning is currently bounded to one additional level
 - no durable live-task resumption after restart
 - no interactive attach into worker sessions
 
