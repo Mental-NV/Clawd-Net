@@ -345,7 +345,7 @@ The following areas have been intentionally deferred:
 - exact screen-for-screen TypeScript parity
 - deeper autonomous orchestration and task graphs
 - durable resume for running tasks
-- PTY overlay/full-screen terminal mode — in progress
+- PTY overlay/full-screen terminal mode — implemented via PtyFullScreen overlay
 - PTY output pagination/scrolling in TUI
 - graceful interrupt signaling (SIGINT vs SIGTERM)
 - plugin-defined agents and broader marketplace or install flows
