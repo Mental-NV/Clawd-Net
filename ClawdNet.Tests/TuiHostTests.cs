@@ -242,6 +242,23 @@ public sealed class TuiHostTests : IDisposable
         Assert.All(afterSessions, s => Assert.False(s.IsRunning));
     }
 
+    [Fact]
+    public async Task Tui_pty_attach_command_focuses_session()
+    {
+        var store = new JsonSessionStore(_dataRoot);
+        var ptyManager = new FakePtyManager();
+        ptyManager.Publish(FakePtyManager.NewState("bash", Environment.CurrentDirectory, "first", true, null, false, "pty-1"));
+        ptyManager.Publish(FakePtyManager.NewState("python3", Environment.CurrentDirectory, "second", true, null, false, "pty-2"));
+
+        // Initially pty-2 should be current (last published)
+        Assert.Equal("pty-2", ptyManager.State.CurrentSessionId);
+
+        // Attach to pty-1
+        var focused = await ptyManager.FocusAsync("pty-1", CancellationToken.None);
+        Assert.Equal("pty-1", focused.SessionId);
+        Assert.Equal("pty-1", ptyManager.State.CurrentSessionId);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dataRoot))

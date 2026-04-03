@@ -481,6 +481,58 @@ public sealed class TuiHost : ITuiHost
                     return true;
                 }
 
+                if (prompt.StartsWith("/pty attach ", StringComparison.OrdinalIgnoreCase))
+                {
+                    var ptySessionId = prompt["/pty attach ".Length..].Trim();
+                    if (!string.IsNullOrWhiteSpace(ptySessionId))
+                    {
+                        try
+                        {
+                            var focused = await _ptyManager.FocusAsync(ptySessionId, cancellationToken);
+                            _activityState = TerminalActivityState.Ready;
+                            _activityDetail = $"Attached to PTY session {ptySessionId}: {focused.Command}";
+                            AddActivityFeed($"pty | attach | {ptySessionId}");
+                            await RefreshPtyDrawerAsync();
+                            return true;
+                        }
+                        catch (InvalidOperationException ex)
+                        {
+                            _activityState = TerminalActivityState.Error;
+                            _activityDetail = ex.Message;
+                            return true;
+                        }
+                    }
+                }
+
+                if (prompt.StartsWith("/pty detach", StringComparison.OrdinalIgnoreCase))
+                {
+                    var current = _ptyManager.State.CurrentSessionId;
+                    if (string.IsNullOrWhiteSpace(current))
+                    {
+                        _activityState = TerminalActivityState.Error;
+                        _activityDetail = "No active PTY session to detach.";
+                    }
+                    else
+                    {
+                        // Detach by focusing another running session or clearing focus
+                        var sessions = await _ptyManager.ListAsync(cancellationToken);
+                        var otherRunning = sessions.FirstOrDefault(s => s.IsRunning && !string.Equals(s.SessionId, current, StringComparison.Ordinal));
+                        if (otherRunning is not null)
+                        {
+                            await _ptyManager.FocusAsync(otherRunning.SessionId, cancellationToken);
+                            _activityDetail = $"Detached from {current}, attached to {otherRunning.SessionId}.";
+                        }
+                        else
+                        {
+                            _activityDetail = $"Detached from {current}. No other running PTY sessions.";
+                        }
+                        _activityState = TerminalActivityState.Ready;
+                        AddActivityFeed($"pty | detach | from {current}");
+                        await RefreshPtyDrawerAsync();
+                    }
+                    return true;
+                }
+
                 if (prompt.StartsWith("/pty close-all", StringComparison.OrdinalIgnoreCase))
                 {
                     var sessions = await _ptyManager.ListAsync(cancellationToken);
