@@ -191,6 +191,24 @@ public sealed class TuiHostTests : IDisposable
         Assert.Contains(terminal.RenderedFrames, frame => frame.ComposerPane.Contains("Explain this project", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task Tui_shows_session_drawer_on_startup_when_prior_sessions_exist()
+    {
+        var store = new JsonSessionStore(_dataRoot);
+        // Create two prior sessions
+        await store.CreateAsync("Old session 1", "claude-sonnet-4-5", CancellationToken.None);
+        await store.CreateAsync("Old session 2", "claude-sonnet-4-5", CancellationToken.None);
+
+        var terminal = new FakeTerminalSession(["exit"]);
+        var host = new TuiHost(terminal, store, new FakeQueryEngine(), new ConsoleTuiRenderer(new ConsoleTranscriptRenderer()), new FakePtyManager(), new FakeTaskManager());
+
+        var result = await host.RunAsync(new ReplLaunchOptions(), CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        // Session drawer should be shown on startup when prior sessions exist
+        Assert.Contains(terminal.RenderedFrames, frame => frame.DrawerPane is not null && frame.DrawerPane.Contains("Sessions", StringComparison.Ordinal));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dataRoot))

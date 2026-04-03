@@ -89,6 +89,17 @@ public sealed class TuiHost : ITuiHost
         _activityFeed.Clear();
         AddActivityFeed("TUI session ready.");
 
+        // If no explicit session was requested and prior sessions exist, show resume picker
+        if (string.IsNullOrWhiteSpace(options.SessionId))
+        {
+            var allSessions = await _conversationStore.ListAsync(cancellationToken);
+            if (allSessions.Count > 1)
+            {
+                AddActivityFeed($"session | {allSessions.Count} sessions found, showing resume picker");
+                await ToggleSessionDrawerAsync(options, cancellationToken);
+            }
+        }
+
         _ptyManager.StateChanged += HandlePtyStateChanged;
         _taskManager.TaskChanged += HandleTaskChanged;
         _terminalSession.EnterAlternateScreen();
