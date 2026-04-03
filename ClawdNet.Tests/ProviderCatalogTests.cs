@@ -25,6 +25,7 @@ public sealed class ProviderCatalogTests : IDisposable
         Assert.Contains(providers, provider => provider.Name == "openai");
         Assert.Contains(providers, provider => provider.Name == "bedrock");
         Assert.Contains(providers, provider => provider.Name == "vertex");
+        Assert.Contains(providers, provider => provider.Name == "foundry");
         Assert.Equal("anthropic", defaultProvider.Name);
         Assert.Equal(ProviderDefaults.DefaultAnthropicModel, defaultProvider.DefaultModel);
     }

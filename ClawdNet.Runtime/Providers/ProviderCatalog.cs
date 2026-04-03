@@ -123,6 +123,7 @@ public sealed class ProviderCatalog : IProviderCatalog
                 ProviderKind.OpenAI => "OPENAI_API_KEY",
                 ProviderKind.Bedrock => "AWS_ACCESS_KEY_ID",
                 ProviderKind.VertexAI => "GOOGLE_APPLICATION_CREDENTIALS",
+                ProviderKind.Foundry => "ANTHROPIC_FOUNDRY_API_KEY",
                 _ => "API_KEY"
             }
             : document.ApiKeyEnv!;

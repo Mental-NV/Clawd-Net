@@ -12,7 +12,8 @@ public static class ProviderDefaults
             new ProviderDefinition(DefaultProviderName, ProviderKind.Anthropic, true, "ANTHROPIC_API_KEY", DefaultModel: DefaultAnthropicModel),
             new ProviderDefinition("openai", ProviderKind.OpenAI, true, "OPENAI_API_KEY"),
             new ProviderDefinition("bedrock", ProviderKind.Bedrock, true, "AWS_ACCESS_KEY_ID", DefaultModel: "anthropic.claude-sonnet-4-5-20250514-v1:0"),
-            new ProviderDefinition("vertex", ProviderKind.VertexAI, true, "GOOGLE_APPLICATION_CREDENTIALS", DefaultModel: "claude-sonnet-4-5@20250929")
+            new ProviderDefinition("vertex", ProviderKind.VertexAI, true, "GOOGLE_APPLICATION_CREDENTIALS", DefaultModel: "claude-sonnet-4-5@20250929"),
+            new ProviderDefinition("foundry", ProviderKind.Foundry, true, "ANTHROPIC_FOUNDRY_API_KEY", DefaultModel: "claude-sonnet-4-5")
         ];
     }
 }

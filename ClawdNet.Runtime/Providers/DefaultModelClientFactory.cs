@@ -2,6 +2,7 @@ using ClawdNet.Core.Abstractions;
 using ClawdNet.Core.Models;
 using ClawdNet.Runtime.Anthropic;
 using ClawdNet.Runtime.Bedrock;
+using ClawdNet.Runtime.Foundry;
 using ClawdNet.Runtime.OpenAI;
 using ClawdNet.Runtime.VertexAI;
 
@@ -54,6 +55,10 @@ public sealed class DefaultModelClientFactory : IModelClientFactory
                 _httpClientFactory(),
                 provider.DefaultModel ?? "claude-sonnet-4-5",
                 new VertexAICredentialResolver()),
+            ProviderKind.Foundry => new HttpFoundryMessageClient(
+                _httpClientFactory(),
+                provider.DefaultModel ?? "claude-sonnet-4-5",
+                new FoundryCredentialResolver()),
             _ => throw new InvalidOperationException($"Unsupported provider kind '{provider.Kind}'.")
         };
         _cache[provider.Name] = client;

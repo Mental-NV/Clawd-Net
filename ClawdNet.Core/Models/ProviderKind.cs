@@ -5,5 +5,6 @@ public enum ProviderKind
     Anthropic,
     OpenAI,
     Bedrock,
-    VertexAI
+    VertexAI,
+    Foundry
 }
