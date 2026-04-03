@@ -34,4 +34,16 @@ public sealed class FakePluginCatalog : IPluginCatalog
 
     public Task<IReadOnlyList<PluginToolDefinition>> GetToolDefinitionsAsync(CancellationToken cancellationToken)
         => Task.FromResult(ToolDefinitions);
+
+    public Task<PluginDefinition> InstallAsync(string sourcePath, CancellationToken cancellationToken)
+        => throw new NotImplementedException();
+
+    public Task UninstallAsync(string pluginName, CancellationToken cancellationToken)
+        => throw new NotImplementedException();
+
+    public Task<PluginDefinition> EnableAsync(string pluginName, CancellationToken cancellationToken)
+        => throw new NotImplementedException();
+
+    public Task<PluginDefinition> DisableAsync(string pluginName, CancellationToken cancellationToken)
+        => throw new NotImplementedException();
 }

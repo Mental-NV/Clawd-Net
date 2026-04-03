@@ -69,6 +69,117 @@ public sealed class PluginCatalog : IPluginCatalog
             .ToArray();
     }
 
+    public async Task<PluginDefinition> InstallAsync(string sourcePath, CancellationToken cancellationToken)
+    {
+        // Validate source has plugin.json
+        var sourceManifest = Path.Combine(sourcePath, "plugin.json");
+        if (!File.Exists(sourceManifest))
+        {
+            throw new InvalidOperationException($"Source path '{sourcePath}' does not contain a valid plugin.json manifest.");
+        }
+
+        // Read manifest to get plugin name
+        PluginManifestDocument? payload;
+        await using (var stream = File.OpenRead(sourceManifest))
+        {
+            payload = await JsonSerializer.DeserializeAsync<PluginManifestDocument>(stream, JsonOptions, cancellationToken);
+        }
+
+        if (payload is null || string.IsNullOrWhiteSpace(payload.Name))
+        {
+            throw new InvalidOperationException("Plugin manifest must include a non-empty 'name'.");
+        }
+
+        var pluginName = payload.Name.Trim();
+        var targetDir = Path.Combine(_pluginsRoot, pluginName);
+
+        // Copy directory to plugins root
+        CopyDirectory(sourcePath, targetDir, overwrite: true);
+
+        // Reload catalog
+        await ReloadAsync(cancellationToken);
+
+        return _plugins.FirstOrDefault(p => p.Name == pluginName)
+            ?? throw new InvalidOperationException($"Plugin '{pluginName}' was installed but not found after reload.");
+    }
+
+    public async Task UninstallAsync(string pluginName, CancellationToken cancellationToken)
+    {
+        await EnsureLoadedAsync(cancellationToken);
+
+        var plugin = _plugins.FirstOrDefault(p =>
+            string.Equals(p.Name, pluginName, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(p.Id, pluginName, StringComparison.OrdinalIgnoreCase));
+
+        if (plugin is null)
+        {
+            throw new InvalidOperationException($"Plugin '{pluginName}' was not found.");
+        }
+
+        // Remove plugin directory
+        if (Directory.Exists(plugin.Path))
+        {
+            Directory.Delete(plugin.Path, recursive: true);
+        }
+
+        // Reload catalog
+        await ReloadAsync(cancellationToken);
+    }
+
+    public async Task<PluginDefinition> EnableAsync(string pluginName, CancellationToken cancellationToken)
+    {
+        return await SetEnabledAsync(pluginName, enabled: true, cancellationToken);
+    }
+
+    public async Task<PluginDefinition> DisableAsync(string pluginName, CancellationToken cancellationToken)
+    {
+        return await SetEnabledAsync(pluginName, enabled: false, cancellationToken);
+    }
+
+    private async Task<PluginDefinition> SetEnabledAsync(string pluginName, bool enabled, CancellationToken cancellationToken)
+    {
+        await EnsureLoadedAsync(cancellationToken);
+
+        var plugin = _plugins.FirstOrDefault(p =>
+            string.Equals(p.Name, pluginName, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(p.Id, pluginName, StringComparison.OrdinalIgnoreCase));
+
+        if (plugin is null)
+        {
+            throw new InvalidOperationException($"Plugin '{pluginName}' was not found.");
+        }
+
+        // Update plugin.json
+        var manifestPath = Path.Combine(plugin.Path, "plugin.json");
+        var json = await File.ReadAllTextAsync(manifestPath, cancellationToken);
+        var doc = JsonNode.Parse(json) ?? throw new InvalidOperationException("Invalid plugin.json");
+        doc["enabled"] = enabled;
+        await File.WriteAllTextAsync(manifestPath, doc.ToJsonString(new JsonSerializerOptions { WriteIndented = true }), cancellationToken);
+
+        // Reload catalog
+        await ReloadAsync(cancellationToken);
+
+        return _plugins.FirstOrDefault(p => p.Name == plugin.Name)
+            ?? throw new InvalidOperationException($"Plugin '{pluginName}' was updated but not found after reload.");
+    }
+
+    private static void CopyDirectory(string sourceDir, string targetDir, bool overwrite)
+    {
+        Directory.CreateDirectory(targetDir);
+
+        foreach (var file in Directory.GetFiles(sourceDir))
+        {
+            var targetFile = Path.Combine(targetDir, Path.GetFileName(file));
+            File.Copy(file, targetFile, overwrite);
+        }
+
+        foreach (var subDir in Directory.GetDirectories(sourceDir))
+        {
+            var targetSubDir = Path.Combine(targetDir, Path.GetFileName(subDir));
+            CopyDirectory(subDir, targetSubDir, overwrite);
+        }
+    }
+
     private async Task EnsureLoadedAsync(CancellationToken cancellationToken)
     {
         if (_loaded)

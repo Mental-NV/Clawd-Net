@@ -29,6 +29,10 @@ public sealed class PluginCommandHandler : ICommandHandler
             "list" => await ListAsync(context.PluginCatalog, cancellationToken),
             "show" => await ShowAsync(context.PluginCatalog, request, cancellationToken),
             "reload" => await ReloadAsync(context, cancellationToken),
+            "install" => await InstallAsync(context, request, cancellationToken),
+            "uninstall" => await UninstallAsync(context, request, cancellationToken),
+            "enable" => await EnableAsync(context, request, cancellationToken),
+            "disable" => await DisableAsync(context, request, cancellationToken),
             _ => CommandExecutionResult.Failure($"Unknown plugin subcommand '{request.Arguments[1]}'.")
         };
     }
@@ -127,5 +131,98 @@ public sealed class PluginCommandHandler : ICommandHandler
                 $"Plugin hooks: {context.PluginCatalog.Plugins.Sum(plugin => plugin.Hooks.Count(hook => hook.Enabled))}"
             ]);
         return CommandExecutionResult.Success(output);
+    }
+
+    private static async Task<CommandExecutionResult> InstallAsync(CommandContext context, CommandRequest request, CancellationToken cancellationToken)
+    {
+        if (request.Arguments.Count < 3)
+        {
+            return CommandExecutionResult.Failure("plugin install requires a source path: plugin install <path>.");
+        }
+
+        var sourcePath = request.Arguments[2];
+        if (!Directory.Exists(sourcePath))
+        {
+            return CommandExecutionResult.Failure($"Source path '{sourcePath}' does not exist.", 3);
+        }
+
+        try
+        {
+            var plugin = await context.PluginCatalog.InstallAsync(sourcePath, cancellationToken);
+            return CommandExecutionResult.Success($"Plugin '{plugin.Name}' installed successfully.");
+        }
+        catch (Exception ex)
+        {
+            return CommandExecutionResult.Failure($"Failed to install plugin: {ex.Message}");
+        }
+    }
+
+    private static async Task<CommandExecutionResult> UninstallAsync(CommandContext context, CommandRequest request, CancellationToken cancellationToken)
+    {
+        if (request.Arguments.Count < 3)
+        {
+            return CommandExecutionResult.Failure("plugin uninstall requires a plugin name: plugin uninstall <name>.");
+        }
+
+        var pluginName = request.Arguments[2];
+        try
+        {
+            await context.PluginCatalog.UninstallAsync(pluginName, cancellationToken);
+            return CommandExecutionResult.Success($"Plugin '{pluginName}' uninstalled successfully.");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("not found"))
+        {
+            return CommandExecutionResult.Failure($"Plugin '{pluginName}' was not found.", 3);
+        }
+        catch (Exception ex)
+        {
+            return CommandExecutionResult.Failure($"Failed to uninstall plugin: {ex.Message}");
+        }
+    }
+
+    private static async Task<CommandExecutionResult> EnableAsync(CommandContext context, CommandRequest request, CancellationToken cancellationToken)
+    {
+        if (request.Arguments.Count < 3)
+        {
+            return CommandExecutionResult.Failure("plugin enable requires a plugin name: plugin enable <name>.");
+        }
+
+        var pluginName = request.Arguments[2];
+        try
+        {
+            var plugin = await context.PluginCatalog.EnableAsync(pluginName, cancellationToken);
+            return CommandExecutionResult.Success($"Plugin '{plugin.Name}' enabled.");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("not found"))
+        {
+            return CommandExecutionResult.Failure($"Plugin '{pluginName}' was not found.", 3);
+        }
+        catch (Exception ex)
+        {
+            return CommandExecutionResult.Failure($"Failed to enable plugin: {ex.Message}");
+        }
+    }
+
+    private static async Task<CommandExecutionResult> DisableAsync(CommandContext context, CommandRequest request, CancellationToken cancellationToken)
+    {
+        if (request.Arguments.Count < 3)
+        {
+            return CommandExecutionResult.Failure("plugin disable requires a plugin name: plugin disable <name>.");
+        }
+
+        var pluginName = request.Arguments[2];
+        try
+        {
+            var plugin = await context.PluginCatalog.DisableAsync(pluginName, cancellationToken);
+            return CommandExecutionResult.Success($"Plugin '{plugin.Name}' disabled.");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("not found"))
+        {
+            return CommandExecutionResult.Failure($"Plugin '{pluginName}' was not found.", 3);
+        }
+        catch (Exception ex)
+        {
+            return CommandExecutionResult.Failure($"Failed to disable plugin: {ex.Message}");
+        }
     }
 }
