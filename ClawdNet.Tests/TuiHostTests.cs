@@ -209,6 +209,39 @@ public sealed class TuiHostTests : IDisposable
         Assert.Contains(terminal.RenderedFrames, frame => frame.DrawerPane is not null && frame.DrawerPane.Contains("Sessions", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task Tui_pty_status_command_shows_session_detail()
+    {
+        var store = new JsonSessionStore(_dataRoot);
+        var ptyManager = new FakePtyManager();
+        ptyManager.Publish(FakePtyManager.NewState("bash", Environment.CurrentDirectory, "test-pty", true, null, false, "pty-1"));
+        var terminal = new FakeTerminalSession(["/pty status pty-1", "exit"]);
+        var host = new TuiHost(terminal, store, new FakeQueryEngine(), new ConsoleTuiRenderer(new ConsoleTranscriptRenderer()), ptyManager, new FakeTaskManager());
+
+        var result = await host.RunAsync(new ReplLaunchOptions(), CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains(terminal.RenderedFrames, frame => frame.Overlay is not null && frame.Overlay.Contains("pty-1", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Tui_pty_close_all_closes_sessions_via_manager()
+    {
+        var ptyManager = new FakePtyManager();
+        ptyManager.Publish(FakePtyManager.NewState("bash", Environment.CurrentDirectory, "first", true, null, false, "pty-1"));
+        ptyManager.Publish(FakePtyManager.NewState("python3", Environment.CurrentDirectory, "second", true, null, false, "pty-2"));
+
+        // Close all running sessions
+        var sessions = await ptyManager.ListAsync(CancellationToken.None);
+        foreach (var session in sessions.Where(s => s.IsRunning))
+        {
+            await ptyManager.CloseAsync(session.SessionId, CancellationToken.None);
+        }
+
+        var afterSessions = await ptyManager.ListAsync(CancellationToken.None);
+        Assert.All(afterSessions, s => Assert.False(s.IsRunning));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dataRoot))

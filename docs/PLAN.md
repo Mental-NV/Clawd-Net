@@ -46,10 +46,8 @@ Unless explicitly redirected, execute future work in this order:
 
 ## Active Milestone
 
-- [/] Full TUI Parity v3
-  - slice 1 landed: `docs/PLAN-04.md` (/status, /rename, /context commands)
-  - slice 2 landed: `docs/PLAN-04.md` (root positional prompt shorthand)
-  - remaining: startup session resume, more slash commands (/model, /effort, /permissions, /config, /diff, /copy)
+- [/] PTY UX v3
+  - active execution record: `docs/PLAN-05.md`
 
 ## Next Milestones
 
@@ -83,7 +81,7 @@ Unless explicitly redirected, execute future work in this order:
   - slice 3 landed multi-level task graphs (depth 2), task dependency declarations, dependency resolution, and dependency visibility across tools and TUI
   - milestone exit criteria met
 
-### [ ] Full TUI Parity v3
+### [v] Full TUI Parity v3
 
 - Priority: `P2`
 - Effort: `4-6 weeks`
@@ -105,6 +103,11 @@ Unless explicitly redirected, execute future work in this order:
   - the TUI handles the main workflows without awkward fallback paths
   - interaction polish improves without breaking shared runtime behavior
   - session, task, PTY, and approval flows remain coherent inside the TUI
+- Current progress:
+  - slice 1 landed /status, /rename, /context slash commands
+  - slice 2 landed root positional prompt shorthand (clawdnet "prompt" pre-fills composer)
+  - slice 3 landed startup session resume picker
+  - additional TUI parity commands (/model, /effort, /permissions, /config, /diff, /copy) remain as follow-up work
 
 ### [ ] PTY UX v3
 

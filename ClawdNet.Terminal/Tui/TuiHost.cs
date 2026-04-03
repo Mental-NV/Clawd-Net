@@ -474,6 +474,32 @@ public sealed class TuiHost : ITuiHost
                     }
                 }
 
+                if (prompt.StartsWith("/pty status ", StringComparison.OrdinalIgnoreCase))
+                {
+                    var ptySessionId = prompt["/pty status ".Length..].Trim();
+                    await ShowPtyStatusAsync(ptySessionId, cancellationToken);
+                    return true;
+                }
+
+                if (prompt.StartsWith("/pty close-all", StringComparison.OrdinalIgnoreCase))
+                {
+                    var sessions = await _ptyManager.ListAsync(cancellationToken);
+                    var closedCount = 0;
+                    foreach (var session in sessions)
+                    {
+                        if (session.IsRunning)
+                        {
+                            await _ptyManager.CloseAsync(session.SessionId, cancellationToken);
+                            closedCount++;
+                        }
+                    }
+                    _activityState = TerminalActivityState.Ready;
+                    _activityDetail = closedCount == 0 ? "No running PTY sessions to close." : $"Closed {closedCount} PTY session(s).";
+                    AddActivityFeed(_activityDetail);
+                    await RefreshPtyDrawerAsync();
+                    return true;
+                }
+
                 if (prompt.StartsWith("/rename ", StringComparison.OrdinalIgnoreCase))
                 {
                     var newName = prompt["/rename ".Length..].Trim();
@@ -1476,5 +1502,44 @@ public sealed class TuiHost : ITuiHost
         _focus = TuiFocusTarget.Overlay;
         Render(clearScreen: true);
         return Task.CompletedTask;
+    }
+
+    private async Task ShowPtyStatusAsync(string ptySessionId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(ptySessionId))
+        {
+            _activityState = TerminalActivityState.Error;
+            _activityDetail = "PTY session ID is required.";
+            return;
+        }
+
+        var sessions = await _ptyManager.ListAsync(cancellationToken);
+        var session = sessions.FirstOrDefault(s => string.Equals(s.SessionId, ptySessionId, StringComparison.Ordinal));
+        if (session is null)
+        {
+            _activityState = TerminalActivityState.Error;
+            _activityDetail = $"PTY session '{ptySessionId}' was not found.";
+            return;
+        }
+
+        var lines = new List<string>
+        {
+            $"sessionId={session.SessionId}",
+            $"command={session.Command}",
+            $"workingDirectory={session.WorkingDirectory}",
+            $"running={session.IsRunning}",
+            $"exited={(!session.IsRunning)}",
+            $"exitCode={session.ExitCode?.ToString() ?? "(running)"}",
+            $"outputClipped={session.IsOutputClipped}",
+            $"startedAt={session.StartedAtUtc:O}",
+            $"updatedAt={session.UpdatedAtUtc:O}"
+        };
+
+        _activityState = TerminalActivityState.ShowingSession;
+        _activityDetail = $"PTY session: {session.Command} | {(session.IsRunning ? "running" : "stopped")}";
+        _overlay = new TuiOverlayState(TuiOverlayKind.Session, "PTY Session Status", _activityDetail,
+            [new TuiOverlaySection("Status", lines)]);
+        _focus = TuiFocusTarget.Overlay;
+        Render(clearScreen: true);
     }
 }
