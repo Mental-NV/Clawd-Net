@@ -52,7 +52,8 @@ Unless explicitly redirected, execute future work in this order:
   - slice 3 landed: `docs/PLAN-06.md` (PTY transcript persistence)
   - slice 4 landed: `docs/PLAN-07.md` (long-running PTY ergonomics: timeout, duration, line counting, background tracking, TUI enhancements)
   - slice 5 landed: `docs/PLAN-08.md` (true pseudo-terminal via Porta.Pty, terminal-mode behavior, PTY resize support)
-  - remaining: PTY overlay/full-screen mode, output pagination/scrolling, special key handling
+  - slice 6 landed: `docs/PLAN-09.md` (PTY full-screen overlay mode, input forwarding, auto-exit on termination)
+  - remaining: output pagination/scrolling, special key handling, ANSI/VT100 emulation
 
 ## Next Milestones
 

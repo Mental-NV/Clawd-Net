@@ -17,6 +17,12 @@ public sealed class ConsoleTuiRenderer : ITuiRenderer
 
     public TerminalFrame Render(TuiState state)
     {
+        // If full-screen PTY mode is active, render only the PTY overlay
+        if (state.PtyFullScreen is not null && state.Focus == TuiFocusTarget.PtyFullScreen)
+        {
+            return RenderPtyFullScreen(state.PtyFullScreen);
+        }
+
         var transcript = _transcriptRenderer.Render(state.VisibleTranscript);
         var context = RenderContext(state);
         var composer = RenderComposer(state);
@@ -31,6 +37,26 @@ public sealed class ConsoleTuiRenderer : ITuiRenderer
         var overlay = RenderOverlay(state.Overlay);
         var header = $"ClawdNet TUI | focus={state.Focus} | size={state.Layout.Width}x{state.Layout.Height}";
         return new TerminalFrame(header, transcript, context, composer, footer, drawer, overlay, state.ClearScreen, state.UseAlternateScreen);
+    }
+
+    private TerminalFrame RenderPtyFullScreen(PtyFullScreenState ptyState)
+    {
+        // Full-screen PTY view: use overlay as header bar, transcript as PTY output
+        var headerOverlay = $"[PTY FULL SCREEN] {ptyState.Command} | {ptyState.SessionId} | {(ptyState.IsRunning ? "running" : "exited")} | Press Esc to exit";
+        var output = string.IsNullOrWhiteSpace(ptyState.RecentOutput)
+            ? "(waiting for output...)"
+            : ptyState.RecentOutput;
+        var footer = ptyState.StatusLine;
+        return new TerminalFrame(
+            string.Empty,
+            output,
+            string.Empty,
+            string.Empty,
+            footer,
+            null,
+            headerOverlay,
+            true,
+            true);
     }
 
     private string RenderContext(TuiState state)

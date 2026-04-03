@@ -21,4 +21,5 @@ public sealed record TuiState(
     string? ActivityDetail = null,
     string? Error = null,
     bool ClearScreen = true,
-    bool UseAlternateScreen = true);
+    bool UseAlternateScreen = true,
+    PtyFullScreenState? PtyFullScreen = null);

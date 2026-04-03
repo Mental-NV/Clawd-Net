@@ -6,5 +6,6 @@ public enum TuiFocusTarget
     Composer,
     Context,
     Drawer,
-    Overlay
+    Overlay,
+    PtyFullScreen
 }

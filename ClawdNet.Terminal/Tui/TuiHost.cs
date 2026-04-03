@@ -36,6 +36,9 @@ public sealed class TuiHost : ITuiHost
     private string? _selectedSessionId;
     private string? _selectedTaskId;
     private string? _selectedPtySessionId;
+    private string? _ptyFullScreenSessionId;
+    private readonly object _ptyOutputLock = new();
+    private string _ptyFullScreenOutput = string.Empty;
 
     public TuiHost(
         ITerminalSession terminalSession,
@@ -131,6 +134,14 @@ public sealed class TuiHost : ITuiHost
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+
+                // If full-screen PTY mode is active, handle PTY-specific input
+                if (_ptyFullScreenSessionId is not null)
+                {
+                    await HandlePtyFullScreenInputAsync(cancellationToken);
+                    continue;
+                }
+
                 var promptResult = await _terminalSession.ReadPromptAsync("> ", _promptBuffer, cancellationToken);
                 if (promptResult.Kind == PromptInputKind.EndOfStream)
                 {
@@ -552,6 +563,21 @@ public sealed class TuiHost : ITuiHost
                     return true;
                 }
 
+                if (prompt.StartsWith("/pty fullscreen", StringComparison.OrdinalIgnoreCase))
+                {
+                    var sessionId = prompt["/pty fullscreen".Length..].Trim();
+                    if (string.IsNullOrWhiteSpace(sessionId))
+                    {
+                        // Use current session if not specified
+                        sessionId = _ptyManager.State.CurrentSessionId;
+                    }
+                    if (!string.IsNullOrWhiteSpace(sessionId))
+                    {
+                        await EnterPtyFullScreenAsync(sessionId, cancellationToken);
+                        return true;
+                    }
+                }
+
                 if (prompt.StartsWith("/rename ", StringComparison.OrdinalIgnoreCase))
                 {
                     var newName = prompt["/rename ".Length..].Trim();
@@ -815,6 +841,13 @@ public sealed class TuiHost : ITuiHost
             return;
         }
 
+        // If full-screen PTY mode is active, update the output and render
+        if (_ptyFullScreenSessionId is not null)
+        {
+            RenderPtyFullScreenFrame();
+            return;
+        }
+
         var size = _terminalSession.GetTerminalSize();
         var layout = new TuiLayoutState(size.Width, size.Height, Math.Max(50, size.Width - 32), Math.Min(30, Math.Max(24, size.Width / 4)), Math.Min(42, Math.Max(30, size.Width / 3)));
         var state = new TuiState(
@@ -837,6 +870,63 @@ public sealed class TuiHost : ITuiHost
             _error,
             clearScreen,
             true);
+        _terminalSession.RenderFrame(_tuiRenderer.Render(state));
+    }
+
+    private void RenderPtyFullScreenFrame()
+    {
+        var sessionId = _ptyFullScreenSessionId;
+        if (sessionId is null) return;
+
+        var ptyState = _ptyManager.State;
+        var session = ptyState.Sessions.FirstOrDefault(s => s.SessionId == sessionId);
+        if (session is null)
+        {
+            // Session no longer exists, exit full-screen mode
+            ExitPtyFullScreen();
+            Render(clearScreen: true);
+            return;
+        }
+
+        // Read latest output
+        string output;
+        lock (_ptyOutputLock)
+        {
+            output = _ptyFullScreenOutput;
+        }
+
+        // If session has exited, auto-exit full-screen mode
+        if (!session.IsRunning)
+        {
+            ExitPtyFullScreen();
+            _activityState = TerminalActivityState.Ready;
+            _activityDetail = $"PTY session '{sessionId}' has exited.";
+            Render(clearScreen: true);
+            return;
+        }
+
+        var fullScreenState = new PtyFullScreenState(
+            session.SessionId,
+            session.Command,
+            session.IsRunning,
+            output,
+            $"Running | Duration: {FormatDuration(session.Duration)} | Lines: {session.OutputLineCount}");
+
+        var state = new TuiState(
+            _currentSession!,
+            _currentPermissionMode,
+            Array.Empty<ConversationMessage>(),
+            Array.Empty<TaskRecord>(),
+            Array.Empty<string>(),
+            string.Empty,
+            TuiFocusTarget.PtyFullScreen,
+            null,
+            null,
+            new TuiLayoutState(_terminalSession.GetTerminalSize().Width, _terminalSession.GetTerminalSize().Height, 0, 0, 0),
+            _transcriptViewport,
+            _contextViewport,
+            PtyFullScreen: fullScreenState);
+
         _terminalSession.RenderFrame(_tuiRenderer.Render(state));
     }
 
@@ -1237,6 +1327,18 @@ public sealed class TuiHost : ITuiHost
             return;
         }
 
+        // Update full-screen PTY output if active
+        if (_ptyFullScreenSessionId is not null && state.CurrentSession is not null)
+        {
+            if (string.Equals(state.CurrentSession.SessionId, _ptyFullScreenSessionId, StringComparison.Ordinal))
+            {
+                lock (_ptyOutputLock)
+                {
+                    _ptyFullScreenOutput = state.CurrentSession.RecentOutput;
+                }
+            }
+        }
+
         if (state.CurrentSession is not null && state.CurrentSession.IsRunning)
         {
             _activityState = TerminalActivityState.RunningTool;
@@ -1251,6 +1353,101 @@ public sealed class TuiHost : ITuiHost
         AddActivityFeed($"pty | current={state.CurrentSessionId ?? "none"}");
         MarkContextLiveUpdate();
         Render(clearScreen: true);
+    }
+
+    private async Task EnterPtyFullScreenAsync(string sessionId, CancellationToken cancellationToken)
+    {
+        var session = _ptyManager.State.Sessions.FirstOrDefault(s => s.SessionId == sessionId);
+        if (session is null || !session.IsRunning)
+        {
+            _activityState = TerminalActivityState.Error;
+            _activityDetail = $"PTY session '{sessionId}' is not running.";
+            return;
+        }
+
+        _ptyFullScreenSessionId = sessionId;
+        _ptyFullScreenOutput = string.Empty;
+        _focus = TuiFocusTarget.PtyFullScreen;
+
+        // Start streaming output from the PTY session
+        StartPtyOutputStreaming(sessionId, cancellationToken);
+
+        _activityState = TerminalActivityState.RunningTool;
+        _activityDetail = $"Full-screen PTY: {session.Command}";
+        AddActivityFeed($"pty | fullscreen | {sessionId}");
+        Render(clearScreen: true);
+    }
+
+    private void ExitPtyFullScreen()
+    {
+        _ptyFullScreenSessionId = null;
+        _ptyFullScreenOutput = string.Empty;
+        _focus = TuiFocusTarget.Composer;
+        _activityState = TerminalActivityState.Ready;
+        _activityDetail = "Exited full-screen PTY mode.";
+        AddActivityFeed("pty | fullscreen-exit");
+    }
+
+    private async Task HandlePtyFullScreenInputAsync(CancellationToken cancellationToken)
+    {
+        var promptResult = await _terminalSession.ReadPromptAsync("", string.Empty, cancellationToken);
+        if (promptResult.Kind == PromptInputKind.EndOfStream)
+        {
+            ExitPtyFullScreen();
+            _activityState = TerminalActivityState.Exiting;
+            _activityDetail = "Exiting ClawdNet.";
+            Render(clearScreen: true);
+            return;
+        }
+
+        // Handle Esc to exit full-screen mode
+        if (promptResult.Text == "\x1b" || promptResult.Text == string.Empty)
+        {
+            ExitPtyFullScreen();
+            Render(clearScreen: true);
+            return;
+        }
+
+        // Forward all other input to the PTY session
+        if (!string.IsNullOrEmpty(promptResult.Text) && _ptyFullScreenSessionId is not null)
+        {
+            try
+            {
+                await _ptyManager.WriteAsync(promptResult.Text, _ptyFullScreenSessionId, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _activityState = TerminalActivityState.Error;
+                _activityDetail = $"PTY write failed: {ex.Message}";
+                ExitPtyFullScreen();
+                Render(clearScreen: true);
+            }
+        }
+    }
+
+    private async void StartPtyOutputStreaming(string sessionId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var session = _ptyManager.State.Sessions.FirstOrDefault(s => s.SessionId == sessionId);
+            if (session is null) return;
+
+            // Get recent output and stream new output
+            var output = await _ptyManager.ReadAsync(sessionId, cancellationToken);
+            if (output is not null)
+            {
+                lock (_ptyOutputLock)
+                {
+                    _ptyFullScreenOutput = output.RecentOutput;
+                }
+            }
+
+            // Output updates will be handled via PtyStateChanged handler
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"PTY streaming error: {ex.Message}");
+        }
     }
 
     private async void HandleTaskChanged(TaskRecord task, TaskEvent taskEvent)
