@@ -518,6 +518,13 @@ The current .NET implementation visibly depends on:
 - `AWS_BEARER_TOKEN_BEDROCK`
 - `CLAUDE_CODE_SKIP_BEDROCK_AUTH`
 - `ANTHROPIC_BEDROCK_BASE_URL`
+- `CLAUDE_CODE_USE_VERTEX`
+- `GOOGLE_APPLICATION_CREDENTIALS`
+- `ANTHROPIC_VERTEX_PROJECT_ID`
+- `GOOGLE_CLOUD_PROJECT` / `GCLOUD_PROJECT`
+- `CLOUD_ML_REGION`
+- `CLAUDE_CODE_SKIP_VERTEX_AUTH`
+- `VERTEX_REGION_CLAUDE_*` (per-model region overrides)
 - `$VISUAL`
 - `$EDITOR`
 
@@ -591,7 +598,7 @@ This matrix compares the legacy TypeScript CLI behavior against the desired or c
 | Session | `--continue`, `--resume`, `--from-pr`, `--fork-session`, rewind-at-message | Legacy resume UX is extensive | Add resume-family coverage or document replacement flows | P0 | Not Started | Major migration gap for real users with existing history | Fixture-based resume tests |
 | Session | Session naming and metadata | Legacy supports `--name` and rename/tag flows | Add session naming and inspection parity | P1 | In Progress | `.NET` supports `session new [title]`, but not top-level `--name`, tag, or rename flow parity | Command + TUI drawer checks |
 | Model / provider | Model selection | Legacy root supports `--model`; slash UI includes model picker | Preserve model override and expose model state interactively | P0 | Implemented | `.NET` supports `--model` and `/provider <name> [model]`, but no dedicated `/model` UI | `ask --model`, interactive `/provider` |
-| Model / provider | Provider selection | Legacy is Anthropic-first with extra provider env toggles | Keep provider first-class in .NET; do not regress session-scoped provider behavior | P1 | Changed | `.NET` adds explicit `provider` concept and `provider list/show`; built-in providers are Anthropic, OpenAI, and AWS Bedrock; Bedrock supports standard AWS credentials, bearer token auth, and skip-auth mode | `provider list`, `ask --provider`, session persistence checks |
+| Model / provider | Provider selection | Legacy is Anthropic-first with extra provider env toggles | Keep provider first-class in .NET; do not regress session-scoped provider behavior | P1 | Changed | `.NET` adds explicit `provider` concept and `provider list/show`; built-in providers are Anthropic, OpenAI, AWS Bedrock, and Google Vertex AI; Bedrock supports standard AWS credentials, bearer token auth, and skip-auth mode; Vertex AI supports GCP service account key auth and skip-auth mode | `provider list`, `ask --provider`, session persistence checks |
 | Model / runtime | Effort / thinking / budgets / max turns | Legacy exposes `--effort`, `--thinking`, turn and budget controls | Add only if migration requires these runtime controls | P1 | Not Started | Important for workflow parity, but not yet in .NET surface | CLI smoke + query-engine tests |
 | Permissions | Permission mode | Legacy supports `--permission-mode` and dangerous skip variants | Preserve `default`, `accept-edits`, `bypass-permissions` semantics | P0 | Implemented | `.NET` covers these three modes; dangerous-skip variants are not exposed separately | `ask --permission-mode`, interactive launch flags |
 | Permissions | Tool allow / deny lists | Legacy supports `--allowed-tools`, `--tools`, `--disallowed-tools` | Add explicit CLI control if required for migration | P0 | Not Started | Current .NET uses tool registry + permissions, but has no CLI allow/deny filtering | Add handler tests once implemented |

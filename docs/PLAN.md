@@ -47,8 +47,8 @@ Unless explicitly redirected, execute future work in this order:
 ## Active Milestone
 
 - [/] Provider and Platform Expansion v2
-  - Slice 1 (PLAN-13): AWS Bedrock provider — in progress
-  - Slice 2: Google Vertex AI provider — pending
+  - Slice 1 (PLAN-13): AWS Bedrock provider — complete
+  - Slice 2 (PLAN-14): Google Vertex AI provider — in progress
   - Slice 3: Azure Foundry provider — pending
 
 ## Next Milestones

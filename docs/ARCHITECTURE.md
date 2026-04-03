@@ -92,12 +92,13 @@ Provider selection is explicit and first-class.
 
 Current provider defaults:
 
-- Built-in provider scope is `Anthropic + OpenAI + AWS Bedrock`.
+- Built-in provider scope is `Anthropic + OpenAI + AWS Bedrock + Google Vertex AI`.
 - If `providers.json` is missing, built-in in-memory provider definitions are seeded.
 - Legacy sessions and tasks without provider data normalize to `anthropic`.
 - Anthropic keeps its current environment-variable-friendly setup.
 - OpenAI support is built in, but its default model should come from configuration or explicit user choice rather than a hardcoded runtime default.
 - AWS Bedrock supports standard AWS credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`), bearer token auth (`AWS_BEARER_TOKEN_BEDROCK`), and skip-auth mode (`CLAUDE_CODE_SKIP_BEDROCK_AUTH=1`). Region defaults to `us-east-1` via `AWS_REGION`/`AWS_DEFAULT_REGION`. Custom endpoints are supported via `ANTHROPIC_BEDROCK_BASE_URL`. Bedrock uses the Converse API with AWS SigV4 signing and supports ARN-format model IDs and cross-region inference profiles.
+- Google Vertex AI supports GCP service account key authentication via `GOOGLE_APPLICATION_CREDENTIALS`, project ID via `ANTHROPIC_VERTEX_PROJECT_ID`/`GOOGLE_CLOUD_PROJECT`/`GCLOUD_PROJECT`, and skip-auth mode (`CLAUDE_CODE_SKIP_VERTEX_AUTH=1`). Region defaults to `us-east5` via `CLOUD_ML_REGION`, with per-model overrides via `VERTEX_REGION_CLAUDE_*` env vars. Model IDs use the `model-name@YYYYMMDD` format with automatic resolution from short names. Vertex AI uses the `rawPredict` and `streamGenerateContent` endpoints with Anthropic-compatible message format.
 
 ## Persistence Model
 
@@ -319,10 +320,13 @@ These defaults are now part of the working project baseline:
 
 - default legacy provider normalization is `anthropic`
 - provider choice is explicit, not model-name inferred
-- built-in providers are Anthropic, OpenAI, and AWS Bedrock
+- built-in providers are Anthropic, OpenAI, AWS Bedrock, and Google Vertex AI
 - Bedrock uses AWS SigV4 signing, bearer token auth, or skip-auth mode
 - Bedrock region defaults to `us-east-1` via `AWS_REGION`/`AWS_DEFAULT_REGION`
 - Bedrock supports ARN-format model IDs and cross-region inference profiles
+- Vertex AI uses GCP service account key auth or skip-auth mode
+- Vertex AI region defaults to `us-east5` via `CLOUD_ML_REGION`
+- Vertex AI model IDs use `model-name@YYYYMMDD` format with automatic short-name resolution
 - headless `ask` stays buffered by default
 - interactive mode uses real streaming
 - patch-based edit review is the preferred model editing path

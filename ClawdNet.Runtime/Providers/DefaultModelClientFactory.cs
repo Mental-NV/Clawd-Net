@@ -3,6 +3,7 @@ using ClawdNet.Core.Models;
 using ClawdNet.Runtime.Anthropic;
 using ClawdNet.Runtime.Bedrock;
 using ClawdNet.Runtime.OpenAI;
+using ClawdNet.Runtime.VertexAI;
 
 namespace ClawdNet.Runtime.Providers;
 
@@ -49,6 +50,10 @@ public sealed class DefaultModelClientFactory : IModelClientFactory
                 _httpClientFactory(),
                 provider.DefaultModel ?? string.Empty,
                 new BedrockCredentialResolver()),
+            ProviderKind.VertexAI => new HttpVertexAIMessageClient(
+                _httpClientFactory(),
+                provider.DefaultModel ?? "claude-sonnet-4-5",
+                new VertexAICredentialResolver()),
             _ => throw new InvalidOperationException($"Unsupported provider kind '{provider.Kind}'.")
         };
         _cache[provider.Name] = client;
