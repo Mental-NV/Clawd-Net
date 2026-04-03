@@ -8,4 +8,6 @@ public sealed record PtyFullScreenState(
     string Command,
     bool IsRunning,
     string RecentOutput,
-    string StatusLine = "");
+    string StatusLine = "",
+    int ScrollOffset = 0,
+    int TotalOutputLength = 0);

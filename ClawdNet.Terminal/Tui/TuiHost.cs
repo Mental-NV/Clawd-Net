@@ -39,6 +39,8 @@ public sealed class TuiHost : ITuiHost
     private string? _ptyFullScreenSessionId;
     private readonly object _ptyOutputLock = new();
     private string _ptyFullScreenOutput = string.Empty;
+    private int _ptyFullScreenScrollOffset;
+    private readonly List<string> _ptyFullScreenOutputHistory = [];
 
     public TuiHost(
         ITerminalSession terminalSession,
@@ -910,7 +912,9 @@ public sealed class TuiHost : ITuiHost
             session.Command,
             session.IsRunning,
             output,
-            $"Running | Duration: {FormatDuration(session.Duration)} | Lines: {session.OutputLineCount}");
+            $"Running | Duration: {FormatDuration(session.Duration)} | Lines: {session.OutputLineCount} | Scroll: {(_ptyFullScreenScrollOffset > 0 ? $"{_ptyFullScreenScrollOffset} lines up" : "live")}",
+            _ptyFullScreenScrollOffset,
+            output.Length);
 
         var state = new TuiState(
             _currentSession!,
@@ -1400,11 +1404,79 @@ public sealed class TuiHost : ITuiHost
             return;
         }
 
-        // Handle Esc to exit full-screen mode
-        if (promptResult.Text == "\x1b" || promptResult.Text == string.Empty)
+        // Handle Esc to exit full-screen mode (only when buffer is empty or at bottom)
+        if (promptResult.Text == "\x1b")
         {
             ExitPtyFullScreen();
             Render(clearScreen: true);
+            return;
+        }
+
+        // Handle special keys for scrolling
+        if (promptResult.Kind == PromptInputKind.ScrollPageUp)
+        {
+            _ptyFullScreenScrollOffset = Math.Max(0, _ptyFullScreenScrollOffset - 10);
+            Render(clearScreen: false);
+            return;
+        }
+
+        if (promptResult.Kind == PromptInputKind.ScrollPageDown)
+        {
+            _ptyFullScreenScrollOffset += 10;
+            Render(clearScreen: false);
+            return;
+        }
+
+        if (promptResult.Kind == PromptInputKind.ScrollBottom)
+        {
+            _ptyFullScreenScrollOffset = 0; // 0 means follow live output
+            Render(clearScreen: false);
+            return;
+        }
+
+        // Map special keys to ANSI escape sequences
+        string? escapeSequence = promptResult.Text switch
+        {
+            // Arrow keys
+            "\x1b[A" => "\x1b[A",  // Up
+            "\x1b[B" => "\x1b[B",  // Down
+            "\x1b[C" => "\x1b[C",  // Right
+            "\x1b[D" => "\x1b[D",  // Left
+            // Home/End
+            "\x1b[H" => "\x1b[H",  // Home
+            "\x1b[F" => "\x1b[F",  // End
+            "\x1b[1~" => "\x1b[H", // Home (alternate)
+            "\x1b[4~" => "\x1b[F", // End (alternate)
+            // Function keys (F1-F12)
+            "\x1b[11~" => "\x1b[11~", // F1
+            "\x1b[12~" => "\x1b[12~", // F2
+            "\x1b[13~" => "\x1b[13~", // F3
+            "\x1b[14~" => "\x1b[14~", // F4
+            "\x1b[15~" => "\x1b[15~", // F5
+            // Tab and Backspace
+            "\t" => "\t",
+            "\x7f" => "\x7f", // Backspace
+            "\b" => "\x7f",   // Backspace (alternate)
+            _ => null
+        };
+
+        if (escapeSequence is not null)
+        {
+            // Forward escape sequence to PTY
+            if (_ptyFullScreenSessionId is not null)
+            {
+                try
+                {
+                    await _ptyManager.WriteAsync(escapeSequence, _ptyFullScreenSessionId, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _activityState = TerminalActivityState.Error;
+                    _activityDetail = $"PTY write failed: {ex.Message}";
+                    ExitPtyFullScreen();
+                    Render(clearScreen: true);
+                }
+            }
             return;
         }
 
