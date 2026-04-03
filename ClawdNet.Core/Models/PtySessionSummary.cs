@@ -9,4 +9,21 @@ public sealed record PtySessionSummary(
     bool IsRunning,
     int? ExitCode,
     bool IsCurrent,
-    bool IsOutputClipped);
+    bool IsOutputClipped,
+    TimeSpan? Timeout = null,
+    bool IsBackground = false,
+    DateTimeOffset? CompletedAtUtc = null,
+    int OutputLineCount = 0)
+{
+    /// <summary>
+    /// Computed duration from start to end (or now if still running).
+    /// </summary>
+    public TimeSpan Duration
+    {
+        get
+        {
+            var end = CompletedAtUtc ?? UpdatedAtUtc;
+            return end - StartedAtUtc;
+        }
+    }
+}

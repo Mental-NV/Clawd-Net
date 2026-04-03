@@ -34,7 +34,8 @@ public sealed class PtyStartTool : ITool
         ["properties"] = new JsonObject
         {
             ["command"] = new JsonObject { ["type"] = "string" },
-            ["cwd"] = new JsonObject { ["type"] = "string" }
+            ["cwd"] = new JsonObject { ["type"] = "string" },
+            ["timeoutSeconds"] = new JsonObject { ["type"] = "number" }
         },
         ["required"] = new JsonArray("command")
     };
@@ -43,6 +44,7 @@ public sealed class PtyStartTool : ITool
     {
         var command = request.Input?["command"]?.GetValue<string>()?.Trim();
         var cwd = request.Input?["cwd"]?.GetValue<string>();
+        var timeoutSeconds = request.Input?["timeoutSeconds"]?.GetValue<double?>();
         if (string.IsNullOrWhiteSpace(command))
         {
             return new ToolExecutionResult(false, string.Empty, "pty_start requires a 'command' string.");
@@ -56,7 +58,8 @@ public sealed class PtyStartTool : ITool
 
         try
         {
-            var state = await _ptyManager.StartAsync(command, cwd, cancellationToken);
+            TimeSpan? timeout = timeoutSeconds.HasValue ? TimeSpan.FromSeconds(timeoutSeconds.Value) : null;
+            var state = await _ptyManager.StartAsync(command, cwd, cancellationToken, timeout, isBackground: true);
             return new ToolExecutionResult(true, FormatState(state));
         }
         catch (Exception ex)

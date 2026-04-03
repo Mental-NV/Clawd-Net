@@ -28,14 +28,19 @@ public sealed class SystemPtySession : IPtySession
     private readonly string _command;
     private readonly string _workingDirectory;
     private readonly DateTimeOffset _startedAtUtc;
+    private readonly TimeSpan? _timeout;
+    private readonly bool _isBackground;
     private string _recentOutput = string.Empty;
     private bool _isOutputClipped;
     private bool _disposeRequested;
     private int? _exitCode;
     private DateTimeOffset _updatedAtUtc;
+    private DateTimeOffset? _completedAtUtc;
     private int _transcriptSequenceNumber;
+    private int _outputLineCount;
+    private CancellationTokenSource? _timeoutCancellation;
 
-    private SystemPtySession(Process process, string sessionId, string command, string workingDirectory, IPtyTranscriptStore transcriptStore)
+    private SystemPtySession(Process process, string sessionId, string command, string workingDirectory, IPtyTranscriptStore transcriptStore, TimeSpan? timeout, bool isBackground)
     {
         _process = process;
         _sessionId = sessionId;
@@ -44,6 +49,8 @@ public sealed class SystemPtySession : IPtySession
         _startedAtUtc = DateTimeOffset.UtcNow;
         _updatedAtUtc = _startedAtUtc;
         _transcriptStore = transcriptStore;
+        _timeout = timeout;
+        _isBackground = isBackground;
     }
 
     public event Action<PtySessionState>? StateChanged;
@@ -57,7 +64,11 @@ public sealed class SystemPtySession : IPtySession
         !_process.HasExited,
         _exitCode,
         _recentOutput,
-        _isOutputClipped);
+        _isOutputClipped,
+        _timeout,
+        _isBackground,
+        _completedAtUtc,
+        Volatile.Read(ref _outputLineCount));
 
     private static string ResolveShell()
     {
@@ -73,7 +84,7 @@ public sealed class SystemPtySession : IPtySession
             "No suitable shell found for PTY. Expected one of: " + string.Join(", ", s_shellCandidates));
     }
 
-    public static async Task<SystemPtySession> StartAsync(string command, string? workingDirectory, IPtyTranscriptStore transcriptStore, CancellationToken cancellationToken)
+    public static async Task<SystemPtySession> StartAsync(string command, string? workingDirectory, IPtyTranscriptStore transcriptStore, CancellationToken cancellationToken, TimeSpan? timeout = null, bool isBackground = false)
     {
         var cwd = string.IsNullOrWhiteSpace(workingDirectory) ? Environment.CurrentDirectory : workingDirectory!;
         var shell = ResolveShell();
@@ -94,7 +105,7 @@ public sealed class SystemPtySession : IPtySession
             throw new InvalidOperationException($"Failed to start PTY command '{command}'.");
         }
 
-        var session = new SystemPtySession(process, Guid.NewGuid().ToString("N"), command, cwd, transcriptStore);
+        var session = new SystemPtySession(process, Guid.NewGuid().ToString("N"), command, cwd, transcriptStore, timeout, isBackground);
         await session.BeginMonitoringAsync(cancellationToken);
         return session;
     }
@@ -176,6 +187,7 @@ public sealed class SystemPtySession : IPtySession
         }
 
         _disposeRequested = true;
+        _timeoutCancellation?.Cancel();
         await CloseAsync(CancellationToken.None);
         _outputChannel.Writer.TryComplete();
         _process.Dispose();
@@ -187,6 +199,35 @@ public sealed class SystemPtySession : IPtySession
         _ = MonitorReaderAsync(_process.StandardOutput, isError: false, cancellationToken);
         _ = MonitorReaderAsync(_process.StandardError, isError: true, cancellationToken);
         _ = MonitorExitAsync();
+
+        // Start timeout timer if configured
+        if (_timeout.HasValue)
+        {
+            _timeoutCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _ = MonitorTimeoutAsync(_timeoutCancellation.Token);
+        }
+    }
+
+    private async Task MonitorTimeoutAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var timeout = _timeout ?? TimeSpan.Zero; // Already checked before calling
+            await Task.Delay(timeout, cancellationToken);
+            if (!_process.HasExited && !_disposeRequested)
+            {
+                // Timeout expired - terminate the process
+                await TerminateAsync(CancellationToken.None);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Timeout was cancelled (session closed normally)
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"PTY timeout monitor error: {ex.Message}");
+        }
     }
 
     private async Task MonitorReaderAsync(StreamReader reader, bool isError, CancellationToken cancellationToken)
@@ -208,11 +249,13 @@ public sealed class SystemPtySession : IPtySession
     private async Task MonitorExitAsync()
     {
         await _process.WaitForExitAsync();
+        _completedAtUtc = DateTimeOffset.UtcNow;
+        _timeoutCancellation?.Cancel();
         await _sync.WaitAsync();
         try
         {
             _exitCode = _process.ExitCode;
-            _updatedAtUtc = DateTimeOffset.UtcNow;
+            _updatedAtUtc = _completedAtUtc.Value;
         }
         finally
         {
@@ -229,6 +272,13 @@ public sealed class SystemPtySession : IPtySession
         try
         {
             _recentOutput += chunk.Text;
+            // Count newlines in this chunk
+            var newlines = chunk.Text.Count(c => c == '\n');
+            if (newlines > 0)
+            {
+                Interlocked.Add(ref _outputLineCount, newlines);
+            }
+
             if (_recentOutput.Length > MaxOutputChars)
             {
                 _recentOutput = _recentOutput[^MaxOutputChars..];

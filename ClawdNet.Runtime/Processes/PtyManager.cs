@@ -19,12 +19,12 @@ public sealed class PtyManager : IPtyManager
 
     public event Action<PtyManagerState>? StateChanged;
 
-    public async Task<PtySessionState> StartAsync(string command, string? workingDirectory, CancellationToken cancellationToken)
+    public async Task<PtySessionState> StartAsync(string command, string? workingDirectory, CancellationToken cancellationToken, TimeSpan? timeout = null, bool isBackground = false)
     {
         await _sync.WaitAsync(cancellationToken);
         try
         {
-            var session = await SystemPtySession.StartAsync(command, workingDirectory, _transcriptStore, cancellationToken);
+            var session = await SystemPtySession.StartAsync(command, workingDirectory, _transcriptStore, cancellationToken, timeout, isBackground);
             _sessions[session.Snapshot.SessionId] = session;
             _currentSessionId = session.Snapshot.SessionId;
             session.StateChanged += HandleSessionStateChanged;
@@ -242,7 +242,11 @@ public sealed class PtyManager : IPtyManager
                 snapshot.IsRunning,
                 snapshot.ExitCode,
                 string.Equals(snapshot.SessionId, _currentSessionId, StringComparison.Ordinal),
-                snapshot.IsOutputClipped))
+                snapshot.IsOutputClipped,
+                snapshot.Timeout,
+                snapshot.IsBackground,
+                snapshot.CompletedAtUtc,
+                snapshot.OutputLineCount))
             .ToArray();
         var current = _currentSessionId is null ? null : _sessions.GetValueOrDefault(_currentSessionId)?.Snapshot;
         return new PtyManagerState(_currentSessionId, current, summaries);

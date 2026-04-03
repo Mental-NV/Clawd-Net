@@ -154,6 +154,10 @@ PTY support exists as a distinct long-lived execution surface.
 - Multi-session PTY management is supported.
 - One PTY session is always the current focused session for writes and live display.
 - Full PTY replay persistence and restart-time resume are intentionally not implemented.
+- PTY sessions support optional timeouts: a background monitor terminates the process on expiry.
+- PTY sessions track duration (computed from start/completion timestamps) and output line count.
+- PTY sessions can be marked as background (model-initiated vs user-initiated).
+- The TUI PTY drawer displays duration, line count, background status, and timeout warnings.
 
 Current interrupt priority is an explicit product default:
 
@@ -317,6 +321,10 @@ These defaults are now part of the working project baseline:
 - PTY remains bounded, clipped, and process-local
 - PTY transcripts are persisted to disk with bounded storage (1000 chunks/session)
 - PTY transcript replay is available for ordered output retrieval
+- PTY sessions support optional timeouts with automatic process termination
+- PTY sessions track duration and output line count
+- PTY sessions can be marked as background (model-initiated) vs user-initiated
+- TUI PTY drawer shows duration, line count, background status, and timeout warnings
 - tasks persist metadata but do not durably resume active execution
 - worker inspection is read-only
 - plugin execution remains subprocess-based

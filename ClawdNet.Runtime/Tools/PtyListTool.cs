@@ -36,12 +36,26 @@ public sealed class PtyListTool : ITool
             }
 
             var lines = sessions.Select(session =>
-                $"{(session.IsCurrent ? "*" : "-")} session={session.SessionId} | running={session.IsRunning} | command={session.Command} | cwd={session.WorkingDirectory}");
+            {
+                var duration = FormatDuration(session.Duration);
+                var backgroundTag = session.IsBackground ? " | background" : "";
+                var timeoutTag = session.Timeout.HasValue ? $" | timeout={FormatDuration(session.Timeout.Value)}" : "";
+                return $"{(session.IsCurrent ? "*" : "-")} session={session.SessionId} | running={session.IsRunning} | command={session.Command} | cwd={session.WorkingDirectory} | {duration}{backgroundTag}{timeoutTag} | lines={session.OutputLineCount}";
+            });
             return new ToolExecutionResult(true, string.Join(Environment.NewLine, lines));
         }
         catch (Exception ex)
         {
             return new ToolExecutionResult(false, string.Empty, ex.Message);
         }
+    }
+
+    private static string FormatDuration(TimeSpan ts)
+    {
+        if (ts.TotalMinutes < 1)
+        {
+            return $"{(int)ts.TotalSeconds}s";
+        }
+        return $"{(int)ts.TotalMinutes}m{(int)ts.Seconds}s";
     }
 }

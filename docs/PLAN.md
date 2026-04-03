@@ -50,7 +50,8 @@ Unless explicitly redirected, execute future work in this order:
   - slice 1 landed: `docs/PLAN-05.md` (/pty status, /pty close-all commands)
   - slice 2 landed: `docs/PLAN-05.md` (/pty attach, /pty detach commands)
   - slice 3 landed: `docs/PLAN-06.md` (PTY transcript persistence)
-  - remaining: long-running PTY ergonomics, terminal-mode behavior, true pseudo-terminal
+  - slice 4 landed: `docs/PLAN-07.md` (long-running PTY ergonomics: timeout, duration, line counting, background tracking, TUI enhancements)
+  - remaining: true pseudo-terminal, terminal-mode behavior, PTY overlay/full-screen mode
 
 ## Next Milestones
 

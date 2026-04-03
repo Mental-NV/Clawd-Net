@@ -24,12 +24,12 @@ public sealed class FakePtyManager : IPtyManager
 
     public Func<string, string?, PtySessionState>? WriteHandler { get; set; }
 
-    public Task<PtySessionState> StartAsync(string command, string? workingDirectory, CancellationToken cancellationToken)
+    public Task<PtySessionState> StartAsync(string command, string? workingDirectory, CancellationToken cancellationToken, TimeSpan? timeout = null, bool isBackground = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
         Starts.Add((command, workingDirectory));
         var state = StartHandler?.Invoke(command, workingDirectory)
-            ?? NewState(command, workingDirectory ?? Environment.CurrentDirectory, string.Empty, true, null, false);
+            ?? NewState(command, workingDirectory ?? Environment.CurrentDirectory, string.Empty, true, null, false, timeout: timeout, isBackground: isBackground);
         _sessions[state.SessionId] = state;
         _currentSessionId = state.SessionId;
         NotifyChanged();
@@ -170,7 +170,11 @@ public sealed class FakePtyManager : IPtyManager
         bool isRunning,
         int? exitCode,
         bool isOutputClipped,
-        string? sessionId = null)
+        string? sessionId = null,
+        TimeSpan? timeout = null,
+        bool isBackground = false,
+        DateTimeOffset? completedAtUtc = null,
+        int outputLineCount = 0)
     {
         var now = DateTimeOffset.UtcNow;
         return new PtySessionState(
@@ -182,7 +186,11 @@ public sealed class FakePtyManager : IPtyManager
             isRunning,
             exitCode,
             recentOutput,
-            isOutputClipped);
+            isOutputClipped,
+            timeout,
+            isBackground,
+            completedAtUtc,
+            outputLineCount);
     }
 
     private string? ResolveSessionId(string? sessionId)
@@ -208,7 +216,11 @@ public sealed class FakePtyManager : IPtyManager
                 state.IsRunning,
                 state.ExitCode,
                 string.Equals(state.SessionId, _currentSessionId, StringComparison.Ordinal),
-                state.IsOutputClipped))
+                state.IsOutputClipped,
+                state.Timeout,
+                state.IsBackground,
+                state.CompletedAtUtc,
+                state.OutputLineCount))
             .ToArray();
         var current = _currentSessionId is null || !_sessions.TryGetValue(_currentSessionId, out var selected) ? null : selected;
         return new PtyManagerState(_currentSessionId, current, sessions);

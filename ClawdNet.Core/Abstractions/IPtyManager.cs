@@ -8,7 +8,7 @@ public interface IPtyManager : IAsyncDisposable
 
     event Action<PtyManagerState>? StateChanged;
 
-    Task<PtySessionState> StartAsync(string command, string? workingDirectory, CancellationToken cancellationToken);
+    Task<PtySessionState> StartAsync(string command, string? workingDirectory, CancellationToken cancellationToken, TimeSpan? timeout = null, bool isBackground = false);
 
     Task<IReadOnlyList<PtySessionSummary>> ListAsync(CancellationToken cancellationToken);
 

@@ -73,8 +73,18 @@ public sealed class PtyReadTool : ITool
             $"command={state.Command}",
             $"cwd={state.WorkingDirectory}",
             $"running={state.IsRunning}",
-            $"exitCode={(state.ExitCode.HasValue ? state.ExitCode.Value.ToString() : "n/a")}"
+            $"exitCode={(state.ExitCode.HasValue ? state.ExitCode.Value.ToString() : "n/a")}",
+            $"duration={FormatDuration(state.Duration)}",
+            $"lines={state.OutputLineCount}"
         };
+        if (state.IsBackground)
+        {
+            lines.Add("background=true");
+        }
+        if (state.Timeout.HasValue)
+        {
+            lines.Add($"timeout={FormatDuration(state.Timeout.Value)}");
+        }
         if (state.IsOutputClipped)
         {
             lines.Add("outputClipped=true");
@@ -83,5 +93,14 @@ public sealed class PtyReadTool : ITool
         lines.Add(string.Empty);
         lines.Add(string.IsNullOrWhiteSpace(state.RecentOutput) ? "(no output yet)" : state.RecentOutput.TrimEnd());
         return string.Join(Environment.NewLine, lines).TrimEnd();
+    }
+
+    private static string FormatDuration(TimeSpan ts)
+    {
+        if (ts.TotalMinutes < 1)
+        {
+            return $"{(int)ts.TotalSeconds}s";
+        }
+        return $"{(int)ts.TotalMinutes}m{(int)ts.Seconds}s";
     }
 }

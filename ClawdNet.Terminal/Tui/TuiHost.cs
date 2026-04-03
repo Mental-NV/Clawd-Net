@@ -1147,12 +1147,20 @@ public sealed class TuiHost : ITuiHost
 
         var items = state.Sessions
             .Take(10)
-            .Select(session => new TuiDrawerItem(
-                session.SessionId,
-                $"{session.Command} ({session.SessionId})",
-                $"{(session.IsRunning ? "running" : "stopped")} | cwd={session.WorkingDirectory}",
-                session.IsCurrent,
-                selected is not null && string.Equals(selected.SessionId, session.SessionId, StringComparison.Ordinal)))
+            .Select(session =>
+            {
+                var duration = FormatDuration(session.Duration);
+                var status = session.IsRunning ? "running" : "stopped";
+                var backgroundTag = session.IsBackground ? " [bg]" : "";
+                var lineInfo = session.OutputLineCount > 0 ? $" | {session.OutputLineCount} lines" : "";
+                var timeoutWarning = session.Timeout.HasValue && session.IsRunning && session.Duration > session.Timeout.Value * 0.8 ? " ⚠️" : "";
+                return new TuiDrawerItem(
+                    session.SessionId,
+                    $"{session.Command}{backgroundTag} ({session.SessionId})",
+                    $"{status} | {duration}{lineInfo} | cwd={session.WorkingDirectory}{timeoutWarning}",
+                    session.IsCurrent,
+                    selected is not null && string.Equals(selected.SessionId, session.SessionId, StringComparison.Ordinal));
+            })
             .ToArray();
         var detail = selected is null
             ? ["No PTY session selected."]
@@ -1179,19 +1187,47 @@ public sealed class TuiHost : ITuiHost
             return ["Selected PTY session was not found."];
         }
 
-        return
-        [
+        var lines = new List<string>
+        {
             $"session={state.SessionId}",
             $"command={state.Command}",
             $"cwd={state.WorkingDirectory}",
             $"running={state.IsRunning}",
             $"exitCode={(state.ExitCode.HasValue ? state.ExitCode.Value.ToString() : "n/a")}",
-            $"outputClipped={state.IsOutputClipped}",
-            string.Empty,
-            string.IsNullOrWhiteSpace(state.RecentOutput) ? "(no output yet)" : state.RecentOutput.TrimEnd(),
-            string.Empty,
-            "commands: /pty <id> | /pty close <id> | /pty close-exited"
-        ];
+            $"duration={FormatDuration(state.Duration)}",
+            $"lines={state.OutputLineCount}"
+        };
+        if (state.IsBackground)
+        {
+            lines.Add("background=true");
+        }
+        if (state.Timeout.HasValue)
+        {
+            lines.Add($"timeout={FormatDuration(state.Timeout.Value)}");
+        }
+        if (state.IsOutputClipped)
+        {
+            lines.Add("outputClipped=true");
+        }
+
+        lines.Add(string.Empty);
+        lines.Add(string.IsNullOrWhiteSpace(state.RecentOutput) ? "(no output yet)" : state.RecentOutput.TrimEnd());
+        lines.Add(string.Empty);
+        lines.Add("commands: /pty <id> | /pty close <id> | /pty close-exited | /pty status <id>");
+        return lines;
+    }
+
+    private static string FormatDuration(TimeSpan ts)
+    {
+        if (ts.TotalMinutes < 1)
+        {
+            return $"{(int)ts.TotalSeconds}s";
+        }
+        if (ts.TotalHours < 1)
+        {
+            return $"{(int)ts.TotalMinutes}m{(int)ts.Seconds}s";
+        }
+        return $"{(int)ts.TotalHours}h{(int)ts.Minutes}m";
     }
 
     private void HandlePtyStateChanged(PtyManagerState state)

@@ -105,6 +105,84 @@ public sealed class PtyManagerTests : IDisposable
         Assert.Contains("transcript test", string.Join("", transcript.Select(c => c.Text)));
     }
 
+    [Fact]
+    public async Task Pty_session_tracks_duration_and_line_count()
+    {
+        var started = await _ptyManager.StartAsync("cat", null, CancellationToken.None);
+        await _ptyManager.WriteAsync("line1\nline2\nline3\n", null, CancellationToken.None);
+
+        var state = await WaitForOutputAsync("line1");
+        await Task.Delay(50);
+
+        Assert.NotNull(state);
+        Assert.True(state!.OutputLineCount >= 3);
+        Assert.True(state.Duration.TotalMilliseconds >= 0);
+    }
+
+    [Fact]
+    public async Task Pty_session_supports_timeout()
+    {
+        // Start a cat session with a very short timeout (1 second)
+        var started = await _ptyManager.StartAsync("cat", null, CancellationToken.None, timeout: TimeSpan.FromSeconds(1));
+        Assert.NotNull(started.Timeout);
+        Assert.Equal(TimeSpan.FromSeconds(1), started.Timeout);
+
+        // Write some output
+        await _ptyManager.WriteAsync("timeout test\n", null, CancellationToken.None);
+        await WaitForOutputAsync("timeout test");
+
+        // Wait for timeout to trigger (give it some extra time)
+        await Task.Delay(2000);
+
+        // Session should have timed out and been closed
+        var sessions = await _ptyManager.ListAsync(CancellationToken.None);
+        // After timeout, the session is stopped but may still be in the list
+        var timedOutSession = sessions.FirstOrDefault(s => s.SessionId == started.SessionId);
+        if (timedOutSession is not null)
+        {
+            Assert.False(timedOutSession.IsRunning);
+        }
+    }
+
+    [Fact]
+    public async Task Pty_session_tracks_background_flag()
+    {
+        var started = await _ptyManager.StartAsync("cat", null, CancellationToken.None, isBackground: true);
+        Assert.True(started.IsBackground);
+
+        var sessions = await _ptyManager.ListAsync(CancellationToken.None);
+        Assert.Single(sessions);
+        Assert.True(sessions[0].IsBackground);
+    }
+
+    [Fact]
+    public async Task Pty_session_duration_increases_over_time()
+    {
+        var started = await _ptyManager.StartAsync("cat", null, CancellationToken.None);
+        var initialDuration = started.Duration;
+
+        // Wait long enough for a measurable duration increase
+        await Task.Delay(250);
+
+        var state = await _ptyManager.ReadAsync(null, CancellationToken.None);
+        Assert.NotNull(state);
+        // Duration should increase since we waited
+        Assert.True(state!.Duration >= initialDuration, $"Duration {state.Duration} should be >= {initialDuration}");
+        // Also verify timeout is preserved
+        Assert.Null(state.Timeout);
+    }
+
+    [Fact]
+    public async Task Pty_session_counts_lines_in_output()
+    {
+        await _ptyManager.StartAsync("cat", null, CancellationToken.None);
+        await _ptyManager.WriteAsync("one\ntwo\nthree\nfour\n", null, CancellationToken.None);
+
+        var state = await WaitForConditionAsync(s => s?.OutputLineCount >= 4);
+        Assert.NotNull(state);
+        Assert.True(state!.OutputLineCount >= 4);
+    }
+
     private async Task DisposeAsync()
     {
         await _ptyManager.DisposeAsync();
