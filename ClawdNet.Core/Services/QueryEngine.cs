@@ -86,6 +86,9 @@ public sealed class QueryEngine : IQueryEngine
             Messages = workingMessages.ToArray()
         };
 
+        // Inject system prompt if provided
+        var systemPrompt = request.SystemPrompt ?? DefaultSystemPrompt;
+
         var beforeQueryHooks = await EmitHookResultsAsync(
             session,
             workingMessages,
@@ -125,10 +128,11 @@ public sealed class QueryEngine : IQueryEngine
 
             var modelRequest = new ModelRequest(
                 session.Model,
-                DefaultSystemPrompt,
+                systemPrompt,
                 session.Messages.Select(ToModelMessage).ToArray(),
                 _toolRegistry.Tools
                     .Where(tool => request.AllowTaskTools || !IsTaskToolName(tool.Name))
+                    .Where(tool => FilterTools(tool.Name, request.AllowedTools, request.DisallowedTools))
                     .Select(tool => new ToolDefinition(tool.Name, tool.Description, tool.InputSchema))
                     .ToArray());
 
@@ -804,5 +808,29 @@ public sealed class QueryEngine : IQueryEngine
         return toolName.Equals("task_list", StringComparison.OrdinalIgnoreCase)
             ? "Task list refreshed."
             : "Task inspection updated.";
+    }
+
+    private static bool FilterTools(
+        string toolName,
+        IReadOnlyCollection<string>? allowedTools,
+        IReadOnlyCollection<string>? disallowedTools)
+    {
+        // If disallowed tools is specified, exclude matching tools
+        if (disallowedTools is { Count: > 0 })
+        {
+            if (disallowedTools.Contains(toolName, StringComparer.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        // If allowed tools is specified, only include matching tools
+        if (allowedTools is { Count: > 0 })
+        {
+            return allowedTools.Contains(toolName, StringComparer.OrdinalIgnoreCase);
+        }
+
+        // No filtering applied
+        return true;
     }
 }

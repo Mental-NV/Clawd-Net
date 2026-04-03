@@ -18,13 +18,18 @@ Usage: clawdnet ask [options] <prompt>
 Sends a prompt to the model and returns the response in headless mode.
 
 Options:
-  --session <id>            Continue an existing session
-  --provider <name>         Override the provider for this query
-  --model <name>            Override the model for this query
-  --permission-mode <mode>  Permission mode (default, accept-edits, bypass-permissions)
-  --json                    Output as JSON (single object at end)
-  --output-format <format>  Output format: text (default), json, stream-json
-  --input-format <format>   Input format: text (default), stream-json
+  --session <id>              Continue an existing session
+  --provider <name>           Override the provider for this query
+  --model <name>              Override the model for this query
+  --permission-mode <mode>    Permission mode (default, accept-edits, bypass-permissions)
+  --json                      Output as JSON (single object at end)
+  --output-format <format>    Output format: text (default), json, stream-json
+  --input-format <format>     Input format: text (default), stream-json
+  --allowed-tools <tools...>  Comma or space-separated list of tools to allow
+  --disallowed-tools <tools...> Comma or space-separated list of tools to deny
+  --system-prompt <text>      Override the system prompt for this query
+  --system-prompt-file <path> Load system prompt from a file
+  --settings <file-or-json>   Load settings from a file or inline JSON
 
 Examples:
   clawdnet ask "What is 2+2?"
@@ -33,6 +38,10 @@ Examples:
   clawdnet ask --json "Summarize this project"
   clawdnet ask --output-format stream-json "hello"
   echo '{"type":"user","message":{"role":"user","content":"hello"}}' | clawdnet ask --input-format stream-json --output-format stream-json
+  clawdnet ask --allowed-tools "echo,grep" "hello"
+  clawdnet ask --disallowed-tools "shell" "inspect this"
+  clawdnet ask --system-prompt "You are a helpful coding assistant" "explain this"
+  clawdnet ask --system-prompt-file /path/to/prompt.txt "explain this"
 """;
 
     public bool CanHandle(CommandRequest request)
@@ -79,7 +88,18 @@ Examples:
                 InstallStreamJsonStdoutGuard();
 
                 await foreach (var streamEvent in context.QueryEngine.StreamAskAsync(
-                    new QueryRequest(prompt, options.SessionId, options.Model, 8, options.PermissionMode, null, true, options.Provider),
+                    new QueryRequest(
+                        prompt,
+                        options.SessionId,
+                        options.Model,
+                        8,
+                        options.PermissionMode,
+                        null,
+                        true,
+                        options.Provider,
+                        options.AllowedTools,
+                        options.DisallowedTools,
+                        options.SystemPrompt),
                     cancellationToken))
                 {
                     var ndjsonLine = NdjsonSerializer.Serialize(streamEvent);
@@ -94,7 +114,18 @@ Examples:
             }
 
             var result = await context.QueryEngine.AskAsync(
-                new QueryRequest(prompt, options.SessionId, options.Model, 8, options.PermissionMode, null, true, options.Provider),
+                new QueryRequest(
+                    prompt,
+                    options.SessionId,
+                    options.Model,
+                    8,
+                    options.PermissionMode,
+                    null,
+                    true,
+                    options.Provider,
+                    options.AllowedTools,
+                    options.DisallowedTools,
+                    options.SystemPrompt),
                 cancellationToken);
 
             if (options.OutputFormat == "json" || options.Json)
@@ -140,6 +171,11 @@ Examples:
         var json = false;
         string? outputFormat = null;
         string? inputFormat = null;
+        var allowedTools = new List<string>();
+        var disallowedTools = new List<string>();
+        string? systemPrompt = null;
+        string? systemPromptFile = null;
+        string? settingsFile = null;
         var promptParts = new List<string>();
 
         for (var index = 0; index < args.Length; index++)
@@ -167,6 +203,21 @@ Examples:
                 case "--input-format" when index + 1 < args.Length:
                     inputFormat = ParseInputFormat(args[++index]);
                     break;
+                case "--allowed-tools" when index + 1 < args.Length:
+                    allowedTools.AddRange(ParseToolList(args[++index]));
+                    break;
+                case "--disallowed-tools" when index + 1 < args.Length:
+                    disallowedTools.AddRange(ParseToolList(args[++index]));
+                    break;
+                case "--system-prompt" when index + 1 < args.Length:
+                    systemPrompt = args[++index];
+                    break;
+                case "--system-prompt-file" when index + 1 < args.Length:
+                    systemPromptFile = args[++index];
+                    break;
+                case "--settings" when index + 1 < args.Length:
+                    settingsFile = args[++index];
+                    break;
                 default:
                     promptParts.Add(args[index]);
                     break;
@@ -179,6 +230,16 @@ Examples:
             throw new ConversationStoreException("ask requires a prompt.");
         }
 
+        // Load system prompt from file if specified
+        if (!string.IsNullOrWhiteSpace(systemPromptFile))
+        {
+            if (!File.Exists(systemPromptFile))
+            {
+                throw new ConversationStoreException($"System prompt file not found: {systemPromptFile}");
+            }
+            systemPrompt = File.ReadAllText(systemPromptFile);
+        }
+
         return new AskOptions(
             prompt ?? string.Empty,
             sessionId,
@@ -187,7 +248,21 @@ Examples:
             json,
             provider,
             outputFormat ?? "text",
-            inputFormat ?? "text");
+            inputFormat ?? "text",
+            allowedTools.Count > 0 ? allowedTools : null,
+            disallowedTools.Count > 0 ? disallowedTools : null,
+            systemPrompt,
+            settingsFile);
+    }
+
+    private static List<string> ParseToolList(string value)
+    {
+        // Support comma-separated and space-separated tool names
+        return value
+            .Split([',', ' '], StringSplitOptions.RemoveEmptyEntries)
+            .Select(t => t.Trim())
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .ToList();
     }
 
     private static string ParseOutputFormat(string value)
@@ -278,5 +353,9 @@ Examples:
         bool Json,
         string? Provider,
         string OutputFormat,
-        string InputFormat);
+        string InputFormat,
+        IReadOnlyCollection<string>? AllowedTools,
+        IReadOnlyCollection<string>? DisallowedTools,
+        string? SystemPrompt,
+        string? SettingsFile);
 }

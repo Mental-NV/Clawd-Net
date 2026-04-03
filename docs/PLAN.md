@@ -40,6 +40,7 @@ These areas are already landed and should be treated as the current foundation, 
 - [v] Root Help, -p/--print, and Root Positional Prompt
 - [v] Stream-JSON Output Mode
 - [v] Session Resume Family v1 (--continue, --resume, session show)
+- [v] Remaining P0 Parity Gaps (tool filtering, system prompt injection, auth CLI)
 
 ## Current Execution Order
 
@@ -50,6 +51,29 @@ Unless explicitly redirected, execute future work in this order:
 ## Active Milestone
 
 None — all roadmap milestones are complete.
+
+### [v] PLAN-18: Remaining P0 Parity Gaps
+
+- Priority: `P0`
+- Effort: `1-2 weeks`
+- Risk: `Medium`
+- Status: Complete
+- Delivered:
+  - `--allowed-tools` and `--disallowed-tools` flags on ask command (comma or space-separated)
+  - `--system-prompt <text>` and `--system-prompt-file <path>` flags on ask command
+  - `--settings <file-or-json>` flag on ask command (file path stored, loading deferred to future milestone)
+  - `auth status` command showing provider authentication state
+  - `auth login`/`logout` return helpful messages directing users to env-var-based auth
+  - QueryEngine filters tools based on allowed/disallowed lists
+  - System prompt injection overrides default system prompt per query
+- Validation:
+  - `dotnet build` passed
+  - `dotnet test` passed (214 tests)
+  - Smoke tests: `auth status`, `ask --help`, `ask --allowed-tools`, `ask --system-prompt`
+- Notes:
+  - `--tools` (base tools allowlist that denies all others) is deferred
+  - `--append-system-prompt` and `--append-system-prompt-file` are deferred
+  - OAuth/keychain auth from legacy CLI is documented as deferred in PARITY.md
 
 ## Next Milestones
 

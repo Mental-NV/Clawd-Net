@@ -10,4 +10,8 @@ public sealed record QueryRequest(
     PermissionMode PermissionMode = PermissionMode.Default,
     IToolApprovalHandler? ApprovalHandler = null,
     bool AllowTaskTools = true,
-    string? Provider = null);
+    string? Provider = null,
+    IReadOnlyCollection<string>? AllowedTools = null,
+    IReadOnlyCollection<string>? DisallowedTools = null,
+    string? SystemPrompt = null,
+    string? SettingsFile = null);

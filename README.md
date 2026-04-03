@@ -91,6 +91,13 @@ export OPENAI_API_KEY=your_key_here
 - `ask --output-format json <prompt>`
 - `ask --output-format stream-json <prompt>`
 - `ask --input-format stream-json --output-format stream-json`
+- `ask --allowed-tools <tools...> <prompt>`
+- `ask --disallowed-tools <tools...> <prompt>`
+- `ask --system-prompt <text> <prompt>`
+- `ask --system-prompt-file <path> <prompt>`
+- `auth status`
+- `auth login` (env-var auth guidance)
+- `auth logout` (env-var auth guidance)
 - `provider list`
 - `provider show <name>`
 - `platform open <path> [--line N] [--column N]`

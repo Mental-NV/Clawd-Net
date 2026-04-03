@@ -84,6 +84,7 @@ public sealed class AppHost : IAsyncDisposable
             "mcp",
             "session",
             "tool",
+            "auth",
             "version",
             "--version",
             "-v",
@@ -188,7 +189,8 @@ public sealed class AppHost : IAsyncDisposable
             new McpCommandHandler(),
             new SessionCommandHandler(),
             new ToolCommandHandler(),
-            new VersionCommandHandler()
+            new VersionCommandHandler(),
+            new AuthCommandHandler(_providerCatalog)
         ];
         var helpHandler = new HelpCommandHandler(_handlers);
         var allHandlers = new ICommandHandler[] { helpHandler }.Concat(_handlers);
