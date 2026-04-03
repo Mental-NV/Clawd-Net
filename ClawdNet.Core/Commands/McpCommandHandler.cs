@@ -7,6 +7,27 @@ public sealed class McpCommandHandler : ICommandHandler
 {
     public string Name => "mcp";
 
+    public string HelpSummary => "List, ping, and inspect MCP servers";
+
+    public string HelpText => """
+Usage: clawdnet mcp list
+       clawdnet mcp ping <server>
+       clawdnet mcp tools [server]
+
+Inspect configured MCP (Model Context Protocol) servers.
+
+Commands:
+  list              List all configured MCP servers
+  ping <server>     Check if an MCP server is connected
+  tools [server]    List tools available from MCP servers
+
+Examples:
+  clawdnet mcp list
+  clawdnet mcp ping demo
+  clawdnet mcp tools
+  clawdnet mcp tools demo
+""";
+
     public bool CanHandle(CommandRequest request)
     {
         return request.Arguments.Count > 0

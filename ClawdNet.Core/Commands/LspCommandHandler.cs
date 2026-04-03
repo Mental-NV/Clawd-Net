@@ -7,6 +7,26 @@ public sealed class LspCommandHandler : ICommandHandler
 {
     public string Name => "lsp";
 
+    public string HelpSummary => "List, ping, and query LSP servers";
+
+    public string HelpText => """
+Usage: clawdnet lsp list
+       clawdnet lsp ping <server>
+       clawdnet lsp diagnostics <path>
+
+Inspect configured LSP (Language Server Protocol) servers.
+
+Commands:
+  list                 List all configured LSP servers
+  ping <server>        Check if an LSP server is connected
+  diagnostics <path>   Get diagnostics for a file from LSP servers
+
+Examples:
+  clawdnet lsp list
+  clawdnet lsp ping csharp
+  clawdnet lsp diagnostics src/Program.cs
+""";
+
     public bool CanHandle(CommandRequest request)
     {
         return request.Arguments.Count > 0

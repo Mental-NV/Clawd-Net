@@ -9,6 +9,27 @@ public sealed class AskCommandHandler : ICommandHandler
 {
     public string Name => "ask";
 
+    public string HelpSummary => "Send a prompt to the model in headless mode";
+
+    public string HelpText => """
+Usage: clawdnet ask [options] <prompt>
+
+Sends a prompt to the model and returns the response in headless mode.
+
+Options:
+  --session <id>            Continue an existing session
+  --provider <name>         Override the provider for this query
+  --model <name>            Override the model for this query
+  --permission-mode <mode>  Permission mode (default, accept-edits, bypass-permissions)
+  --json                    Output as JSON
+
+Examples:
+  clawdnet ask "What is 2+2?"
+  clawdnet ask --session abc123 "Continue"
+  clawdnet ask --provider openai --model gpt-4o "Explain this code"
+  clawdnet ask --json "Summarize this project"
+""";
+
     public bool CanHandle(CommandRequest request)
     {
         return request.Arguments.Count > 0

@@ -8,6 +8,23 @@ public sealed class ProviderCommandHandler : ICommandHandler
 {
     public string Name => "provider";
 
+    public string HelpSummary => "List and inspect available model providers";
+
+    public string HelpText => """
+Usage: clawdnet provider list
+       clawdnet provider show <name>
+
+Manage and inspect model provider configurations.
+
+Commands:
+  list              List all configured providers (default provider marked with *)
+  show <name>       Show details for a specific provider
+
+Examples:
+  clawdnet provider list
+  clawdnet provider show anthropic
+""";
+
     public bool CanHandle(CommandRequest request)
     {
         return request.Arguments.Count >= 2

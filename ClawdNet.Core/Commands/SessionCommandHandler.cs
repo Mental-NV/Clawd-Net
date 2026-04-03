@@ -8,6 +8,23 @@ public sealed class SessionCommandHandler : ICommandHandler
 {
     public string Name => "session";
 
+    public string HelpSummary => "Create and list conversation sessions";
+
+    public string HelpText => """
+Usage: clawdnet session new [title]
+       clawdnet session list
+
+Manage conversation sessions.
+
+Commands:
+  new [title]    Create a new session with an optional title
+  list           List all sessions
+
+Examples:
+  clawdnet session new "Debug Session"
+  clawdnet session list
+""";
+
     public bool CanHandle(CommandRequest request)
     {
         return request.Arguments.Count >= 2

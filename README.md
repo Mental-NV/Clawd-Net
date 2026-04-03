@@ -21,11 +21,14 @@ Run the app directly:
 
 ```bash
 dotnet run --project ClawdNet.App -- --version
+dotnet run --project ClawdNet.App -- --help
 dotnet run --project ClawdNet.App
 dotnet run --project ClawdNet.App -- --provider openai --model gpt-4o-mini
 dotnet run --project ClawdNet.App -- --session <session-id>
 dotnet run --project ClawdNet.App -- --model claude-sonnet-4-5
 dotnet run --project ClawdNet.App -- --permission-mode accept-edits
+dotnet run --project ClawdNet.App -- "Summarize this project"
+dotnet run --project ClawdNet.App -- -p "What is 2+2?"
 dotnet run --project ClawdNet.App -- ask "Explain this project"
 dotnet run --project ClawdNet.App -- ask --provider openai --model gpt-4o-mini "Explain this project"
 dotnet run --project ClawdNet.App -- ask --permission-mode bypass-permissions "Inspect this repo"
@@ -64,6 +67,9 @@ export OPENAI_API_KEY=your_key_here
 
 - `clawdnet` interactive mode
   - full-screen TUI by default
+- `clawdnet --help`, `-h`
+- `clawdnet <prompt>` (root positional prompt shorthand)
+- `clawdnet -p <prompt>`, `clawdnet --print <prompt>` (headless print mode)
 - `clawdnet --session <id>`
 - `clawdnet --provider <name>`
 - `clawdnet --model <name>`

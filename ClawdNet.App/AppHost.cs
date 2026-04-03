@@ -28,6 +28,7 @@ public sealed class AppHost : IAsyncDisposable
 {
     private readonly CommandDispatcher _dispatcher;
     private readonly CommandContext _context;
+    private readonly IReadOnlyList<ICommandHandler> _handlers;
     private readonly IReplHost _replHost;
     private readonly ITuiHost _tuiHost;
     private readonly IToolRegistry _toolRegistry;
@@ -175,7 +176,8 @@ public sealed class AppHost : IAsyncDisposable
         _tuiHost = tuiHost ?? new TuiHost(terminalSession, conversationStore, queryEngine, tuiRenderer, _ptyManager, _taskManager, _providerCatalog, _platformLauncher);
 
         _context = new CommandContext(_featureGate, _toolRegistry, toolExecutor, conversationStore, _taskStore, _taskManager, queryEngine, _providerCatalog, _mcpClient, _lspClient, _pluginCatalog, _pluginRuntime, _platformLauncher, permissionService, transcriptRenderer, version);
-        _dispatcher = new CommandDispatcher(
+
+        _handlers =
         [
             new AskCommandHandler(),
             new ProviderCommandHandler(),
@@ -187,7 +189,10 @@ public sealed class AppHost : IAsyncDisposable
             new SessionCommandHandler(),
             new ToolCommandHandler(),
             new VersionCommandHandler()
-        ]);
+        ];
+        var helpHandler = new HelpCommandHandler(_handlers);
+        var allHandlers = new ICommandHandler[] { helpHandler }.Concat(_handlers);
+        _dispatcher = new CommandDispatcher(allHandlers);
 
         McpClient = _mcpClient;
         LspClient = _lspClient;
@@ -203,6 +208,19 @@ public sealed class AppHost : IAsyncDisposable
         await EnsureTasksInitializedAsync(cancellationToken);
         await EnsureMcpInitializedAsync(cancellationToken);
         await EnsureLspInitializedAsync(cancellationToken);
+
+        // Handle -p/--print mode: route to ask with the prompt
+        if (TryParsePrintMode(args, out var printPrompt) && printPrompt is not null)
+        {
+            return await ExecuteAskAsync(printPrompt, args, cancellationToken);
+        }
+
+        // Handle root positional prompt: single non-flag argument treated as ask prompt
+        if (TryParseRootPositionalPrompt(args, out var rootPrompt) && rootPrompt is not null)
+        {
+            return await ExecuteAskAsync(rootPrompt, args, cancellationToken);
+        }
+
         if (ShouldLaunchInteractive(args))
         {
             var options = ParseReplLaunchOptions(args);
@@ -409,6 +427,72 @@ public sealed class AppHost : IAsyncDisposable
         finally
         {
             _pluginInitializationLock.Release();
+        }
+    }
+
+    private static bool TryParsePrintMode(IReadOnlyList<string> args, out string? prompt)
+    {
+        prompt = null;
+        var printIndex = -1;
+
+        for (var i = 0; i < args.Count; i++)
+        {
+            if (args[i] is "-p" or "--print")
+            {
+                printIndex = i;
+                break;
+            }
+        }
+
+        if (printIndex < 0)
+        {
+            return false;
+        }
+
+        // Collect everything after -p/--print as the prompt
+        if (printIndex + 1 < args.Count)
+        {
+            prompt = string.Join(' ', args.Skip(printIndex + 1)).Trim();
+        }
+
+        return !string.IsNullOrWhiteSpace(prompt);
+    }
+
+    private static bool TryParseRootPositionalPrompt(IReadOnlyList<string> args, out string? prompt)
+    {
+        prompt = null;
+
+        // A single non-flag argument is treated as a positional prompt
+        if (args.Count == 1 && !args[0].StartsWith("-", StringComparison.Ordinal))
+        {
+            prompt = args[0];
+            return true;
+        }
+
+        return false;
+    }
+
+    private async Task<CommandExecutionResult> ExecuteAskAsync(
+        string prompt,
+        IReadOnlyList<string> originalArgs,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var askHandler = _handlers.OfType<AskCommandHandler>().First();
+            // Build ask args: original args minus -p/--print, plus the prompt
+            var askArgs = originalArgs
+                .Where(arg => arg is not "-p" and not "--print")
+                .Append(prompt)
+                .ToArray();
+            return await askHandler.ExecuteAsync(
+                _context,
+                new CommandRequest(askArgs),
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            return CommandExecutionResult.Failure(ex.Message);
         }
     }
 }

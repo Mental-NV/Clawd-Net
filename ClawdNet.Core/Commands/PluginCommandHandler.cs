@@ -8,6 +8,36 @@ public sealed class PluginCommandHandler : ICommandHandler
 {
     public string Name => "plugin";
 
+    public string HelpSummary => "Manage local plugins";
+
+    public string HelpText => """
+Usage: clawdnet plugin list
+       clawdnet plugin show <name>
+       clawdnet plugin reload
+       clawdnet plugin install <path>
+       clawdnet plugin uninstall <name>
+       clawdnet plugin enable <name>
+       clawdnet plugin disable <name>
+       clawdnet plugin status <name>
+
+Manage locally installed plugins.
+
+Commands:
+  list                List all discovered plugins with health indicators
+  show <name>         Show plugin details (tools, commands, hooks, errors)
+  reload              Reload all plugins, MCP, and LSP servers
+  install <path>      Install a plugin from a local path
+  uninstall <name>    Uninstall a plugin by name
+  enable <name>       Enable a plugin by name
+  disable <name>      Disable a plugin by name
+  status <name>       Show detailed plugin status including invocation metrics
+
+Examples:
+  clawdnet plugin list
+  clawdnet plugin show demo
+  clawdnet plugin reload
+""";
+
     public bool CanHandle(CommandRequest request)
     {
         return request.Arguments.Count > 0

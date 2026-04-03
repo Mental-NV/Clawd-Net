@@ -37,6 +37,7 @@ These areas are already landed and should be treated as the current foundation, 
 - [v] Full TUI Parity v3
 - [v] PTY UX v3
 - [v] Plugin Platform v4
+- [v] Root Help, -p/--print, and Root Positional Prompt
 
 ## Current Execution Order
 
@@ -46,10 +47,7 @@ Unless explicitly redirected, execute future work in this order:
 
 ## Active Milestone
 
-- [v] Provider and Platform Expansion v2
-  - Slice 1 (PLAN-13): AWS Bedrock provider — complete
-  - Slice 2 (PLAN-14): Google Vertex AI provider — complete
-  - Slice 3 (PLAN-15): Azure Foundry provider — complete
+None — all roadmap milestones are complete.
 
 ## Next Milestones
 
@@ -58,7 +56,8 @@ Unless explicitly redirected, execute future work in this order:
 - Priority: `P5`
 - Effort: `2-4 weeks`
 - Risk: `Medium-High`
-- Why this is fifth:
+- Status: Completed (PLAN-13 through PLAN-15)
+- Why this was fifth:
   - it is useful, but less central than orchestration, TUI, and PTY depth
 - Deliverables:
   - broader provider coverage and/or deeper platform integration
@@ -76,5 +75,7 @@ Unless explicitly redirected, execute future work in this order:
 ## Execution Notes
 
 - All high-priority milestones (P1-P4) are now complete.
-- `Provider and Platform Expansion v2` is the easiest milestone to reprioritize if a user explicitly needs it sooner.
+- `Provider and Platform Expansion v2` (P5) is complete.
+- PLAN-16 (Root Help, -p/--print, Root Positional Prompt) is complete — adds `--help`/`-h` at root and per-command level, `-p/--print` headless mode, and root positional prompt shorthand.
+- Remaining P0 parity gaps (from PARITY.md): session resume family, system prompt/settings injection, auth CLI, legacy config compatibility, stream-json output.
 - Future work beyond the current roadmap should be scoped and added as new milestones in this file.

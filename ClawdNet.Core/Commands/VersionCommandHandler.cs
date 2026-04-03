@@ -8,6 +8,16 @@ public sealed class VersionCommandHandler : ICommandHandler
 {
     public string Name => "version";
 
+    public string HelpSummary => "Display the CLI version";
+
+    public string HelpText => """
+Usage: clawdnet --version
+       clawdnet -v
+       clawdnet -V
+
+Displays the current ClawdNet version.
+""";
+
     public bool CanHandle(CommandRequest request)
     {
         return request.HasFlag("--version")

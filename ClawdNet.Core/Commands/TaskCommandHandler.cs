@@ -7,6 +7,26 @@ public sealed class TaskCommandHandler : ICommandHandler
 {
     public string Name => "task";
 
+    public string HelpSummary => "List, inspect, and cancel worker tasks";
+
+    public string HelpText => """
+Usage: clawdnet task list
+       clawdnet task show <id>
+       clawdnet task cancel <id>
+
+Manage delegated worker tasks.
+
+Commands:
+  list             List all tasks
+  show <id>        Show task details including worker transcript tail
+  cancel <id>      Cancel a running task
+
+Examples:
+  clawdnet task list
+  clawdnet task show task-123
+  clawdnet task cancel task-456
+""";
+
     public bool CanHandle(CommandRequest request)
     {
         return request.Arguments.Count >= 2

@@ -7,6 +7,27 @@ public sealed class PlatformCommandHandler : ICommandHandler
 {
     public string Name => "platform";
 
+    public string HelpSummary => "Open files in editors or URLs in browsers";
+
+    public string HelpText => """
+Usage: clawdnet platform open <path> [--line N] [--column N]
+       clawdnet platform browse <url>
+
+Launch platform integration for files or URLs.
+
+Commands:
+  open <path> [options]  Open a file in the configured editor
+  browse <url>           Open a URL in the default browser
+
+Options:
+  --line N      Open at line N (editor-dependent)
+  --column N    Open at column N (editor-dependent)
+
+Examples:
+  clawdnet platform open src/Program.cs --line 42
+  clawdnet platform browse https://example.com
+""";
+
     public bool CanHandle(CommandRequest request)
     {
         return request.Arguments.Count >= 2
