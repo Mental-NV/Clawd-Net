@@ -46,7 +46,7 @@ Unless explicitly redirected, execute future work in this order:
 
 ## Active Milestone
 
-- [/] PTY UX v3
+- [v] PTY UX v3
   - slice 1 landed: `docs/PLAN-05.md` (/pty status, /pty close-all commands)
   - slice 2 landed: `docs/PLAN-05.md` (/pty attach, /pty detach commands)
   - slice 3 landed: `docs/PLAN-06.md` (PTY transcript persistence)
@@ -54,7 +54,7 @@ Unless explicitly redirected, execute future work in this order:
   - slice 5 landed: `docs/PLAN-08.md` (true pseudo-terminal via Porta.Pty, terminal-mode behavior, PTY resize support)
   - slice 6 landed: `docs/PLAN-09.md` (PTY full-screen overlay mode, input forwarding, auto-exit on termination)
   - slice 7 landed: `docs/PLAN-10.md` (special key handling, output pagination/scrolling in full-screen mode)
-  - remaining: ANSI/VT100 terminal emulation, mouse support, bracketed paste
+  - deferred: ANSI/VT100 full terminal emulation, mouse support, bracketed paste (high complexity, low migration impact)
 
 ## Next Milestones
 
