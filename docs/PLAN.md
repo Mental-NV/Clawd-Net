@@ -47,7 +47,8 @@ Unless explicitly redirected, execute future work in this order:
 ## Active Milestone
 
 - [/] PTY UX v3
-  - active execution record: `docs/PLAN-05.md`
+  - slice 1 landed: `docs/PLAN-05.md` (/pty status, /pty close-all commands)
+  - slice 2 in progress: richer attach/detach, long-running PTY ergonomics, terminal-mode behavior
 
 ## Next Milestones
 
