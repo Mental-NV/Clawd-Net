@@ -3,16 +3,10 @@
 `ClawdNet` is the .NET 10 replatforming workspace for the Bun-first TypeScript
 CLI preserved in `Original/`.
 
-This initial implementation provides:
-
-- a production-shaped solution layout
-- a headless `ask` workflow for non-interactive conversations
-- typed tool/runtime abstractions
-- JSON-backed session persistence
-- a richer REPL with screen-oriented transcript rendering
-- characterization-style tests for core behaviors
-
-It is intentionally the first migration slice rather than full feature parity.
+The current implementation already includes the shared runtime foundation, the
+headless CLI surface, the fallback REPL, and the full-screen TUI. It is not at
+full parity with the legacy app yet, but most of the core execution model is
+now in place.
 
 ## Commands
 
@@ -43,7 +37,11 @@ dotnet run --project ClawdNet.App -- platform open /absolute/path/to/file.cs --l
 dotnet run --project ClawdNet.App -- platform browse https://example.com
 dotnet run --project ClawdNet.App -- session new "First Slice"
 dotnet run --project ClawdNet.App -- session list
+dotnet run --project ClawdNet.App -- task list
+dotnet run --project ClawdNet.App -- task show <task-id>
+dotnet run --project ClawdNet.App -- task cancel <task-id>
 dotnet run --project ClawdNet.App -- plugin list
+dotnet run --project ClawdNet.App -- plugin show demo
 dotnet run --project ClawdNet.App -- plugin reload
 dotnet run --project ClawdNet.App -- mcp list
 dotnet run --project ClawdNet.App -- mcp ping <server-name>
@@ -62,17 +60,10 @@ export ANTHROPIC_API_KEY=your_key_here
 export OPENAI_API_KEY=your_key_here
 ```
 
-Run from the repository root:
-
-```bash
-dotnet build ClawdNet.slnx
-dotnet test ClawdNet.slnx
-dotnet run --project ClawdNet.App -- --version
-```
-
 ## Current Supported CLI Surface
 
 - `clawdnet` interactive mode
+  - full-screen TUI by default
 - `clawdnet --session <id>`
 - `clawdnet --provider <name>`
 - `clawdnet --model <name>`
@@ -90,7 +81,11 @@ dotnet run --project ClawdNet.App -- --version
 - `platform browse <url>`
 - `session new [title]`
 - `session list`
+- `task list`
+- `task show <id>`
+- `task cancel <id>`
 - `plugin list`
+- `plugin show <name>`
 - `plugin reload`
 - `mcp list`
 - `mcp ping <server>`
@@ -100,16 +95,29 @@ dotnet run --project ClawdNet.App -- --version
 - `lsp diagnostics <path>`
 - `tool echo <text>`
 
-Inside interactive mode, these slash commands are available:
+Common interactive commands:
 
 - `/help`
 - `/session`
 - `/provider`
 - `/provider <name> [model]`
+- `/tasks`
+- `/pty`
 - `/open <path> [line] [column]`
 - `/browse <url>`
 - `/clear`
+- `/bottom`
 - `/exit`
+- `exit`
+- `quit`
+
+TUI-only extended commands:
+
+- `/tasks <id>`
+- `/pty <id>`
+- `/pty close <id>`
+- `/pty close-exited`
+- `/activity`
 
 ## Provider Configuration
 

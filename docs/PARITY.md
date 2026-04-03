@@ -99,7 +99,7 @@ The legacy CLI is not a single-mode shell. It has multiple entry paths:
 
 The legacy slash-command surface is not static. It is composed from:
 
-- built-in commands from `src/commands.ts`
+- built-in commands from `Original/src/commands.ts`
 - plugin commands
 - skill-backed and bundled commands
 - workflow-provided commands
@@ -138,7 +138,7 @@ Remote and bridge modes also filter the available command set through separate a
 
 #### Major Global Flags and Options
 
-The root program in `src/main.tsx` currently exposes at least the following user-visible flags:
+The root program in `Original/src/main.tsx` currently exposes at least the following user-visible flags:
 
 | Category | Flags / Options | Notes |
 | --- | --- | --- |
@@ -153,7 +153,7 @@ The root program in `src/main.tsx` currently exposes at least the following user
 
 #### Selected Built-In Slash / Local Command Families
 
-The built-in slash-command surface is large. The most important command families currently visible in `src/commands.ts` and `src/commands/**` are:
+The built-in slash-command surface is large. The most important command families currently visible in `Original/src/commands.ts` and `Original/src/commands/**` are:
 
 - Conversation and session:
   - `help`
