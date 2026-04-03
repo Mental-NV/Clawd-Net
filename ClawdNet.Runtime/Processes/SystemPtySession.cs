@@ -9,6 +9,16 @@ public sealed class SystemPtySession : IPtySession
 {
     private const int MaxOutputChars = 4096;
 
+    private static readonly string[] s_shellCandidates =
+    {
+        "/bin/zsh",
+        "/bin/bash",
+        "/bin/sh",
+        "/usr/bin/zsh",
+        "/usr/bin/bash",
+        "/usr/bin/sh"
+    };
+
     private readonly Process _process;
     private readonly Channel<PtyOutputChunk> _outputChannel = Channel.CreateUnbounded<PtyOutputChunk>();
     private readonly SemaphoreSlim _sync = new(1, 1);
@@ -45,12 +55,27 @@ public sealed class SystemPtySession : IPtySession
         _recentOutput,
         _isOutputClipped);
 
+    private static string ResolveShell()
+    {
+        foreach (var candidate in s_shellCandidates)
+        {
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        throw new InvalidOperationException(
+            "No suitable shell found for PTY. Expected one of: " + string.Join(", ", s_shellCandidates));
+    }
+
     public static Task<SystemPtySession> StartAsync(string command, string? workingDirectory, CancellationToken cancellationToken)
     {
         var cwd = string.IsNullOrWhiteSpace(workingDirectory) ? Environment.CurrentDirectory : workingDirectory!;
+        var shell = ResolveShell();
         var startInfo = new ProcessStartInfo
         {
-            FileName = "/bin/zsh",
+            FileName = shell,
             Arguments = $"-lc \"exec {command.Replace("\"", "\\\"")}\"",
             WorkingDirectory = cwd,
             RedirectStandardInput = true,
