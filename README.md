@@ -1,158 +1,260 @@
-# not_clawd_code
+# ClawdNet
 
-`not_clawd_code` is a reconstructed local build of the publicly exposed Claude Code source snapshot from March 31, 2026. The original public leak exposed an incomplete `src/` tree. This repository was later rebuilt into a runnable Bun project by restoring missing root files, adding compatibility shims, reconstructing missing source/runtime pieces, and patching runtime gaps.
+`ClawdNet` is the .NET 10 replatforming workspace for the Bun-first TypeScript
+CLI preserved in `Original/`.
 
-This is not an official Anthropic release.
+This initial implementation provides:
 
-## Current Status
+- a production-shaped solution layout
+- a headless `ask` workflow for non-interactive conversations
+- typed tool/runtime abstractions
+- JSON-backed session persistence
+- a richer REPL with screen-oriented transcript rendering
+- characterization-style tests for core behaviors
 
-The current local tree is able to start the interactive CLI again.
+It is intentionally the first migration slice rather than full feature parity.
 
-Verified in this workspace:
+## Commands
+
+From the repository root:
 
 ```bash
-bun install
-bun run version
-bun run dev
-bun run build
+dotnet build ClawdNet.slnx
+dotnet test ClawdNet.slnx
 ```
 
-Current package metadata:
+Run the app directly:
 
-- `name`: `not_clawd_code`
-- `version`: `1.0.24`
-- `packageManager`: `bun@1.3.5`
-- `engines.bun`: `>=1.1.0`
+```bash
+dotnet run --project ClawdNet.App -- --version
+dotnet run --project ClawdNet.App
+dotnet run --project ClawdNet.App -- --provider openai --model gpt-4o-mini
+dotnet run --project ClawdNet.App -- --session <session-id>
+dotnet run --project ClawdNet.App -- --model claude-sonnet-4-5
+dotnet run --project ClawdNet.App -- --permission-mode accept-edits
+dotnet run --project ClawdNet.App -- ask "Explain this project"
+dotnet run --project ClawdNet.App -- ask --provider openai --model gpt-4o-mini "Explain this project"
+dotnet run --project ClawdNet.App -- ask --permission-mode bypass-permissions "Inspect this repo"
+dotnet run --project ClawdNet.App -- ask --json "Summarize the current milestone"
+dotnet run --project ClawdNet.App -- ask --session <session-id> "Continue"
+dotnet run --project ClawdNet.App -- provider list
+dotnet run --project ClawdNet.App -- provider show anthropic
+dotnet run --project ClawdNet.App -- platform open /absolute/path/to/file.cs --line 12 --column 4
+dotnet run --project ClawdNet.App -- platform browse https://example.com
+dotnet run --project ClawdNet.App -- session new "First Slice"
+dotnet run --project ClawdNet.App -- session list
+dotnet run --project ClawdNet.App -- plugin list
+dotnet run --project ClawdNet.App -- plugin reload
+dotnet run --project ClawdNet.App -- mcp list
+dotnet run --project ClawdNet.App -- mcp ping <server-name>
+dotnet run --project ClawdNet.App -- mcp tools
+dotnet run --project ClawdNet.App -- mcp tools <server-name>
+dotnet run --project ClawdNet.App -- lsp list
+dotnet run --project ClawdNet.App -- lsp ping <server-name>
+dotnet run --project ClawdNet.App -- lsp diagnostics <path>
+dotnet run --project ClawdNet.App -- tool echo "hello world"
+```
 
-Verified local Bun version:
+Set your provider API keys before using `ask`:
 
-- `bun 1.3.11`
+```bash
+export ANTHROPIC_API_KEY=your_key_here
+export OPENAI_API_KEY=your_key_here
+```
 
-Interactive proof:
+Run from the repository root:
 
-![Interactive not_clawd_code session](./media/image.png)
+```bash
+dotnet build ClawdNet.slnx
+dotnet test ClawdNet.slnx
+dotnet run --project ClawdNet.App -- --version
+```
 
-## What Was Reconstructed
+## Current Supported CLI Surface
 
-The leaked source snapshot was not originally a complete runnable repository. This working tree now includes:
+- `clawdnet` interactive mode
+- `clawdnet --session <id>`
+- `clawdnet --provider <name>`
+- `clawdnet --model <name>`
+- `clawdnet --permission-mode <mode>`
+- `--version`
+- `ask <prompt>`
+- `ask --provider <name> <prompt>`
+- `ask --session <id> <prompt>`
+- `ask --model <name> <prompt>`
+- `ask --permission-mode <mode> <prompt>`
+- `ask --json <prompt>`
+- `provider list`
+- `provider show <name>`
+- `platform open <path> [--line N] [--column N]`
+- `platform browse <url>`
+- `session new [title]`
+- `session list`
+- `plugin list`
+- `plugin reload`
+- `mcp list`
+- `mcp ping <server>`
+- `mcp tools [server]`
+- `lsp list`
+- `lsp ping <server>`
+- `lsp diagnostics <path>`
+- `tool echo <text>`
 
-- restored root build files such as `package.json`, `tsconfig.json`, `bunfig.toml`, `bun.lock`, and `scripts/`
-- reconstructed source/runtime pieces needed to complete the partial snapshot
-- local compatibility packages under `shims/` for internal or unavailable modules
-- extra runtime/vendor material under `vendor/`
-- compatibility patches needed to make the interactive CLI start again under Bun
+Inside interactive mode, these slash commands are available:
 
-As checked in this workspace:
+- `/help`
+- `/session`
+- `/provider`
+- `/provider <name> [model]`
+- `/open <path> [line] [column]`
+- `/browse <url>`
+- `/clear`
+- `/exit`
 
-- `src/` currently contains `2047` files
-- `node_modules` is symlinked to `/home/jovyan/shared/claude-code-build/node_modules`
-- `dist` is symlinked to `/home/jovyan/shared/claude-code-build/dist`
+## Provider Configuration
 
-## Project Structure
-
-Current top-level layout in this reconstructed tree:
+Configure model providers in:
 
 ```text
-.
-├── src/                   # Restored TypeScript source tree
-├── scripts/               # Build, packaging, install, and test helpers
-├── shims/                 # Local compatibility packages for missing/internal modules
-├── vendor/                # Native/runtime support sources
-├── media/                 # Local media assets
-├── package.json           # Package metadata and scripts
-├── bun.lock               # Bun lockfile
-├── bunfig.toml            # Bun preload configuration
-├── tsconfig.json          # TypeScript config
+<LocalApplicationData>/ClawdNet/config/providers.json
 ```
 
-Important source areas:
+Example:
+
+```json
+{
+  "defaultProvider": "anthropic",
+  "providers": [
+    {
+      "name": "anthropic",
+      "kind": "Anthropic",
+      "enabled": true,
+      "apiKeyEnv": "ANTHROPIC_API_KEY",
+      "defaultModel": "claude-sonnet-4-5"
+    },
+    {
+      "name": "openai",
+      "kind": "OpenAI",
+      "enabled": true,
+      "apiKeyEnv": "OPENAI_API_KEY",
+      "defaultModel": "gpt-4o-mini"
+    }
+  ]
+}
+```
+
+If `providers.json` is missing, `ClawdNet` seeds built-in `anthropic` and `openai` providers automatically.
+
+## Platform Configuration
+
+Configure lightweight editor and browser launch preferences in:
 
 ```text
-src/
-├── entrypoints/           # CLI bootstraps and SDK entrypoints
-├── main.tsx               # Main CLI setup path
-├── dev-entry.ts           # Reconstructed interactive dev launcher
-├── QueryEngine.ts         # Core query/runtime loop
-├── commands/              # Slash command implementations
-├── tools/                 # Tool implementations
-├── components/            # React + Ink terminal UI
-├── services/              # Auth, MCP, telemetry, config, compact, etc.
-├── bridge/                # IDE / remote-control bridge logic
-├── coordinator/           # Multi-agent orchestration
-├── tasks/                 # Task system
-├── skills/                # Bundled skill logic
-├── plugins/               # Plugin support
-├── server/                # Server-side / IDE service entrypoints
-├── remote/                # Remote session features
-├── memdir/                # Persistent memory features
-├── keybindings/           # Keyboard handling
-├── vim/                   # Vim mode
-├── ink/                   # Ink renderer integration
-├── utils/                 # Shared helpers
-└── types/                 # Shared types
+<LocalApplicationData>/ClawdNet/config/platform.json
 ```
 
-## Toolchain And Runtime
+Example:
 
-This repo is a Bun-first TypeScript CLI project.
-
-- entrypoint: `src/entrypoints/cli.tsx`
-- interactive dev entry: `src/dev-entry.ts`
-- Bun preload config: `bunfig.toml` preloads `scripts/bun-plugin-shims.ts`
-- build output: `dist/cli.mjs`
-
-Important runtime pieces in the current reconstruction:
-
-- `react ^19.0.0`
-- `react-reconciler ^0.33.0`
-- `ink ^6.8.0`
-- local file dependencies for internal modules such as:
-  - `@ant/claude-for-chrome-mcp`
-  - `@ant/computer-use-input`
-  - `@ant/computer-use-mcp`
-  - `@ant/computer-use-swift`
-  - `color-diff-napi`
-  - `modifiers-napi`
-  - `url-handler-napi`
-
-## Install And Run
-
-From the repo root:
-
-```bash
-bun install
-bun run version
-bun run dev
+```json
+{
+  "editorCommand": "code",
+  "editorArguments": ["-g"],
+  "browserCommand": "open"
+}
 ```
 
-Other useful commands:
+## MCP Configuration
 
-```bash
-bun run build
-bun run start
-bun run check
-bun run test
+Configure stdio MCP servers in:
+
+```text
+<LocalApplicationData>/ClawdNet/config/mcp.json
 ```
 
-In this workspace there is also an external helper launcher:
+Example:
 
-```bash
-not-claude
+```json
+{
+  "servers": [
+    {
+      "name": "demo",
+      "command": "python3",
+      "arguments": ["/absolute/path/to/server.py"],
+      "enabled": true,
+      "toolsReadOnly": true,
+      "environment": {
+        "DEMO_FLAG": "1"
+      }
+    }
+  ]
+}
 ```
 
-That launcher is only a convenience wrapper around this repo. The repo-native command is still:
+Configured server tools are exposed to the model with names like `mcp.demo.echo`.
 
-```bash
-bun run dev
+## LSP Configuration
+
+Configure stdio language servers in:
+
+```text
+<LocalApplicationData>/ClawdNet/config/lsp.json
 ```
 
-## Research Context
+Example:
 
-This repository exists for educational use, defensive security research, software supply-chain analysis, and architecture study. It should not be treated as an official Anthropic repository or an authoritative release artifact.
+```json
+{
+  "servers": [
+    {
+      "name": "csharp",
+      "command": "python3",
+      "arguments": ["/absolute/path/to/fake-or-real-lsp-server.py"],
+      "fileExtensions": [".cs", ".csx"],
+      "languageId": "csharp",
+      "enabled": true,
+      "environment": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  ]
+}
+```
 
-The current local state is a reconstruction. It is usable, but it may still differ from Anthropic's original internal repository in structure, history, packaging, and exact runtime behavior.
+Built-in LSP tools are exposed to the model as `lsp_definition`, `lsp_references`, `lsp_hover`, and `lsp_diagnostics`.
 
-## Maintainer
+## Plugin Configuration
 
-- Yaswanth-ampolu
-- `ampoluyaswanth2002@gmail.com`
+Discover local plugins in:
+
+```text
+<LocalApplicationData>/ClawdNet/plugins/<plugin-id>/plugin.json
+```
+
+Example:
+
+```json
+{
+  "name": "demo",
+  "version": "1.0.0",
+  "enabled": true,
+  "mcpServers": [
+    {
+      "name": "echo",
+      "command": "python3",
+      "arguments": ["/absolute/path/to/mcp_server.py"],
+      "toolsReadOnly": true
+    }
+  ],
+  "lspServers": [
+    {
+      "name": "csharp",
+      "command": "python3",
+      "arguments": ["/absolute/path/to/lsp_server.py"],
+      "fileExtensions": [".cs"],
+      "languageId": "csharp"
+    }
+  ]
+}
+```
+
+Plugin-provided server names are scoped automatically, so the example above contributes `demo.echo` and `demo.csharp`.
