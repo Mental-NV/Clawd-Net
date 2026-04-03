@@ -38,6 +38,7 @@ These areas are already landed and should be treated as the current foundation, 
 - [v] PTY UX v3
 - [v] Plugin Platform v4
 - [v] Root Help, -p/--print, and Root Positional Prompt
+- [v] Stream-JSON Output Mode
 
 ## Current Execution Order
 

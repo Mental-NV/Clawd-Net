@@ -81,6 +81,10 @@ export OPENAI_API_KEY=your_key_here
 - `ask --model <name> <prompt>`
 - `ask --permission-mode <mode> <prompt>`
 - `ask --json <prompt>`
+- `ask --output-format text <prompt>`
+- `ask --output-format json <prompt>`
+- `ask --output-format stream-json <prompt>`
+- `ask --input-format stream-json --output-format stream-json`
 - `provider list`
 - `provider show <name>`
 - `platform open <path> [--line N] [--column N]`
