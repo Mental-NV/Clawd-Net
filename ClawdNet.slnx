@@ -1,9 +1,9 @@
 <Solution>
   <Folder Name="/ClawdNet/">
-    <Project Path="ClawdNet/ClawdNet.App/ClawdNet.App.csproj" />
-    <Project Path="ClawdNet/ClawdNet.Core/ClawdNet.Core.csproj" />
-    <Project Path="ClawdNet/ClawdNet.Runtime/ClawdNet.Runtime.csproj" />
-    <Project Path="ClawdNet/ClawdNet.Terminal/ClawdNet.Terminal.csproj" />
-    <Project Path="ClawdNet/ClawdNet.Tests/ClawdNet.Tests.csproj" />
+    <Project Path="ClawdNet.App/ClawdNet.App.csproj" />
+    <Project Path="ClawdNet.Core/ClawdNet.Core.csproj" />
+    <Project Path="ClawdNet.Runtime/ClawdNet.Runtime.csproj" />
+    <Project Path="ClawdNet.Terminal/ClawdNet.Terminal.csproj" />
+    <Project Path="ClawdNet.Tests/ClawdNet.Tests.csproj" />
   </Folder>
 </Solution>
