@@ -1,6 +1,7 @@
 using ClawdNet.Core.Abstractions;
 using ClawdNet.Core.Models;
 using ClawdNet.Runtime.Anthropic;
+using ClawdNet.Runtime.Bedrock;
 using ClawdNet.Runtime.OpenAI;
 
 namespace ClawdNet.Runtime.Providers;
@@ -44,6 +45,10 @@ public sealed class DefaultModelClientFactory : IModelClientFactory
                 _httpClientFactory(),
                 () => Environment.GetEnvironmentVariable(provider.ApiKeyEnvironmentVariable),
                 provider.BaseUrl),
+            ProviderKind.Bedrock => new HttpBedrockMessageClient(
+                _httpClientFactory(),
+                provider.DefaultModel ?? string.Empty,
+                new BedrockCredentialResolver()),
             _ => throw new InvalidOperationException($"Unsupported provider kind '{provider.Kind}'.")
         };
         _cache[provider.Name] = client;

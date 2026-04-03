@@ -121,6 +121,7 @@ public sealed class ProviderCatalog : IProviderCatalog
             {
                 ProviderKind.Anthropic => "ANTHROPIC_API_KEY",
                 ProviderKind.OpenAI => "OPENAI_API_KEY",
+                ProviderKind.Bedrock => "AWS_ACCESS_KEY_ID",
                 _ => "API_KEY"
             }
             : document.ApiKeyEnv!;
