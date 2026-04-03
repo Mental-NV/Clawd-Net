@@ -1,10 +1,20 @@
 using ClawdNet.Runtime.Processes;
+using ClawdNet.Runtime.Storage;
 
 namespace ClawdNet.Tests;
 
 public sealed class PtyManagerTests : IDisposable
 {
-    private readonly PtyManager _ptyManager = new();
+    private readonly string _tempDir = Path.Combine(Path.GetTempPath(), $"clawdnet-test-{Guid.NewGuid():N}");
+    private readonly PtyTranscriptStore _transcriptStore;
+    private readonly PtyManager _ptyManager;
+
+    public PtyManagerTests()
+    {
+        Directory.CreateDirectory(_tempDir);
+        _transcriptStore = new PtyTranscriptStore(_tempDir);
+        _ptyManager = new PtyManager(_transcriptStore);
+    }
 
     [Fact]
     public async Task Pty_manager_can_start_write_read_and_close_session()
@@ -77,9 +87,39 @@ public sealed class PtyManagerTests : IDisposable
         Assert.Contains(sessions, session => session.SessionId == second.SessionId);
     }
 
+    [Fact]
+    public async Task Pty_session_writes_to_transcript_store()
+    {
+        var started = await _ptyManager.StartAsync("cat", null, CancellationToken.None);
+        await _ptyManager.WriteAsync("transcript test\n", null, CancellationToken.None);
+
+        // Wait for output to arrive
+        await WaitForOutputAsync("transcript test");
+
+        // Small delay for transcript write (fire-and-forget)
+        await Task.Delay(100);
+
+        var transcript = await _ptyManager.GetTranscriptAsync(started.SessionId);
+
+        Assert.NotEmpty(transcript);
+        Assert.Contains("transcript test", string.Join("", transcript.Select(c => c.Text)));
+    }
+
     private async Task DisposeAsync()
     {
         await _ptyManager.DisposeAsync();
+        await _transcriptStore.DisposeAsync();
+        if (Directory.Exists(_tempDir))
+        {
+            try
+            {
+                Directory.Delete(_tempDir, true);
+            }
+            catch
+            {
+                // Ignore cleanup failures
+            }
+        }
     }
 
     public void Dispose()

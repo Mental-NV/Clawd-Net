@@ -135,6 +135,13 @@ public sealed class FakePtyManager : IPtyManager
         return Task.FromResult(exitedIds.Length);
     }
 
+    public Task<IReadOnlyList<PtyTranscriptChunk>> GetTranscriptAsync(string sessionId, int? tailCount = null, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        // Fake implementation returns empty - tests can override if needed
+        return Task.FromResult<IReadOnlyList<PtyTranscriptChunk>>(Array.Empty<PtyTranscriptChunk>());
+    }
+
     public void Publish(PtySessionState? state, bool makeCurrent = true)
     {
         if (state is null)

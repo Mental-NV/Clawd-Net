@@ -49,7 +49,8 @@ Unless explicitly redirected, execute future work in this order:
 - [/] PTY UX v3
   - slice 1 landed: `docs/PLAN-05.md` (/pty status, /pty close-all commands)
   - slice 2 landed: `docs/PLAN-05.md` (/pty attach, /pty detach commands)
-  - remaining: long-running PTY ergonomics, terminal-mode behavior, PTY transcript persistence
+  - slice 3 landed: `docs/PLAN-06.md` (PTY transcript persistence)
+  - remaining: long-running PTY ergonomics, terminal-mode behavior, true pseudo-terminal
 
 ## Next Milestones
 

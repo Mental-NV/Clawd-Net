@@ -7,7 +7,13 @@ public sealed class PtyManager : IPtyManager
 {
     private readonly SemaphoreSlim _sync = new(1, 1);
     private readonly Dictionary<string, IPtySession> _sessions = new(StringComparer.Ordinal);
+    private readonly IPtyTranscriptStore _transcriptStore;
     private string? _currentSessionId;
+
+    public PtyManager(IPtyTranscriptStore transcriptStore)
+    {
+        _transcriptStore = transcriptStore ?? throw new ArgumentNullException(nameof(transcriptStore));
+    }
 
     public PtyManagerState State => BuildState();
 
@@ -18,7 +24,7 @@ public sealed class PtyManager : IPtyManager
         await _sync.WaitAsync(cancellationToken);
         try
         {
-            var session = await SystemPtySession.StartAsync(command, workingDirectory, cancellationToken);
+            var session = await SystemPtySession.StartAsync(command, workingDirectory, _transcriptStore, cancellationToken);
             _sessions[session.Snapshot.SessionId] = session;
             _currentSessionId = session.Snapshot.SessionId;
             session.StateChanged += HandleSessionStateChanged;
@@ -100,6 +106,24 @@ public sealed class PtyManager : IPtyManager
             }
 
             return exited.Length;
+        }
+        finally
+        {
+            _sync.Release();
+        }
+    }
+
+    public async Task<IReadOnlyList<PtyTranscriptChunk>> GetTranscriptAsync(string sessionId, int? tailCount = null, CancellationToken cancellationToken = default)
+    {
+        await _sync.WaitAsync(cancellationToken);
+        try
+        {
+            if (_sessions.TryGetValue(sessionId, out var session))
+            {
+                return await session.GetTranscriptAsync(tailCount, cancellationToken);
+            }
+            // Session not found - return empty list rather than throwing
+            return Array.Empty<PtyTranscriptChunk>();
         }
         finally
         {

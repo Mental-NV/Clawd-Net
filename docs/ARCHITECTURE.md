@@ -103,12 +103,15 @@ Current provider defaults:
 Persistence is intentionally conservative.
 
 - Sessions and tasks are persisted.
+- PTY transcripts are now persisted as bounded JSONL transcripts under `<AppData>/ClawdNet/pty-transcripts/<session-id>.jsonl`.
+- PTY transcripts store recent output chunks with sequence numbering for ordered replay.
+- PTY transcript storage is bounded (default 1000 chunks per session) to avoid unbounded disk growth.
 - Active execution state for PTY and running tasks is not durably resumed after restart.
 - Persisted task records keep enough summary and inspection metadata to make `task show` and the TUI useful without loading entire worker transcripts.
-- PTY output is bounded and clipped rather than fully replayable.
+- PTY output is bounded and clipped for in-memory display, but full transcript history is available from disk.
 - Worker transcript persistence is stored as bounded preview and tail data, not as a second full transcript copy.
 
-This reflects an explicit decision: persist durable metadata and safe summaries first, not arbitrary live-process state.
+This reflects an explicit decision: persist durable metadata and safe summaries first, not arbitrary live-process state. PTY transcript persistence provides replay capability within and across app sessions.
 
 ## Tool and Permission Model
 
@@ -145,7 +148,9 @@ PTY support exists as a distinct long-lived execution surface.
 - PTY is not a replacement for the existing one-shot `shell` path.
 - PTY sessions are process-local and conservative.
 - PTY startup remains validated and permission-gated.
-- PTY output is bounded and clipped.
+- PTY output is bounded and clipped for in-memory display (4096 chars).
+- PTY transcripts are persisted to disk as JSONL files with bounded storage (default 1000 chunks per session).
+- PTY transcript replay is available via `GetTranscriptAsync` for ordered output retrieval.
 - Multi-session PTY management is supported.
 - One PTY session is always the current focused session for writes and live display.
 - Full PTY replay persistence and restart-time resume are intentionally not implemented.
@@ -310,6 +315,8 @@ These defaults are now part of the working project baseline:
 - patch-based edit review is the preferred model editing path
 - edit approval is batch-based and coarse
 - PTY remains bounded, clipped, and process-local
+- PTY transcripts are persisted to disk with bounded storage (1000 chunks/session)
+- PTY transcript replay is available for ordered output retrieval
 - tasks persist metadata but do not durably resume active execution
 - worker inspection is read-only
 - plugin execution remains subprocess-based
@@ -324,8 +331,10 @@ The following areas have been intentionally deferred:
 - exact screen-for-screen TypeScript parity
 - deeper autonomous orchestration and task graphs
 - durable resume for running tasks
-- richer PTY attach and detach workflows
-- full PTY replay persistence
+- true pseudo-terminal (node-pty or equivalent)
+- PTY overlay/full-screen terminal mode
+- PTY output pagination/scrolling in TUI
+- graceful interrupt signaling (SIGINT vs SIGTERM)
 - plugin-defined agents and broader marketplace or install flows
 - deep editor or IDE integrations beyond open-file and open-URL
 - voice and audio features

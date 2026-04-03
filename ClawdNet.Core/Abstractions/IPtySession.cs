@@ -15,4 +15,9 @@ public interface IPtySession : IAsyncDisposable
     Task CloseAsync(CancellationToken cancellationToken);
 
     Task TerminateAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns recent transcript chunks for this session. If tailCount is null, returns all available chunks.
+    /// </summary>
+    Task<IReadOnlyList<PtyTranscriptChunk>> GetTranscriptAsync(int? tailCount = null, CancellationToken cancellationToken = default);
 }

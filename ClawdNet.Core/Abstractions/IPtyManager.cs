@@ -21,4 +21,9 @@ public interface IPtyManager : IAsyncDisposable
     Task<PtySessionState?> ReadAsync(string? sessionId, CancellationToken cancellationToken);
 
     Task<int> PruneExitedAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns recent transcript chunks for a PTY session. Returns empty list if session not found.
+    /// </summary>
+    Task<IReadOnlyList<PtyTranscriptChunk>> GetTranscriptAsync(string sessionId, int? tailCount = null, CancellationToken cancellationToken = default);
 }

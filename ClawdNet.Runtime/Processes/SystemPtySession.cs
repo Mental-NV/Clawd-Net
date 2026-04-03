@@ -8,6 +8,7 @@ namespace ClawdNet.Runtime.Processes;
 public sealed class SystemPtySession : IPtySession
 {
     private const int MaxOutputChars = 4096;
+    private const int DefaultTranscriptTailCount = 100;
 
     private static readonly string[] s_shellCandidates =
     {
@@ -22,6 +23,7 @@ public sealed class SystemPtySession : IPtySession
     private readonly Process _process;
     private readonly Channel<PtyOutputChunk> _outputChannel = Channel.CreateUnbounded<PtyOutputChunk>();
     private readonly SemaphoreSlim _sync = new(1, 1);
+    private readonly IPtyTranscriptStore _transcriptStore;
     private readonly string _sessionId;
     private readonly string _command;
     private readonly string _workingDirectory;
@@ -31,8 +33,9 @@ public sealed class SystemPtySession : IPtySession
     private bool _disposeRequested;
     private int? _exitCode;
     private DateTimeOffset _updatedAtUtc;
+    private int _transcriptSequenceNumber;
 
-    private SystemPtySession(Process process, string sessionId, string command, string workingDirectory)
+    private SystemPtySession(Process process, string sessionId, string command, string workingDirectory, IPtyTranscriptStore transcriptStore)
     {
         _process = process;
         _sessionId = sessionId;
@@ -40,6 +43,7 @@ public sealed class SystemPtySession : IPtySession
         _workingDirectory = workingDirectory;
         _startedAtUtc = DateTimeOffset.UtcNow;
         _updatedAtUtc = _startedAtUtc;
+        _transcriptStore = transcriptStore;
     }
 
     public event Action<PtySessionState>? StateChanged;
@@ -69,7 +73,7 @@ public sealed class SystemPtySession : IPtySession
             "No suitable shell found for PTY. Expected one of: " + string.Join(", ", s_shellCandidates));
     }
 
-    public static Task<SystemPtySession> StartAsync(string command, string? workingDirectory, CancellationToken cancellationToken)
+    public static async Task<SystemPtySession> StartAsync(string command, string? workingDirectory, IPtyTranscriptStore transcriptStore, CancellationToken cancellationToken)
     {
         var cwd = string.IsNullOrWhiteSpace(workingDirectory) ? Environment.CurrentDirectory : workingDirectory!;
         var shell = ResolveShell();
@@ -90,9 +94,9 @@ public sealed class SystemPtySession : IPtySession
             throw new InvalidOperationException($"Failed to start PTY command '{command}'.");
         }
 
-        var session = new SystemPtySession(process, Guid.NewGuid().ToString("N"), command, cwd);
-        session.BeginMonitoring(cancellationToken);
-        return Task.FromResult(session);
+        var session = new SystemPtySession(process, Guid.NewGuid().ToString("N"), command, cwd, transcriptStore);
+        await session.BeginMonitoringAsync(cancellationToken);
+        return session;
     }
 
     public async IAsyncEnumerable<PtyOutputChunk> GetOutputAsync(
@@ -157,6 +161,13 @@ public sealed class SystemPtySession : IPtySession
         return Task.CompletedTask;
     }
 
+    public async Task<IReadOnlyList<PtyTranscriptChunk>> GetTranscriptAsync(int? tailCount = null, CancellationToken cancellationToken = default)
+    {
+        // If tailCount is null, use a sensible default to avoid loading massive transcripts
+        var count = tailCount ?? DefaultTranscriptTailCount;
+        return await _transcriptStore.ReadAsync(_sessionId, count, cancellationToken);
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_disposeRequested)
@@ -171,7 +182,7 @@ public sealed class SystemPtySession : IPtySession
         _sync.Dispose();
     }
 
-    private void BeginMonitoring(CancellationToken cancellationToken)
+    private async Task BeginMonitoringAsync(CancellationToken cancellationToken)
     {
         _ = MonitorReaderAsync(_process.StandardOutput, isError: false, cancellationToken);
         _ = MonitorReaderAsync(_process.StandardError, isError: true, cancellationToken);
@@ -230,6 +241,26 @@ public sealed class SystemPtySession : IPtySession
         {
             _sync.Release();
         }
+
+        // Write to transcript store (fire-and-forget, non-blocking)
+        var transcriptChunk = new PtyTranscriptChunk(
+            chunk.Text,
+            chunk.IsError,
+            Interlocked.Increment(ref _transcriptSequenceNumber),
+            chunk.TimestampUtc);
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _transcriptStore.AppendAsync(_sessionId, transcriptChunk);
+            }
+            catch (Exception ex)
+            {
+                // Suppress transcript write failures - sessions should continue even if transcript fails
+                System.Diagnostics.Debug.WriteLine($"Failed to write PTY transcript chunk: {ex.Message}");
+            }
+        });
 
         await _outputChannel.Writer.WriteAsync(chunk);
         NotifyStateChanged();

@@ -46,7 +46,23 @@ public sealed class PtyReadTool : ITool
             return new ToolExecutionResult(false, string.Empty, "No active PTY session.");
         }
 
-        return new ToolExecutionResult(true, FormatState(state));
+        var output = FormatState(state);
+
+        // Append transcript info if available
+        try
+        {
+            var transcript = await _ptyManager.GetTranscriptAsync(state.SessionId, tailCount: null, cancellationToken);
+            if (transcript.Count > 0)
+            {
+                output += $"{Environment.NewLine}{Environment.NewLine}transcript={transcript.Count} chunks persisted";
+            }
+        }
+        catch
+        {
+            // Suppress transcript read failures
+        }
+
+        return new ToolExecutionResult(true, output);
     }
 
     public static string FormatState(PtySessionState state)

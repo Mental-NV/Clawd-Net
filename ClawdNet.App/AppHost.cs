@@ -13,6 +13,7 @@ using ClawdNet.Runtime.Protocols;
 using ClawdNet.Runtime.Processes;
 using ClawdNet.Runtime.Providers;
 using ClawdNet.Runtime.Sessions;
+using ClawdNet.Runtime.Storage;
 using ClawdNet.Runtime.Tasks;
 using ClawdNet.Runtime.Tools;
 using ClawdNet.Terminal.Abstractions;
@@ -119,7 +120,8 @@ public sealed class AppHost : IAsyncDisposable
         _pluginRuntime = pluginRuntime ?? new PluginRuntime(_pluginCatalog, processRunner, builtInCommands);
         _mcpClient = mcpClient ?? new StdioMcpClient(dataRoot, _pluginCatalog);
         _lspClient = lspClient ?? new StdioLspClient(dataRoot, _pluginCatalog);
-        _ptyManager = ptyManager ?? new PtyManager();
+        var transcriptStore = new PtyTranscriptStore(dataRoot);
+        _ptyManager = ptyManager ?? new PtyManager(transcriptStore);
         _platformLauncher = platformLauncher ?? new DefaultPlatformLauncher(processRunner, new PlatformConfigurationLoader(dataRoot));
         IEditPreviewService editPreviewService = new EditPreviewService();
         IEditApplier editApplier = new EditApplier(_lspClient);
