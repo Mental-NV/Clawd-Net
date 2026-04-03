@@ -46,15 +46,9 @@ Unless explicitly redirected, execute future work in this order:
 
 ## Active Milestone
 
-- [v] PTY UX v3
-  - slice 1 landed: `docs/PLAN-05.md` (/pty status, /pty close-all commands)
-  - slice 2 landed: `docs/PLAN-05.md` (/pty attach, /pty detach commands)
-  - slice 3 landed: `docs/PLAN-06.md` (PTY transcript persistence)
-  - slice 4 landed: `docs/PLAN-07.md` (long-running PTY ergonomics: timeout, duration, line counting, background tracking, TUI enhancements)
-  - slice 5 landed: `docs/PLAN-08.md` (true pseudo-terminal via Porta.Pty, terminal-mode behavior, PTY resize support)
-  - slice 6 landed: `docs/PLAN-09.md` (PTY full-screen overlay mode, input forwarding, auto-exit on termination)
-  - slice 7 landed: `docs/PLAN-10.md` (special key handling, output pagination/scrolling in full-screen mode)
-  - deferred: ANSI/VT100 full terminal emulation, mouse support, bracketed paste (high complexity, low migration impact)
+- [/] Plugin Platform v4
+  - slice 1 landed: `docs/PLAN-11.md` (plugin lifecycle management: install/uninstall/enable/disable commands)
+  - remaining: additional hook kinds, plugin configuration API, health/status reporting
 
 ## Next Milestones
 
@@ -138,7 +132,7 @@ Unless explicitly redirected, execute future work in this order:
   - focus and attach semantics are clear
   - interrupt and transcript behavior remain predictable
 
-### [ ] Plugin Platform v4
+### [/] Plugin Platform v4
 
 - Priority: `P4`
 - Effort: `3-5 weeks`
@@ -158,6 +152,8 @@ Unless explicitly redirected, execute future work in this order:
 - Exit criteria:
   - plugin capability expands without breaking existing plugin contributions
   - extension points remain disciplined and testable
+- Current progress:
+  - slice 1 landed: plugin lifecycle management (install/uninstall/enable/disable commands)
 
 ### [ ] Provider and Platform Expansion v2
 
