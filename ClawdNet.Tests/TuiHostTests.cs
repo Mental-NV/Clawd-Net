@@ -178,6 +178,19 @@ public sealed class TuiHostTests : IDisposable
         Assert.Contains(terminal.RenderedFrames, frame => frame.Overlay is not null && frame.Overlay.Contains("Session Context", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task Tui_pre_fills_composer_from_initial_prompt()
+    {
+        var store = new JsonSessionStore(_dataRoot);
+        var terminal = new FakeTerminalSession(["exit"]);
+        var host = new TuiHost(terminal, store, new FakeQueryEngine(), new ConsoleTuiRenderer(new ConsoleTranscriptRenderer()), new FakePtyManager(), new FakeTaskManager());
+
+        var result = await host.RunAsync(new ReplLaunchOptions(InitialPrompt: "Explain this project"), CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains(terminal.RenderedFrames, frame => frame.ComposerPane.Contains("Explain this project", StringComparison.Ordinal));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dataRoot))

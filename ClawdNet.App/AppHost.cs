@@ -273,6 +273,7 @@ public sealed class AppHost : IAsyncDisposable
         string? sessionId = null;
         string? provider = null;
         string? model = null;
+        string? initialPrompt = null;
         var permissionMode = PermissionMode.Default;
 
         for (var index = 0; index < args.Count; index++)
@@ -292,12 +293,19 @@ public sealed class AppHost : IAsyncDisposable
                     permissionMode = ParsePermissionMode(args[++index]);
                     break;
                 default:
+                    // Treat a single non-flag argument as a positional prompt
+                    if (args.Count == 1 && !args[0].StartsWith("-", StringComparison.Ordinal))
+                    {
+                        initialPrompt = args[0];
+                        options = new ReplLaunchOptions(sessionId, model, permissionMode, provider, initialPrompt);
+                        return true;
+                    }
                     options = new ReplLaunchOptions();
                     return false;
             }
         }
 
-        options = new ReplLaunchOptions(sessionId, model, permissionMode, provider);
+        options = new ReplLaunchOptions(sessionId, model, permissionMode, provider, initialPrompt);
         return true;
     }
 

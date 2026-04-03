@@ -75,7 +75,7 @@ public sealed class TuiHost : ITuiHost
 
         _currentSession = session;
         _currentPermissionMode = options.PermissionMode;
-        _promptBuffer = string.Empty;
+        _promptBuffer = string.IsNullOrWhiteSpace(options.InitialPrompt) ? string.Empty : options.InitialPrompt.Trim();
         _focus = TuiFocusTarget.Composer;
         _drawer = null;
         _overlay = null;
