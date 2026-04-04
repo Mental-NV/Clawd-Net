@@ -155,20 +155,20 @@ Use this file to decide what to build next. Use [ARCHITECTURE.md](./ARCHITECTURE
 - Exit criteria:
   - [x] PTY and task parity rows are either verified or explicitly deviated with rationale
 
-### [ ] Workflow Command Recovery v1
+### [v] Workflow Command Recovery v1
 
 - Priority: P1
 - Depends on: Auth Parity and Provider Defaults v1
 - Why next: legacy workflow commands such as `/review`, `/init`, `/commit`, `/branch`, and `/diff` are still absent from the first-party `.NET` surface, and the chosen direction is now to restore most of them rather than only a minimal subset.
 - Deliverables:
-  - restore most legacy workflow commands that still belong in the first-party CLI
-  - draw and document the boundary between first-party workflow commands and plugin or skill territory
-  - keep any remaining workflow scope aligned with plugins and skills instead of ad hoc built-ins
+  - [x] restore most legacy workflow commands that still belong in the first-party CLI
+  - [x] draw and document the boundary between first-party workflow commands and plugin or skill territory
+  - [x] keep any remaining workflow scope aligned with plugins and skills instead of ad hoc built-ins
 - Main risks:
   - importing too much product-specific workflow behavior without clear ownership
   - overlapping built-ins with plugin or skill territory
 - Exit criteria:
-  - workflow UI rows in [PARITY.md](./PARITY.md) no longer remain untriaged
+  - [x] workflow UI rows in [PARITY.md](./PARITY.md) no longer remain untriaged
 
 ### [ ] Alias Compatibility v1
 

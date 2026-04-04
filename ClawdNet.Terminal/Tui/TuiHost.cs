@@ -684,6 +684,84 @@ public sealed class TuiHost : ITuiHost
                     return true;
                 }
 
+                if (prompt.Equals("/commit", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Inject commit workflow prompt
+                    var commitPrompt = @"## Context
+
+- Current git status: !`git status`
+- Current git diff (staged and unstaged changes): !`git diff HEAD`
+- Current branch: !`git branch --show-current`
+- Recent commits: !`git log --oneline -10`
+
+## Git Safety Protocol
+
+- NEVER update the git config
+- NEVER skip hooks (--no-verify, --no-gpg-sign, etc) unless the user explicitly requests it
+- CRITICAL: ALWAYS create NEW commits. NEVER use git commit --amend, unless the user explicitly requests it
+- Do not commit files that likely contain secrets (.env, credentials.json, etc). Warn the user if they specifically request to commit those files
+- If there are no changes to commit (i.e., no untracked files and no modifications), do not create an empty commit
+- Never use git commands with the -i flag (like git rebase -i or git add -i) since they require interactive input which is not supported
+
+## Your task
+
+Based on the above changes, create a single git commit:
+
+1. Analyze all staged changes and draft a commit message:
+   - Look at the recent commits above to follow this repository's commit message style
+   - Summarize the nature of the changes (new feature, enhancement, bug fix, refactoring, test, docs, etc.)
+   - Ensure the message accurately reflects the changes and their purpose (i.e. ""add"" means a wholly new feature, ""update"" means an enhancement to an existing feature, ""fix"" means a bug fix, etc.)
+   - Draft a concise (1-2 sentences) commit message that focuses on the ""why"" rather than the ""what""
+
+2. Stage relevant files and create the commit using HEREDOC syntax:
+```
+git commit -m ""$(cat <<'EOF'
+Commit message here.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+EOF
+)""
+```
+
+3. After committing, run `git status` to verify the commit was successful.";
+
+                    // Set prompt buffer to the workflow prompt so it gets submitted
+                    _promptBuffer = commitPrompt;
+                    AddActivityFeed("workflow | /commit");
+                    return true;
+                }
+
+                if (prompt.StartsWith("/review", StringComparison.OrdinalIgnoreCase))
+                {
+                    var args = prompt.Length > 7 ? prompt[7..].Trim() : string.Empty;
+                    var reviewPrompt = $@"You are an expert code reviewer. Follow these steps:
+
+1. If no PR number is provided in the args, run `gh pr list` to show open PRs
+2. If a PR number is provided, run `gh pr view <number>` to get PR details
+3. Run `gh pr diff <number>` to get the diff
+4. Analyze the changes and provide a thorough code review that includes:
+   - Overview of what the PR does
+   - Analysis of code quality and style
+   - Specific suggestions for improvements
+   - Any potential issues or risks
+
+Keep your review concise but thorough. Focus on:
+- Code correctness
+- Following project conventions
+- Performance implications
+- Test coverage
+- Security considerations
+
+Format your review with clear sections and bullet points.
+
+PR number: {args}";
+
+                    // Set prompt buffer to the workflow prompt so it gets submitted
+                    _promptBuffer = reviewPrompt;
+                    AddActivityFeed($"workflow | /review {args}");
+                    return true;
+                }
+
                 return false;
         }
     }
@@ -1324,12 +1402,16 @@ public sealed class TuiHost : ITuiHost
                         "/config",
                         "/rename <name>",
                         "/tag <tag>",
+                        "/effort [level]",
+                        "/thinking [mode]",
                         "/tasks",
                         "/tasks <id>",
                         "/pty",
                         "/pty <id>",
                         "/pty close <id>",
                         "/pty close-exited",
+                        "/commit",
+                        "/review [pr-number]",
                         "/activity",
                         "/open <path> [line] [column]",
                         "/browse <url>",
