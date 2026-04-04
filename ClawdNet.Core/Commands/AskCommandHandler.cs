@@ -32,6 +32,10 @@ Options:
   --system-prompt-file <path> Load system prompt from a file
   --settings <file-or-json>   Load settings from a file or inline JSON
   --add-dir <paths...>        Additional directories to scan for .claude/ config
+  --effort <level>            Effort level: low, medium (default), high
+  --thinking <mode>           Thinking mode: adaptive (default), enabled, disabled
+  --max-turns <N>             Maximum number of model turns (default: 8)
+  --max-budget-usd <N>        Maximum cost budget in USD
 
 Examples:
   clawdnet ask "What is 2+2?"
@@ -45,6 +49,10 @@ Examples:
   clawdnet ask --system-prompt "You are a helpful coding assistant" "explain this"
   clawdnet ask --system-prompt-file /path/to/prompt.txt "explain this"
   clawdnet ask --add-dir /path/to/other/project "explain this"
+  clawdnet ask --effort high "Explain quantum computing in detail"
+  clawdnet ask --thinking enabled "Solve this complex math problem"
+  clawdnet ask --max-turns 3 "Quick question"
+  clawdnet ask --max-budget-usd 0.01 "Write a summary"
 """;
 
     public bool CanHandle(CommandRequest request)
@@ -106,7 +114,7 @@ Examples:
                         prompt,
                         options.SessionId,
                         options.Model,
-                        8,
+                        options.MaxTurns,
                         options.PermissionMode,
                         null,
                         true,
@@ -115,7 +123,10 @@ Examples:
                         finalDisallowedTools,
                         systemPrompt,
                         options.SettingsFile,
-                        options.AddDirs),
+                        options.AddDirs,
+                        options.Effort,
+                        options.Thinking,
+                        options.MaxBudgetUsd),
                     cancellationToken))
                 {
                     var ndjsonLine = NdjsonSerializer.Serialize(streamEvent);
@@ -134,7 +145,7 @@ Examples:
                     prompt,
                     options.SessionId,
                     options.Model,
-                    8,
+                    options.MaxTurns,
                     options.PermissionMode,
                     null,
                     true,
@@ -143,7 +154,10 @@ Examples:
                     finalDisallowedTools,
                     systemPrompt,
                     options.SettingsFile,
-                    options.AddDirs),
+                    options.AddDirs,
+                    options.Effort,
+                    options.Thinking,
+                    options.MaxBudgetUsd),
                 cancellationToken);
 
             if (options.OutputFormat == "json" || options.Json)
@@ -370,6 +384,10 @@ Examples:
         string? settingsFile = null;
         var addDirs = new List<string>();
         var promptParts = new List<string>();
+        EffortLevel? effort = null;
+        ThinkingMode? thinking = null;
+        int maxTurns = 8;
+        decimal? maxBudgetUsd = null;
 
         for (var index = 0; index < args.Length; index++)
         {
@@ -414,6 +432,18 @@ Examples:
                 case "--add-dir" when index + 1 < args.Length:
                     addDirs.AddRange(ParseToolList(args[++index]));
                     break;
+                case "--effort" when index + 1 < args.Length:
+                    effort = ParseEffortLevel(args[++index]);
+                    break;
+                case "--thinking" when index + 1 < args.Length:
+                    thinking = ParseThinkingMode(args[++index]);
+                    break;
+                case "--max-turns" when index + 1 < args.Length:
+                    maxTurns = int.Parse(args[++index]);
+                    break;
+                case "--max-budget-usd" when index + 1 < args.Length:
+                    maxBudgetUsd = decimal.Parse(args[++index]);
+                    break;
                 default:
                     promptParts.Add(args[index]);
                     break;
@@ -449,7 +479,11 @@ Examples:
             disallowedTools.Count > 0 ? disallowedTools : null,
             systemPrompt,
             settingsFile,
-            addDirs.Count > 0 ? addDirs : null);
+            addDirs.Count > 0 ? addDirs : null,
+            effort,
+            thinking,
+            maxTurns,
+            maxBudgetUsd);
     }
 
     private static List<string> ParseToolList(string value)
@@ -494,6 +528,28 @@ Examples:
             "bypass-permissions" => PermissionMode.BypassPermissions,
             "bypass" => PermissionMode.BypassPermissions,
             _ => throw new ConversationStoreException($"Unknown permission mode '{value}'.")
+        };
+    }
+
+    private static EffortLevel ParseEffortLevel(string value)
+    {
+        return value.ToLowerInvariant() switch
+        {
+            "low" => EffortLevel.Low,
+            "medium" => EffortLevel.Medium,
+            "high" => EffortLevel.High,
+            _ => throw new ConversationStoreException($"Unknown effort level '{value}'. Use low, medium, or high.")
+        };
+    }
+
+    private static ThinkingMode ParseThinkingMode(string value)
+    {
+        return value.ToLowerInvariant() switch
+        {
+            "adaptive" => ThinkingMode.Adaptive,
+            "enabled" => ThinkingMode.Enabled,
+            "disabled" => ThinkingMode.Disabled,
+            _ => throw new ConversationStoreException($"Unknown thinking mode '{value}'. Use adaptive, enabled, or disabled.")
         };
     }
 
@@ -555,5 +611,9 @@ Examples:
         IReadOnlyCollection<string>? DisallowedTools,
         string? SystemPrompt,
         string? SettingsFile,
-        IReadOnlyCollection<string>? AddDirs);
+        IReadOnlyCollection<string>? AddDirs,
+        EffortLevel? Effort,
+        ThinkingMode? Thinking,
+        int MaxTurns,
+        decimal? MaxBudgetUsd);
 }

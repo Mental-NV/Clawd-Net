@@ -107,14 +107,13 @@ Use this file to decide what to build next. Use [ARCHITECTURE.md](./ARCHITECTURE
 - Main risks: opening a large auth surface without full product intent
 - Exit criteria: auth is no longer an unresolved P0 changed area
 
-### [/] Runtime Controls and Settings UI v1
+### [v] Runtime Controls and Settings UI v1
 
 - Priority: P1
 - Depends on: Safety and Approval UX Parity v1
 - Deliverables:
   - add missing high-value runtime controls such as effort/thinking/budget surfaces where migration requires them
   - add the first high-value config/model/settings interactive pickers in TUI
-- Main risks: adding knobs without clear provider/runtime support underneath
 - Exit criteria: the highest-value `P1` model/runtime/config UI gaps are no longer not-started
 
 ### [ ] Reporting and Workflow Surface Recovery

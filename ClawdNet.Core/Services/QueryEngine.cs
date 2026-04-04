@@ -118,10 +118,19 @@ public sealed class QueryEngine : IQueryEngine
 
         var turnsExecuted = 0;
         string assistantText = string.Empty;
+        decimal cumulativeCostUsd = 0m;
 
         while (turnsExecuted < request.MaxTurns)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            // Check budget before executing turn
+            if (request.MaxBudgetUsd.HasValue && cumulativeCostUsd >= request.MaxBudgetUsd.Value)
+            {
+                yield return new TurnFailedStreamEvent($"Budget exceeded: estimated cost ${cumulativeCostUsd:F4} USD exceeds limit of ${request.MaxBudgetUsd.Value:F4} USD.");
+                yield break;
+            }
+
             turnsExecuted++;
             var provider = await _providerCatalog.ResolveAsync(session.Provider, cancellationToken);
             var modelClient = _modelClientFactory.Create(provider);
@@ -134,7 +143,9 @@ public sealed class QueryEngine : IQueryEngine
                     .Where(tool => request.AllowTaskTools || !IsTaskToolName(tool.Name))
                     .Where(tool => FilterTools(tool.Name, request.AllowedTools, request.DisallowedTools))
                     .Select(tool => new ToolDefinition(tool.Name, tool.Description, tool.InputSchema))
-                    .ToArray());
+                    .ToArray(),
+                request.Effort,
+                request.Thinking);
 
             var toolCalls = new List<ToolCall>();
             var assistantDraft = string.Empty;

@@ -169,7 +169,7 @@ public sealed class HttpAnthropicMessageClient : IAnthropicMessageClient
             });
         }
 
-        return new JsonObject
+        var payload = new JsonObject
         {
             ["model"] = request.Model,
             ["max_tokens"] = 1024,
@@ -178,6 +178,26 @@ public sealed class HttpAnthropicMessageClient : IAnthropicMessageClient
             ["tools"] = tools,
             ["stream"] = stream
         };
+
+        // Add thinking parameter if requested
+        if (request.Thinking.HasValue)
+        {
+            var thinkingMode = request.Thinking.Value;
+            if (thinkingMode != ThinkingMode.Disabled)
+            {
+                // Set thinking budget tokens based on max_tokens
+                var budgetTokens = thinkingMode == ThinkingMode.Enabled ? 1024 : 512;
+                payload["thinking"] = new JsonObject
+                {
+                    ["type"] = thinkingMode == ThinkingMode.Enabled ? "enabled" : "adaptive",
+                    ["budget_tokens"] = budgetTokens
+                };
+                // Increase max_tokens when thinking is enabled to accommodate thinking output
+                payload["max_tokens"] = 4096;
+            }
+        }
+
+        return payload;
     }
 
     private static ModelResponse AggregateResponse(IEnumerable<ModelStreamEvent> streamEvents)

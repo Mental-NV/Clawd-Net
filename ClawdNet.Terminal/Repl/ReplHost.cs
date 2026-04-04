@@ -24,6 +24,8 @@ public sealed class ReplHost : IReplHost
     private string? _activityDetail;
     private ConversationSession? _currentSession;
     private PermissionMode _currentPermissionMode = PermissionMode.Default;
+    private EffortLevel? _currentEffort;
+    private ThinkingMode? _currentThinking;
     private int _visibleStartIndex;
     private StreamingAssistantDraft? _draft;
     private TerminalViewportState _viewport = new();
@@ -181,7 +183,22 @@ public sealed class ReplHost : IReplHost
                     _activeTurnCancellation = turnCancellation;
 
                     await foreach (var streamEvent in _queryEngine.StreamAskAsync(
-                                       new QueryRequest(prompt, session.Id, session.Model, 8, options.PermissionMode, _approvalHandler, true, session.Provider),
+                                       new QueryRequest(
+                                           prompt,
+                                           session.Id,
+                                           session.Model,
+                                           8,
+                                           options.PermissionMode,
+                                           _approvalHandler,
+                                           true,
+                                           session.Provider,
+                                           null,
+                                           null,
+                                           null,
+                                           null,
+                                           null,
+                                           _currentEffort,
+                                           _currentThinking),
                                        turnCancellation.Token))
                     {
                         switch (streamEvent)
@@ -389,7 +406,7 @@ public sealed class ReplHost : IReplHost
             case "/help":
                 SetActivity(
                     TerminalActivityState.ShowingHelp,
-                    "Commands: /help, /session, /provider, /permissions, /config, /rename, /tag, /tasks, /pty, /open, /browse, /clear, /bottom, /exit. Keys: Up/Down history, PgUp/PgDn scroll, End bottom, F3 PTY overlay in TUI.");
+                    "Commands: /help, /session, /provider, /permissions, /config, /rename, /tag, /effort, /thinking, /tasks, /pty, /open, /browse, /clear, /bottom, /exit. Keys: Up/Down history, PgUp/PgDn scroll, End bottom, F3 PTY overlay in TUI.");
                 return true;
             case "/session":
                 SetActivity(
@@ -511,6 +528,36 @@ public sealed class ReplHost : IReplHost
                     var url = prompt["/browse ".Length..].Trim();
                     var result = await _platformLauncher.OpenUrlAsync(url, cancellationToken);
                     SetActivity(result.Success ? TerminalActivityState.ShowingSession : TerminalActivityState.Error, result.Success ? result.Message : result.Error);
+                    return true;
+                }
+
+                if (prompt.StartsWith("/effort", StringComparison.OrdinalIgnoreCase))
+                {
+                    var args = prompt.StartsWith("/effort ", StringComparison.OrdinalIgnoreCase) ? prompt["/effort ".Length..].Trim() : string.Empty;
+                    if (string.IsNullOrWhiteSpace(args))
+                    {
+                        SetActivity(TerminalActivityState.ShowingSession, $"Current effort: {(_currentEffort?.ToString() ?? "not set")}");
+                    }
+                    else
+                    {
+                        _currentEffort = ParseEffortLevel(args);
+                        SetActivity(TerminalActivityState.ShowingSession, $"Effort set to {_currentEffort.Value.ToString().ToLowerInvariant()}");
+                    }
+                    return true;
+                }
+
+                if (prompt.StartsWith("/thinking", StringComparison.OrdinalIgnoreCase))
+                {
+                    var args = prompt.StartsWith("/thinking ", StringComparison.OrdinalIgnoreCase) ? prompt["/thinking ".Length..].Trim() : string.Empty;
+                    if (string.IsNullOrWhiteSpace(args))
+                    {
+                        SetActivity(TerminalActivityState.ShowingSession, $"Current thinking: {(_currentThinking?.ToString() ?? "not set")}");
+                    }
+                    else
+                    {
+                        _currentThinking = ParseThinkingMode(args);
+                        SetActivity(TerminalActivityState.ShowingSession, $"Thinking set to {_currentThinking.Value.ToString().ToLowerInvariant()}");
+                    }
                     return true;
                 }
 
@@ -979,6 +1026,28 @@ public sealed class ReplHost : IReplHost
             PermissionMode.AcceptEdits => "accept-edits",
             PermissionMode.BypassPermissions => "bypass-permissions",
             _ => permissionMode.ToString()
+        };
+    }
+
+    private static EffortLevel ParseEffortLevel(string value)
+    {
+        return value.ToLowerInvariant() switch
+        {
+            "low" => EffortLevel.Low,
+            "medium" => EffortLevel.Medium,
+            "high" => EffortLevel.High,
+            _ => throw new ConversationStoreException($"Unknown effort level '{value}'. Use low, medium, or high.")
+        };
+    }
+
+    private static ThinkingMode ParseThinkingMode(string value)
+    {
+        return value.ToLowerInvariant() switch
+        {
+            "adaptive" => ThinkingMode.Adaptive,
+            "enabled" => ThinkingMode.Enabled,
+            "disabled" => ThinkingMode.Disabled,
+            _ => throw new ConversationStoreException($"Unknown thinking mode '{value}'. Use adaptive, enabled, or disabled.")
         };
     }
 }

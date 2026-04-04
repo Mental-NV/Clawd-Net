@@ -22,6 +22,8 @@ public sealed class TuiHost : ITuiHost
 
     private ConversationSession? _currentSession;
     private PermissionMode _currentPermissionMode = PermissionMode.Default;
+    private EffortLevel? _currentEffort;
+    private ThinkingMode? _currentThinking;
     private TerminalViewportState _transcriptViewport = new(PageSize: 18);
     private TerminalViewportState _contextViewport = new(PageSize: 10);
     private StreamingAssistantDraft? _draft;
@@ -208,7 +210,22 @@ public sealed class TuiHost : ITuiHost
                     using var turnCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                     _activeTurnCancellation = turnCancellation;
                     await foreach (var streamEvent in _queryEngine.StreamAskAsync(
-                                       new QueryRequest(prompt, session.Id, session.Model, 8, options.PermissionMode, new TuiApprovalHandler(this), true, session.Provider),
+                                       new QueryRequest(
+                                           prompt,
+                                           session.Id,
+                                           session.Model,
+                                           8,
+                                           options.PermissionMode,
+                                           new TuiApprovalHandler(this),
+                                           true,
+                                           session.Provider,
+                                           null,
+                                           null,
+                                           null,
+                                           null,
+                                           null,
+                                           _currentEffort,
+                                           _currentThinking),
                                        turnCancellation.Token))
                     {
                         ApplyStreamEvent(streamEvent);
@@ -630,6 +647,42 @@ public sealed class TuiHost : ITuiHost
                         }
                         return true;
                     }
+                }
+
+                if (prompt.StartsWith("/effort", StringComparison.OrdinalIgnoreCase))
+                {
+                    var args = prompt.StartsWith("/effort ", StringComparison.OrdinalIgnoreCase) ? prompt["/effort ".Length..].Trim() : string.Empty;
+                    if (string.IsNullOrWhiteSpace(args))
+                    {
+                        _activityState = TerminalActivityState.ShowingSession;
+                        _activityDetail = $"Current effort: {(_currentEffort?.ToString() ?? "not set")}";
+                    }
+                    else
+                    {
+                        _currentEffort = ParseEffortLevel(args);
+                        _activityState = TerminalActivityState.ShowingSession;
+                        _activityDetail = $"Effort set to {_currentEffort.Value.ToString().ToLowerInvariant()}";
+                        AddActivityFeed($"settings | effort | {_currentEffort.Value.ToString().ToLowerInvariant()}");
+                    }
+                    return true;
+                }
+
+                if (prompt.StartsWith("/thinking", StringComparison.OrdinalIgnoreCase))
+                {
+                    var args = prompt.StartsWith("/thinking ", StringComparison.OrdinalIgnoreCase) ? prompt["/thinking ".Length..].Trim() : string.Empty;
+                    if (string.IsNullOrWhiteSpace(args))
+                    {
+                        _activityState = TerminalActivityState.ShowingSession;
+                        _activityDetail = $"Current thinking: {(_currentThinking?.ToString() ?? "not set")}";
+                    }
+                    else
+                    {
+                        _currentThinking = ParseThinkingMode(args);
+                        _activityState = TerminalActivityState.ShowingSession;
+                        _activityDetail = $"Thinking set to {_currentThinking.Value.ToString().ToLowerInvariant()}";
+                        AddActivityFeed($"settings | thinking | {_currentThinking.Value.ToString().ToLowerInvariant()}");
+                    }
+                    return true;
                 }
 
                 return false;
@@ -2153,5 +2206,27 @@ public sealed class TuiHost : ITuiHost
             [new TuiOverlaySection("Status", lines)]);
         _focus = TuiFocusTarget.Overlay;
         Render(clearScreen: true);
+    }
+
+    private static EffortLevel ParseEffortLevel(string value)
+    {
+        return value.ToLowerInvariant() switch
+        {
+            "low" => EffortLevel.Low,
+            "medium" => EffortLevel.Medium,
+            "high" => EffortLevel.High,
+            _ => throw new ConversationStoreException($"Unknown effort level '{value}'. Use low, medium, or high.")
+        };
+    }
+
+    private static ThinkingMode ParseThinkingMode(string value)
+    {
+        return value.ToLowerInvariant() switch
+        {
+            "adaptive" => ThinkingMode.Adaptive,
+            "enabled" => ThinkingMode.Enabled,
+            "disabled" => ThinkingMode.Disabled,
+            _ => throw new ConversationStoreException($"Unknown thinking mode '{value}'. Use adaptive, enabled, or disabled.")
+        };
     }
 }
