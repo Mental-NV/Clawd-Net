@@ -46,4 +46,10 @@ public sealed class FakePluginCatalog : IPluginCatalog
 
     public Task<PluginDefinition> DisableAsync(string pluginName, CancellationToken cancellationToken)
         => throw new NotImplementedException();
+
+    public Task UninstallAsync(string pluginName, CancellationToken cancellationToken, bool keepData = false)
+        => throw new NotImplementedException();
+
+    public Task<PluginValidationResult> ValidateAsync(string pluginPath, CancellationToken cancellationToken)
+        => throw new NotImplementedException();
 }

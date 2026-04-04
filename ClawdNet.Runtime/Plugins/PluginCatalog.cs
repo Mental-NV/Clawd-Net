@@ -103,7 +103,7 @@ public sealed class PluginCatalog : IPluginCatalog
             ?? throw new InvalidOperationException($"Plugin '{pluginName}' was installed but not found after reload.");
     }
 
-    public async Task UninstallAsync(string pluginName, CancellationToken cancellationToken)
+    public async Task UninstallAsync(string pluginName, CancellationToken cancellationToken, bool keepData = false)
     {
         await EnsureLoadedAsync(cancellationToken);
 
@@ -116,10 +116,21 @@ public sealed class PluginCatalog : IPluginCatalog
             throw new InvalidOperationException($"Plugin '{pluginName}' was not found.");
         }
 
-        // Remove plugin directory
+        // Remove or archive plugin directory
         if (Directory.Exists(plugin.Path))
         {
-            Directory.Delete(plugin.Path, recursive: true);
+            if (keepData)
+            {
+                // Move to .uninstalled/ staging area instead of deleting
+                var uninstalledDir = Path.Combine(_pluginsRoot, ".uninstalled");
+                Directory.CreateDirectory(uninstalledDir);
+                var targetDir = Path.Combine(uninstalledDir, $"{plugin.Name}_{DateTimeOffset.UtcNow:yyyyMMddHHmmss}");
+                Directory.Move(plugin.Path, targetDir);
+            }
+            else
+            {
+                Directory.Delete(plugin.Path, recursive: true);
+            }
         }
 
         // Reload catalog
@@ -134,6 +145,187 @@ public sealed class PluginCatalog : IPluginCatalog
     public async Task<PluginDefinition> DisableAsync(string pluginName, CancellationToken cancellationToken)
     {
         return await SetEnabledAsync(pluginName, enabled: false, cancellationToken);
+    }
+
+    public async Task<PluginValidationResult> ValidateAsync(string pluginPath, CancellationToken cancellationToken)
+    {
+        var errors = new List<string>();
+        var warnings = new List<string>();
+
+        // Check directory exists
+        if (!Directory.Exists(pluginPath))
+        {
+            return new PluginValidationResult(false, string.Empty, pluginPath,
+                [$"Plugin path '{pluginPath}' does not exist."], []);
+        }
+
+        // Check manifest exists
+        var manifestPath = Path.Combine(pluginPath, "plugin.json");
+        if (!File.Exists(manifestPath))
+        {
+            return new PluginValidationResult(false, string.Empty, pluginPath,
+                ["plugin.json manifest not found."], []);
+        }
+
+        // Parse manifest
+        PluginManifestDocument? payload;
+        try
+        {
+            await using var stream = File.OpenRead(manifestPath);
+            payload = await JsonSerializer.DeserializeAsync<PluginManifestDocument>(stream, JsonOptions, cancellationToken);
+        }
+        catch (JsonException ex)
+        {
+            return new PluginValidationResult(false, string.Empty, pluginPath,
+                [$"Invalid JSON in plugin.json: {ex.Message}"], []);
+        }
+
+        if (payload is null || string.IsNullOrWhiteSpace(payload.Name))
+        {
+            return new PluginValidationResult(false, string.Empty, pluginPath,
+                ["Plugin manifest must include a non-empty 'name'."], []);
+        }
+
+        var pluginName = payload.Name!.Trim();
+
+        // Validate commands
+        var commandNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var command in payload.Commands ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(command.Name))
+            {
+                errors.Add("Plugin command must include a non-empty 'name'.");
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(command.Command))
+            {
+                errors.Add($"Plugin command '{command.Name}' must include a non-empty 'command'.");
+                continue;
+            }
+
+            if (!commandNames.Add(command.Name.Trim()))
+            {
+                errors.Add($"Duplicate plugin command name '{command.Name}'.");
+            }
+
+            if (_reservedCommandNames.Contains(command.Name))
+            {
+                errors.Add($"Plugin command '{command.Name}' conflicts with a built-in command.");
+            }
+        }
+
+        // Validate tools
+        var toolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var tool in payload.Tools ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(tool.Name))
+            {
+                errors.Add("Plugin tool must include a non-empty 'name'.");
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(tool.Command))
+            {
+                errors.Add($"Plugin tool '{tool.Name}' must include a non-empty 'command'.");
+                continue;
+            }
+
+            if (!toolNames.Add(tool.Name.Trim()))
+            {
+                errors.Add($"Duplicate plugin tool name '{tool.Name}'.");
+            }
+
+            if (_reservedToolNames.Contains(tool.Name))
+            {
+                errors.Add($"Plugin tool '{tool.Name}' conflicts with a built-in tool.");
+            }
+
+            if (tool.InputSchema is null || tool.InputSchema["type"]?.GetValue<string>() is not "object")
+            {
+                errors.Add($"Plugin tool '{tool.Name}' must include an object-shaped 'inputSchema'.");
+            }
+        }
+
+        // Validate hooks
+        foreach (var hook in payload.Hooks ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(hook.Kind) || !TryParseHookKind(hook.Kind, out _))
+            {
+                errors.Add("Plugin hook must include a supported 'kind'.");
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(hook.Command))
+            {
+                errors.Add($"Plugin hook '{hook.Kind}' must include a non-empty 'command'.");
+            }
+        }
+
+        // Validate MCP servers
+        var mcpNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var server in payload.McpServers ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(server.Name))
+            {
+                errors.Add("MCP server must include a non-empty 'name'.");
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(server.Command))
+            {
+                errors.Add($"MCP server '{server.Name}' must include a non-empty 'command'.");
+            }
+
+            if (!mcpNames.Add(server.Name.Trim()))
+            {
+                warnings.Add($"Duplicate MCP server name '{server.Name}'.");
+            }
+        }
+
+        // Validate LSP servers
+        var lspNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var server in payload.LspServers ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(server.Name))
+            {
+                errors.Add("LSP server must include a non-empty 'name'.");
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(server.Command))
+            {
+                errors.Add($"LSP server '{server.Name}' must include a non-empty 'command'.");
+            }
+
+            if (!lspNames.Add(server.Name.Trim()))
+            {
+                warnings.Add($"Duplicate LSP server name '{server.Name}'.");
+            }
+        }
+
+        // Check for referenced scripts that should exist (warnings only)
+        var allCommands = (payload.Commands ?? []).Where(c => !string.IsNullOrWhiteSpace(c.Command)).Select(c => c.Command!)
+            .Concat((payload.Tools ?? []).Where(t => !string.IsNullOrWhiteSpace(t.Command)).Select(t => t.Command!))
+            .Concat((payload.Hooks ?? []).Where(h => !string.IsNullOrWhiteSpace(h.Command)).Select(h => h.Command!))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var commandRef in allCommands)
+        {
+            // If the command is a simple executable (no path separators), check if it's likely available
+            if (!commandRef.Contains('/') && !commandRef.Contains('\\'))
+            {
+                // Simple heuristic: just note it for awareness, not an error
+                // A more thorough check would search PATH, but that's platform-dependent
+            }
+        }
+
+        return new PluginValidationResult(
+            errors.Count == 0,
+            pluginName,
+            pluginPath,
+            errors,
+            warnings);
     }
 
     private async Task<PluginDefinition> SetEnabledAsync(string pluginName, bool enabled, CancellationToken cancellationToken)

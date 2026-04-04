@@ -211,13 +211,13 @@ The plugin platform is local, manifest-driven, and subprocess-based.
 
 - Plugins are discovered from the local filesystem.
 - Plugins can currently contribute MCP servers, LSP servers, commands, hooks, and tools.
-- The built-in plugin lifecycle supports local install, uninstall, enable, disable, inspect, status, and reload flows.
+- The built-in plugin lifecycle supports local install, uninstall (with `--keep-data` staging), enable, disable (including `--all`), inspect, status, reload, and validate flows.
 - Plugin execution is subprocess-only.
 - No in-process plugin loading is supported.
 - Invalid plugin extensions invalidate only that extension entry, not the whole plugin.
 - Built-in command and tool names are reserved and cannot be overridden by plugins.
 - Plugin reload must add, update, and remove plugin contributions cleanly without requiring app restart.
-- Marketplace-style discovery, validation, and update flows are still outside the current implementation scope.
+- Marketplace-style discovery and update flows are still outside the current implementation scope.
 
 Hook behavior is intentionally conservative:
 

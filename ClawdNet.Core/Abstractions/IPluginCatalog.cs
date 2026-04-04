@@ -10,7 +10,7 @@ public interface IPluginCatalog
 
     Task<PluginDefinition> InstallAsync(string sourcePath, CancellationToken cancellationToken);
 
-    Task UninstallAsync(string pluginName, CancellationToken cancellationToken);
+    Task UninstallAsync(string pluginName, CancellationToken cancellationToken, bool keepData = false);
 
     Task<PluginDefinition> EnableAsync(string pluginName, CancellationToken cancellationToken);
 
@@ -21,4 +21,13 @@ public interface IPluginCatalog
     Task<IReadOnlyList<LspServerDefinition>> GetLspServerDefinitionsAsync(CancellationToken cancellationToken);
 
     Task<IReadOnlyList<PluginToolDefinition>> GetToolDefinitionsAsync(CancellationToken cancellationToken);
+
+    Task<PluginValidationResult> ValidateAsync(string pluginPath, CancellationToken cancellationToken);
 }
+
+public sealed record PluginValidationResult(
+    bool IsValid,
+    string PluginName,
+    string PluginPath,
+    IReadOnlyList<string> Errors,
+    IReadOnlyList<string> Warnings);

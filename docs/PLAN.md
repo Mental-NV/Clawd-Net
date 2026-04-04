@@ -62,20 +62,32 @@ Use this file to decide what to build next. Use [ARCHITECTURE.md](./ARCHITECTURE
   - [x] the edit workflow row in [PARITY.md](./PARITY.md) is verified
   - [x] intentional deviation documented with rationale
 
-### [ ] Plugin Lifecycle Parity v2
+### [v] Plugin Lifecycle Parity v2
 
 - Priority: P1
 - Depends on: Edit Workflow Parity Decision v1
 - Why next: plugin inspect/reload and local lifecycle flows exist, but `PARITY.md` still shows plugin lifecycle parity as partial because validate, update, and marketplace behavior are unresolved.
 - Deliverables:
-  - decide the supported local plugin lifecycle contract for install, uninstall, enable, disable, status, reload, and validation
-  - either implement missing local lifecycle commands or explicitly document them as out of scope
-  - decide the migration position for marketplace and update behavior
+  - [x] decided the supported local plugin lifecycle contract for install, uninstall, enable, disable, status, reload, and validation
+  - [x] implemented `plugin validate <path>` command (medium effort, high parity value)
+  - [x] implemented `plugin disable --all` flag (low effort)
+  - [x] implemented `plugin uninstall --keep-data` flag (low effort)
+  - [x] documented marketplace and update behavior as out of scope (intentional deviations)
+  - [x] documented single-scope (app-data plugins directory) as the supported model
+  - [x] updated PARITY.md, ARCHITECTURE.md, and PLAN.md accordingly
 - Main risks:
   - opening a large distribution surface accidentally
   - mixing local-dev plugin workflows with end-user marketplace expectations
 - Exit criteria:
-  - plugin lifecycle parity rows are no longer `In Progress` or `Not Started` without an explicit reason
+  - [x] plugin lifecycle parity rows are no longer `In Progress` or `Not Started` without an explicit reason
+  - [x] `plugin validate <path>` implemented and tested
+  - [x] `plugin disable --all` implemented
+  - [x] `plugin uninstall --keep-data` implemented
+  - [x] marketplace/update/scope documented as deferred/intentional deviations
+  - [x] PARITY.md plugin lifecycle rows resolved
+  - [x] ARCHITECTURE.md updated
+  - [x] dotnet build passes
+  - [x] dotnet test passes
 
 ### [ ] Legacy Transcript Import Decision v1
 

@@ -199,4 +199,84 @@ public sealed class PluginCatalogTests : IDisposable
             Directory.Delete(_dataRoot, true);
         }
     }
+
+    [Fact]
+    public async Task Plugin_validate_returns_valid_for_good_plugin()
+    {
+        var pluginRoot = Path.Combine(_dataRoot, "plugins", "demo");
+        Directory.CreateDirectory(pluginRoot);
+        await File.WriteAllTextAsync(
+            Path.Combine(pluginRoot, "plugin.json"),
+            JsonSerializer.Serialize(new
+            {
+                name = "demo",
+                version = "1.0.0",
+                enabled = true,
+                mcpServers = new[]
+                {
+                    new { name = "echo", command = "python3", toolsReadOnly = true }
+                },
+                tools = new[]
+                {
+                    new
+                    {
+                        name = "inspect",
+                        description = "Inspect",
+                        command = "python3",
+                        category = "readOnly",
+                        inputSchema = new { type = "object", properties = new { value = new { type = "string" } } }
+                    }
+                }
+            }));
+        var catalog = new PluginCatalog(_dataRoot);
+
+        var result = await catalog.ValidateAsync(pluginRoot, CancellationToken.None);
+
+        Assert.True(result.IsValid);
+        Assert.Equal("demo", result.PluginName);
+        Assert.Empty(result.Errors);
+    }
+
+    [Fact]
+    public async Task Plugin_validate_returns_errors_for_missing_manifest()
+    {
+        var pluginRoot = Path.Combine(_dataRoot, "plugins", "missing");
+        Directory.CreateDirectory(pluginRoot);
+        var catalog = new PluginCatalog(_dataRoot);
+
+        var result = await catalog.ValidateAsync(pluginRoot, CancellationToken.None);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.Contains("plugin.json"));
+    }
+
+    [Fact]
+    public async Task Plugin_validate_returns_errors_for_nonexistent_path()
+    {
+        var catalog = new PluginCatalog(_dataRoot);
+
+        var result = await catalog.ValidateAsync("/nonexistent/path", CancellationToken.None);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.Contains("does not exist"));
+    }
+
+    [Fact]
+    public async Task Plugin_validate_returns_errors_for_missing_required_fields()
+    {
+        var pluginRoot = Path.Combine(_dataRoot, "plugins", "bad");
+        Directory.CreateDirectory(pluginRoot);
+        await File.WriteAllTextAsync(
+            Path.Combine(pluginRoot, "plugin.json"),
+            JsonSerializer.Serialize(new
+            {
+                version = "1.0.0"
+            }));
+        var catalog = new PluginCatalog(_dataRoot);
+
+        var result = await catalog.ValidateAsync(pluginRoot, CancellationToken.None);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.Contains("name"));
+    }
 }

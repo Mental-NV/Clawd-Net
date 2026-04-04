@@ -15,10 +15,11 @@ Usage: clawdnet plugin list
        clawdnet plugin show <name>
        clawdnet plugin reload
        clawdnet plugin install <path>
-       clawdnet plugin uninstall <name>
+       clawdnet plugin uninstall <name> [--keep-data]
        clawdnet plugin enable <name>
-       clawdnet plugin disable <name>
+       clawdnet plugin disable <name> | --all
        clawdnet plugin status <name>
+       clawdnet plugin validate <path>
 
 Manage locally installed plugins.
 
@@ -28,14 +29,19 @@ Commands:
   reload              Reload all plugins, MCP, and LSP servers
   install <path>      Install a plugin from a local path
   uninstall <name>    Uninstall a plugin by name
+  uninstall <name> --keep-data  Preserve plugin data directory
   enable <name>       Enable a plugin by name
   disable <name>      Disable a plugin by name
+  disable --all       Disable all plugins
   status <name>       Show detailed plugin status including invocation metrics
+  validate <path>     Validate a plugin manifest and configuration
 
 Examples:
   clawdnet plugin list
   clawdnet plugin show demo
   clawdnet plugin reload
+  clawdnet plugin validate /path/to/plugin
+  clawdnet plugin disable --all
 """;
 
     public bool CanHandle(CommandRequest request)
@@ -64,6 +70,7 @@ Examples:
             "enable" => await EnableAsync(context, request, cancellationToken),
             "disable" => await DisableAsync(context, request, cancellationToken),
             "status" => await StatusAsync(context, request, cancellationToken),
+            "validate" => await ValidateAsync(context, request, cancellationToken),
             _ => CommandExecutionResult.Failure($"Unknown plugin subcommand '{request.Arguments[1]}'.")
         };
     }
@@ -206,10 +213,15 @@ Examples:
         }
 
         var pluginName = request.Arguments[2];
+        var keepData = request.Arguments.Any(arg => string.Equals(arg, "--keep-data", StringComparison.OrdinalIgnoreCase));
+
         try
         {
-            await context.PluginCatalog.UninstallAsync(pluginName, cancellationToken);
-            return CommandExecutionResult.Success($"Plugin '{pluginName}' uninstalled successfully.");
+            await context.PluginCatalog.UninstallAsync(pluginName, cancellationToken, keepData);
+            var message = keepData
+                ? $"Plugin '{pluginName}' uninstalled. Data directory preserved in .uninstalled/."
+                : $"Plugin '{pluginName}' uninstalled successfully.";
+            return CommandExecutionResult.Success(message);
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("not found"))
         {
@@ -246,9 +258,38 @@ Examples:
 
     private static async Task<CommandExecutionResult> DisableAsync(CommandContext context, CommandRequest request, CancellationToken cancellationToken)
     {
+        // Check for --all flag
+        var disableAll = request.Arguments.Any(arg => string.Equals(arg, "--all", StringComparison.OrdinalIgnoreCase));
+
+        if (disableAll)
+        {
+            await context.PluginCatalog.ReloadAsync(cancellationToken);
+            if (context.PluginCatalog.Plugins.Count == 0)
+            {
+                return CommandExecutionResult.Success("No plugins to disable.");
+            }
+
+            var disabled = new List<string>();
+            foreach (var plugin in context.PluginCatalog.Plugins)
+            {
+                try
+                {
+                    await context.PluginCatalog.DisableAsync(plugin.Name, cancellationToken);
+                    disabled.Add(plugin.Name);
+                }
+                catch (Exception ex)
+                {
+                    // Log but continue
+                    disabled.Add($"{plugin.Name} (error: {ex.Message})");
+                }
+            }
+
+            return CommandExecutionResult.Success($"Disabled {disabled.Count} plugin(s): {string.Join(", ", disabled)}");
+        }
+
         if (request.Arguments.Count < 3)
         {
-            return CommandExecutionResult.Failure("plugin disable requires a plugin name: plugin disable <name>.");
+            return CommandExecutionResult.Failure("plugin disable requires a plugin name: plugin disable <name>, or --all to disable all plugins.");
         }
 
         var pluginName = request.Arguments[2];
@@ -331,5 +372,54 @@ Examples:
                 $"Errors: {(plugin.Errors.Count == 0 ? "(none)" : string.Join(Environment.NewLine, plugin.Errors.Select(error => $"  {error.Code}: {error.Message}")))}"
             ]);
         return CommandExecutionResult.Success(output);
+    }
+
+    private static async Task<CommandExecutionResult> ValidateAsync(CommandContext context, CommandRequest request, CancellationToken cancellationToken)
+    {
+        if (request.Arguments.Count < 3)
+        {
+            return CommandExecutionResult.Failure("plugin validate requires a path: plugin validate <path>.");
+        }
+
+        var pluginPath = request.Arguments[2];
+        var result = await context.PluginCatalog.ValidateAsync(pluginPath, cancellationToken);
+
+        var lines = new List<string>
+        {
+            $"Plugin: {result.PluginName}",
+            $"Path: {result.PluginPath}",
+            $"Valid: {result.IsValid}"
+        };
+
+        if (result.Errors.Count > 0)
+        {
+            lines.Add("");
+            lines.Add($"Errors ({result.Errors.Count}):");
+            foreach (var error in result.Errors)
+            {
+                lines.Add($"  ✗ {error}");
+            }
+        }
+
+        if (result.Warnings.Count > 0)
+        {
+            lines.Add("");
+            lines.Add($"Warnings ({result.Warnings.Count}):");
+            foreach (var warning in result.Warnings)
+            {
+                lines.Add($"  ⚠ {warning}");
+            }
+        }
+
+        if (result.IsValid && result.Warnings.Count == 0)
+        {
+            lines.Add("");
+            lines.Add("Plugin manifest is valid.");
+        }
+
+        var output = string.Join(Environment.NewLine, lines);
+        return result.IsValid
+            ? CommandExecutionResult.Success(output)
+            : CommandExecutionResult.Failure(output, 1);
     }
 }
