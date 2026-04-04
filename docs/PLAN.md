@@ -139,21 +139,21 @@ Use this file to decide what to build next. Use [ARCHITECTURE.md](./ARCHITECTURE
 - Exit criteria:
   - [x] config and settings picker rows in [PARITY.md](./PARITY.md) are either implemented, deferred with rationale, or intentionally changed
 
-### [ ] PTY and Task Workflow Parity v1
+### [v] PTY and Task Workflow Parity v1
 
 - Priority: P1
 - Depends on: Config UI and Interactive Settings Parity v1
 - Why next: PTY and task orchestration are both ahead of the legacy CLI in some ways, but the remaining parity work should be limited to targeted workflow mapping, not model replacement.
 - Deliverables:
-  - map only a small number of high-value legacy terminal workflows onto the current PTY model
-  - keep the worker-task model as the baseline and add only the minimum scheduled/background behavior that proves necessary
-  - close the highest-value UX and inspection gaps that block migration acceptance
-  - document any accepted deviations where the `.NET` model intentionally replaces the legacy flow
+  - [x] map only a small number of high-value legacy terminal workflows onto the current PTY model
+  - [x] keep the worker-task model as the baseline and add only the minimum scheduled/background behavior that proves necessary
+  - [x] close the highest-value UX and inspection gaps that block migration acceptance
+  - [x] document any accepted deviations where the `.NET` model intentionally replaces the legacy flow
 - Main risks:
   - trying to force old task semantics onto the new orchestration model
   - broadening PTY scope into a separate terminal product
 - Exit criteria:
-  - PTY and task parity rows are either verified or explicitly deviated with rationale
+  - [x] PTY and task parity rows are either verified or explicitly deviated with rationale
 
 ### [ ] Workflow Command Recovery v1
 
