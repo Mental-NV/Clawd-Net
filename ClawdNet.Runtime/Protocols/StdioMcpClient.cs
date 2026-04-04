@@ -453,4 +453,28 @@ public sealed class StdioMcpClient : IMcpClient
                     : argument));
         }
     }
+
+    public async Task<IReadOnlyList<McpServerDefinition>> GetServerDefinitionsAsync(CancellationToken cancellationToken)
+    {
+        var config = await _configurationLoader.LoadAsync(cancellationToken);
+        return config.Servers;
+    }
+
+    public async Task AddServerAsync(McpServerDefinition server, CancellationToken cancellationToken)
+    {
+        await _configurationLoader.AddServerAsync(server, cancellationToken);
+        // Reload state to reflect changes
+        await ReloadAsync(cancellationToken);
+    }
+
+    public async Task<bool> RemoveServerAsync(string name, CancellationToken cancellationToken)
+    {
+        var removed = await _configurationLoader.RemoveServerAsync(name, cancellationToken);
+        if (removed)
+        {
+            // Reload state to reflect changes
+            await ReloadAsync(cancellationToken);
+        }
+        return removed;
+    }
 }

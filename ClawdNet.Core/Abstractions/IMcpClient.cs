@@ -16,4 +16,19 @@ public interface IMcpClient : IAsyncDisposable
     Task<IReadOnlyList<McpToolDefinition>> GetToolsAsync(string? serverName, CancellationToken cancellationToken);
 
     Task<ToolExecutionResult> InvokeToolAsync(string serverName, string toolName, JsonNode? input, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Returns the raw server definitions from the configuration (for management commands).
+    /// </summary>
+    Task<IReadOnlyList<McpServerDefinition>> GetServerDefinitionsAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Adds or updates an MCP server definition in the configuration.
+    /// </summary>
+    Task AddServerAsync(McpServerDefinition server, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Removes an MCP server definition from the configuration.
+    /// </summary>
+    Task<bool> RemoveServerAsync(string name, CancellationToken cancellationToken);
 }

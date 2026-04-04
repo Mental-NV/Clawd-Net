@@ -49,5 +49,12 @@ public sealed class FakeMcpClient : IMcpClient
         return Task.FromResult(InvokeHandler(serverName, toolName, input));
     }
 
+    public Task<IReadOnlyList<McpServerDefinition>> GetServerDefinitionsAsync(CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<McpServerDefinition>>([]);
+
+    public Task AddServerAsync(McpServerDefinition server, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public Task<bool> RemoveServerAsync(string name, CancellationToken cancellationToken) => Task.FromResult(false);
+
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

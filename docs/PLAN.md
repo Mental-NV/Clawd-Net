@@ -77,18 +77,23 @@ Use this file to decide what to build next. Use [ARCHITECTURE.md](./ARCHITECTURE
 - Main risks: session-history mutation semantics and compatibility with persisted transcripts
 - Exit criteria: unresolved P0 session parity rows are either implemented and verified or moved to intentional deviations
 
-### [/] MCP Parity v2
+### [v] MCP Parity v2
 
 - Priority: P0/P1
 - Depends on: Legacy Context and Config Compatibility v1
 - Deliverables:
-  - finish the current P0 MCP inspection parity hardening
-  - implement or intentionally defer legacy MCP management actions (`add`, `remove`, `get`, reset/import flows)
-  - make the `.NET` MCP config contract and project-config story explicit
+  - `mcp get <server>` shows detailed server info (transport, command, args, env, headers, runtime state)
+  - `mcp add <name> <command> [args...]` adds stdio MCP servers with `-e/--env` and `--read-only-tools` flags
+  - `mcp remove <name>` removes servers from config
+  - `mcp add-json <name> <json>` adds servers from JSON string
+  - `McpServerDefinition` model extended with `Transport`, `Url`, `Headers` fields
+  - `McpConfigurationLoader` supports read/write with file locking
+  - `IMcpClient` extended with `GetServerDefinitionsAsync`, `AddServerAsync`, `RemoveServerAsync`
 - Main risks: config precedence conflicts between app-data config and project-local config
 - Exit criteria: `PARITY.md` MCP rows are either verified or intentionally deviated
+  - Deferred: `mcp serve`, `mcp add-from-claude-desktop`, `mcp reset-project-choices`, `mcp xaa`, `--mcp-config` root flag, `/mcp` slash command
 
-### [ ] Auth and Migration Compatibility Decision
+### [/] Auth and Migration Compatibility Decision
 
 - Priority: P0
 - Depends on: Legacy Context and Config Compatibility v1

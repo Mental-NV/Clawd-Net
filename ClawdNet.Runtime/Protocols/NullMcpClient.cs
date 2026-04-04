@@ -21,5 +21,12 @@ public sealed class NullMcpClient : IMcpClient
     public Task<ToolExecutionResult> InvokeToolAsync(string serverName, string toolName, JsonNode? input, CancellationToken cancellationToken)
         => Task.FromResult(new ToolExecutionResult(false, string.Empty, $"MCP server '{serverName}' is not available."));
 
+    public Task<IReadOnlyList<McpServerDefinition>> GetServerDefinitionsAsync(CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<McpServerDefinition>>([]);
+
+    public Task AddServerAsync(McpServerDefinition server, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public Task<bool> RemoveServerAsync(string name, CancellationToken cancellationToken) => Task.FromResult(false);
+
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
