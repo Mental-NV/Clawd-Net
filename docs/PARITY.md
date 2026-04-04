@@ -539,12 +539,9 @@ Current active `.NET` state and config are rooted under the app data directory:
   - `tasks.json`
   - `pty-transcripts/<session-id>.jsonl`
 
-The codebase still contains legacy settings and transcript helpers for
-`.claude`, `CLAUDE.md`, `.mcp.json`, and legacy JSONL transcripts.
-
-Those helpers are transitional implementation detail only. They are not part of
-the supported `.NET` configuration contract, which is limited to the app-data
+The supported `.NET` configuration contract is limited to the app-data
 configuration files under `config/` plus persisted session/task state.
+Legacy settings compatibility code has been fully removed.
 
 #### Relevant Environment Variables
 
@@ -715,16 +712,16 @@ This section documents the current compatibility position between the legacy CLI
 | Surface | Legacy TypeScript CLI | Current .NET CLI | Compatibility decision / current position |
 | --- | --- | --- | --- |
 | Global config root | `CLAUDE_CONFIG_DIR` or `~/.claude` | `<LocalApplicationData>/ClawdNet` or fallback `.clawdnet` next to app | Changed; app-data config is authoritative and legacy config roots are not a supported contract |
-| User settings | `~/.claude/settings.json` | App-data config is primary; explicit `--settings` is the supported input surface | Not a goal; any current legacy settings helpers are transitional and slated for removal |
-| User memory | `~/.claude/CLAUDE.md` | App-data config is primary; no supported legacy memory surface | Not a goal; any current memory compatibility behavior is transitional and slated for removal |
-| Project settings | `.claude/settings.json` | App-data config is primary | Not a goal; project `.claude` settings are not part of the supported `.NET` config contract |
-| Project-local overrides | `.claude/settings.local.json` | App-data config is primary | Not a goal; project `.claude` overrides are not part of the supported `.NET` config contract |
-| MCP config | project `.mcp.json` plus CLI `--mcp-config` | `config/mcp.json` under app data | Changed; project `.mcp.json` and `--mcp-config` are not supported config surfaces |
+| User settings | `~/.claude/settings.json` | App-data config is primary; explicit `--settings` is the supported input surface | **Verified**; legacy settings compatibility code has been fully removed; app-owned config is the only supported contract |
+| User memory | `~/.claude/CLAUDE.md` | App-data config is primary; no supported legacy memory surface | **Verified**; legacy memory compatibility code has been fully removed |
+| Project settings | `.claude/settings.json` | App-data config is primary | **Verified**; project `.claude` settings are not part of the supported `.NET` config contract; legacy loaders deleted |
+| Project-local overrides | `.claude/settings.local.json` | App-data config is primary | **Verified**; project `.claude` overrides are not part of the supported `.NET` config contract |
+| MCP config | project `.mcp.json` plus CLI `--mcp-config` | `config/mcp.json` under app data | **Verified**; project `.mcp.json` loading has been removed; legacy `ProjectMcpConfigLoader` deleted |
 | LSP config | legacy IDE/LSP settings flow | `config/lsp.json` under app data | Changed; not legacy-compatible |
 | Provider config | Anthropic-first, plus provider env toggles | `config/providers.json` and explicit provider catalog | Changed; new abstraction |
 | Platform config | Mostly implicit legacy shell/editor behavior | `config/platform.json` | Additive .NET behavior |
 | Plugins | `~/.claude/plugins`, marketplace, `--plugin-dir` | `plugins/<plugin-id>/plugin.json` under app data plus local install/enable/disable commands | Changed; local lifecycle exists, but marketplace and `--plugin-dir` parity do not |
-| Sessions | JSONL transcripts under `~/.claude/projects/...` | `sessions.json` store; `LegacyTranscriptReader` exists but is unused by current resume flow | Changed; no active legacy resume/import path yet, and this remains a separate migration decision from settings ownership |
+| Sessions | JSONL transcripts under `~/.claude/projects/...` | `sessions.json` store; no legacy transcript support | Changed; legacy `LegacyTranscriptReader` deleted; legacy transcript import/resume remains a separate migration decision |
 | Worker / task state | legacy task-related project files and UI flows | `tasks.json` store | Changed |
 | Secrets / auth | env, OAuth, keychain, setup/login flows | provider env vars and config files | Changed; `auth login` and `auth logout` provide env-var guidance, but OAuth and keychain remain intentionally absent |
 | Editor launch assumptions | legacy CLI uses shell/editor flows implicitly in several UIs | `.NET` uses configured launcher, `$VISUAL`, `$EDITOR`, `code -g`, then OS fallback | Changed, but currently explicit and additive |
@@ -743,7 +740,7 @@ The following behavior differences from the legacy CLI are explicitly accepted:
 
 | Area | Legacy Behavior | .NET Behavior | Rationale |
 | --- | --- | --- | --- |
-| Configuration and memory | Legacy CLI uses `~/.claude`, project `.claude/settings*.json`, `CLAUDE.md`, `CLAUDE_CONFIG_DIR`, and project `.mcp.json` as active settings and memory surfaces | `ClawdNet` uses only its own app-data config and state layout; legacy settings compatibility is not a goal | Keeping configuration app-owned avoids hidden precedence, cross-project leakage, and partial legacy behavior that is hard to reason about; any remaining legacy loaders are transitional implementation debt and should be removed |
+| Configuration and memory | Legacy CLI uses `~/.claude`, project `.claude/settings*.json`, `CLAUDE.md`, `CLAUDE_CONFIG_DIR`, and project `.mcp.json` as active settings and memory surfaces | `ClawdNet` uses only its own app-data config and state layout; legacy settings compatibility code has been fully removed | App-owned configuration avoids hidden precedence, cross-project leakage, and partial legacy behavior that is hard to reason about; all legacy loaders (`LegacyConfigPaths`, `LegacySettingsLoader`, `MemoryFileLoader`, `ProjectMcpConfigLoader`, `LegacyTranscriptReader`) have been deleted |
 | Auth | OAuth/keychain-based auth with interactive login dialogs, macOS keychain storage, token refresh | Env-var-only auth; `auth login`/`logout` provide setup/teardown guidance | OAuth/keychain primarily serves claude.ai subscriber experience (web billing, feature flags, MCP marketplace) which is out of scope; env-var auth covers all providers (Anthropic, OpenAI, Bedrock, Vertex, Foundry); matches legacy `--bare` mode; simpler and more CI-friendly |
 
 Use this section only after a behavior difference from the legacy CLI is explicitly accepted. Until then, record differences in Section C or Section E as `Changed` and treat them as unresolved parity work.

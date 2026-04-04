@@ -317,13 +317,8 @@ Implications of this decision:
 
 - legacy `~/.claude`, project `.claude/settings*.json`, `CLAUDE.md`, `CLAUDE_CONFIG_DIR`, and project `.mcp.json` are not supported settings surfaces
 - `--settings` is only an explicit `.NET` settings input, not a promise of legacy settings compatibility
-- any remaining legacy settings and memory loaders in the codebase are transitional migration code and should be removed from the active runtime
+- legacy settings compatibility code has been fully removed from the active runtime
 - legacy JSONL transcript import or resume, if kept at all, is a separate migration decision and not part of the settings model
-
-Current implementation note:
-
-- the codebase still contains helper classes such as `LegacyConfigPaths`, `LegacySettingsLoader`, `MemoryFileLoader`, `ProjectMcpConfigLoader`, and `LegacyTranscriptReader`
-- those helpers should be treated as implementation debt pending removal or isolation, not as part of the supported architecture
 
 ## Rollout and Compatibility Decisions
 

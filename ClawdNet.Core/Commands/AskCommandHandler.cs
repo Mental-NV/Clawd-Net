@@ -31,7 +31,6 @@ Options:
   --system-prompt <text>      Override the system prompt for this query
   --system-prompt-file <path> Load system prompt from a file
   --settings <file-or-json>   Load settings from a file or inline JSON
-  --add-dir <paths...>        Additional directories to scan for .claude/ config
   --effort <level>            Effort level: low, medium (default), high
   --thinking <mode>           Thinking mode: adaptive (default), enabled, disabled
   --max-turns <N>             Maximum number of model turns (default: 8)
@@ -48,7 +47,6 @@ Examples:
   clawdnet ask --disallowed-tools "shell" "inspect this"
   clawdnet ask --system-prompt "You are a helpful coding assistant" "explain this"
   clawdnet ask --system-prompt-file /path/to/prompt.txt "explain this"
-  clawdnet ask --add-dir /path/to/other/project "explain this"
   clawdnet ask --effort high "Explain quantum computing in detail"
   clawdnet ask --thinking enabled "Solve this complex math problem"
   clawdnet ask --max-turns 3 "Quick question"
@@ -93,16 +91,13 @@ Examples:
                 return CommandExecutionResult.Failure("ask requires a prompt.", 1);
             }
 
-            // Load and merge settings from --settings, --add-dir, and legacy config
-            var (mergedAllowedTools, mergedDisallowedTools, memoryContent) = await LoadSettingsAndMemoryAsync(
+            // Load and merge settings from --settings (app-native settings only)
+            var (mergedAllowedTools, mergedDisallowedTools, systemPrompt) = await LoadSettingsAndMemoryAsync(
                 context, options, cancellationToken);
 
             // Merge tool lists: explicit flags win over settings
             var finalAllowedTools = MergeToolLists(options.AllowedTools, mergedAllowedTools);
             var finalDisallowedTools = MergeToolLists(options.DisallowedTools, mergedDisallowedTools);
-
-            // Compose system prompt: explicit/system-prompt-file + memory content
-            var systemPrompt = ComposeSystemPrompt(options.SystemPrompt, memoryContent);
 
             if (options.OutputFormat == "stream-json")
             {
@@ -123,7 +118,6 @@ Examples:
                         finalDisallowedTools,
                         systemPrompt,
                         options.SettingsFile,
-                        options.AddDirs,
                         options.Effort,
                         options.Thinking,
                         options.MaxBudgetUsd),
@@ -154,7 +148,6 @@ Examples:
                     finalDisallowedTools,
                     systemPrompt,
                     options.SettingsFile,
-                    options.AddDirs,
                     options.Effort,
                     options.Thinking,
                     options.MaxBudgetUsd),
@@ -194,18 +187,17 @@ Examples:
         }
     }
 
-    private async Task<(IReadOnlyCollection<string>? AllowedTools, IReadOnlyCollection<string>? DisallowedTools, string? MemoryContent)> LoadSettingsAndMemoryAsync(
+    private async Task<(IReadOnlyCollection<string>? AllowedTools, IReadOnlyCollection<string>? DisallowedTools, string? SystemPrompt)> LoadSettingsAndMemoryAsync(
         CommandContext context,
         AskOptions options,
         CancellationToken cancellationToken)
     {
         var allowedTools = new List<string>();
         var disallowedTools = new List<string>();
-        string? memoryContent = null;
 
         _ = cancellationToken;
 
-        // Load settings from --settings file/JSON
+        // Load settings from --settings file/JSON only (app-native settings)
         if (!string.IsNullOrWhiteSpace(options.SettingsFile))
         {
             var settings = LoadSettingsFromString(options.SettingsFile);
@@ -215,27 +207,10 @@ Examples:
             }
         }
 
-        // Load settings and memory from --add-dir
-        if (options.AddDirs is not null)
-        {
-            foreach (var dir in options.AddDirs)
-            {
-                // Load settings from added directory
-                var dirSettings = context.LegacySettingsLoader?.LoadSettingsFromDirectory(dir);
-                if (dirSettings is not null)
-                {
-                    ExtractToolSettings(dirSettings, allowedTools, disallowedTools);
-                }
-            }
-
-            // Load memory files from added directories
-            memoryContent = context.MemoryFileLoader?.LoadMemory(additionalDirs: options.AddDirs);
-        }
-
         return (
             allowedTools.Count > 0 ? allowedTools : null,
             disallowedTools.Count > 0 ? disallowedTools : null,
-            memoryContent);
+            options.SystemPrompt);
     }
 
     private static Dictionary<string, object?>? LoadSettingsFromString(string value)
@@ -347,27 +322,6 @@ Examples:
         return null;
     }
 
-    private static string? ComposeSystemPrompt(string? explicitPrompt, string? memoryContent)
-    {
-        if (string.IsNullOrWhiteSpace(explicitPrompt) && string.IsNullOrWhiteSpace(memoryContent))
-        {
-            return null;
-        }
-
-        if (string.IsNullOrWhiteSpace(memoryContent))
-        {
-            return explicitPrompt;
-        }
-
-        if (string.IsNullOrWhiteSpace(explicitPrompt))
-        {
-            return memoryContent;
-        }
-
-        // Combine explicit prompt with memory content
-        return $"{explicitPrompt}\n\n---\n\n{memoryContent}";
-    }
-
     private static AskOptions Parse(string[] args)
     {
         string? sessionId = null;
@@ -382,7 +336,6 @@ Examples:
         string? systemPrompt = null;
         string? systemPromptFile = null;
         string? settingsFile = null;
-        var addDirs = new List<string>();
         var promptParts = new List<string>();
         EffortLevel? effort = null;
         ThinkingMode? thinking = null;
@@ -428,9 +381,6 @@ Examples:
                     break;
                 case "--settings" when index + 1 < args.Length:
                     settingsFile = args[++index];
-                    break;
-                case "--add-dir" when index + 1 < args.Length:
-                    addDirs.AddRange(ParseToolList(args[++index]));
                     break;
                 case "--effort" when index + 1 < args.Length:
                     effort = ParseEffortLevel(args[++index]);
@@ -479,7 +429,6 @@ Examples:
             disallowedTools.Count > 0 ? disallowedTools : null,
             systemPrompt,
             settingsFile,
-            addDirs.Count > 0 ? addDirs : null,
             effort,
             thinking,
             maxTurns,
@@ -611,7 +560,6 @@ Examples:
         IReadOnlyCollection<string>? DisallowedTools,
         string? SystemPrompt,
         string? SettingsFile,
-        IReadOnlyCollection<string>? AddDirs,
         EffortLevel? Effort,
         ThinkingMode? Thinking,
         int MaxTurns,

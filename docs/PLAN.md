@@ -27,24 +27,24 @@ Use this file to decide what to build next. Use [ARCHITECTURE.md](./ARCHITECTURE
 
 ## Roadmap
 
-### [/] Own Settings Only Refactor v1
+### [v] Own Settings Only Refactor v1
 
 - Priority: P0
-- Why now: the architecture and parity decision is now explicit: legacy settings compatibility is not a goal. The runtime still contains transitional `.claude` / `CLAUDE.md` / `CLAUDE_CONFIG_DIR` / project `.mcp.json` compatibility paths that should be removed so the app has only its own settings model.
+- Why now: the architecture and parity decision is now explicit: legacy settings compatibility is not a goal. The runtime still contained transitional `.claude` / `CLAUDE.md` / `CLAUDE_CONFIG_DIR` / project `.mcp.json` compatibility paths. These have been removed so the app has only its own settings model.
 - Deliverables:
-  - remove legacy settings, memory, and project `.mcp.json` compatibility from the active ask and interactive runtime paths
-  - narrow `--settings` to app-owned explicit settings input only
-  - remove or retire `--add-dir` as a legacy settings compatibility surface
-  - remove transitional references to legacy settings env vars from the supported runtime path
-  - update tests and docs so the supported contract is unambiguously app-owned configuration only
+  - [x] removed legacy settings, memory, and project `.mcp.json` compatibility from the active ask and interactive runtime paths
+  - [x] narrowed `--settings` to app-owned explicit settings input only
+  - [x] removed `--add-dir` as a legacy settings compatibility surface
+  - [x] removed transitional references to legacy settings env vars from the supported runtime path
+  - [x] updated tests and docs so the supported contract is unambiguously app-owned configuration only
 - Main risks:
   - leaving dead compatibility code connected to the runtime in subtle ways
   - breaking explicit `.NET` settings injection while removing legacy-scanning behavior
   - doc and help-text drift if parser surfaces remain after behavior changes
 - Exit criteria:
-  - the live runtime no longer depends on legacy settings compatibility helpers
-  - `ARCHITECTURE.md` and `PARITY.md` describe app-owned configuration as the only supported contract
-  - `PARITY.md` no longer treats legacy settings compatibility as an unresolved migration target
+  - [x] the live runtime no longer depends on legacy settings compatibility helpers
+  - [x] `ARCHITECTURE.md` and `PARITY.md` describe app-owned configuration as the only supported contract
+  - [x] `PARITY.md` no longer treats legacy settings compatibility as an unresolved migration target
 
 ### [ ] Edit Workflow Parity Decision v1
 

@@ -15,7 +15,6 @@ public sealed record QueryRequest(
     IReadOnlyCollection<string>? DisallowedTools = null,
     string? SystemPrompt = null,
     string? SettingsFile = null,
-    IReadOnlyCollection<string>? AddDirs = null,
     EffortLevel? Effort = null,
     ThinkingMode? Thinking = null,
     decimal? MaxBudgetUsd = null);

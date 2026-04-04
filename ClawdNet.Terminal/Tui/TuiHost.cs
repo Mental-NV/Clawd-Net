@@ -223,7 +223,6 @@ public sealed class TuiHost : ITuiHost
                                            null,
                                            null,
                                            null,
-                                           null,
                                            _currentEffort,
                                            _currentThinking),
                                        turnCancellation.Token))

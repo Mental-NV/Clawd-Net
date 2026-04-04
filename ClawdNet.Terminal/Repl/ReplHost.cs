@@ -196,7 +196,6 @@ public sealed class ReplHost : IReplHost
                                            null,
                                            null,
                                            null,
-                                           null,
                                            _currentEffort,
                                            _currentThinking),
                                        turnCancellation.Token))

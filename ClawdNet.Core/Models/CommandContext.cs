@@ -19,7 +19,4 @@ public sealed record CommandContext(
     IPlatformLauncher PlatformLauncher,
     IPermissionService PermissionService,
     ITranscriptRenderer TranscriptRenderer,
-    string Version,
-    LegacySettingsLoader? LegacySettingsLoader = null,
-    MemoryFileLoader? MemoryFileLoader = null,
-    ProjectMcpConfigLoader? ProjectMcpConfigLoader = null);
+    string Version);

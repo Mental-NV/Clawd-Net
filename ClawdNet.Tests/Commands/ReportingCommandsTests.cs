@@ -47,7 +47,7 @@ public sealed class ReportingCommandsTests : IDisposable
     {
         var client = new FakeAnthropicMessageClient(
             new ModelResponse("claude-sonnet-4-5", [new TextContentBlock("ok")], "end_turn"));
-        var host = new AppHost("1.0.0", _dataRoot, null, client);
+        var host = new AppHost("1.0.0", _dataRoot, client);
 
         var result = await host.RunAsync(["doctor"], CancellationToken.None);
 
@@ -66,7 +66,7 @@ public sealed class ReportingCommandsTests : IDisposable
     [Fact]
     public async Task Doctor_command_shows_no_sessions_when_empty()
     {
-        var host = new AppHost("1.0.0", _dataRoot, null, new FakeAnthropicMessageClient());
+        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient());
 
         var result = await host.RunAsync(["doctor"], CancellationToken.None);
 
@@ -77,7 +77,7 @@ public sealed class ReportingCommandsTests : IDisposable
     [Fact]
     public async Task Status_command_shows_no_session_when_empty()
     {
-        var host = new AppHost("1.0.0", _dataRoot, null, new FakeAnthropicMessageClient());
+        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient());
 
         var result = await host.RunAsync(["status"], CancellationToken.None);
 
@@ -88,7 +88,7 @@ public sealed class ReportingCommandsTests : IDisposable
     [Fact]
     public async Task Status_command_shows_session_after_creation()
     {
-        var host = new AppHost("1.0.0", _dataRoot, null, new FakeAnthropicMessageClient());
+        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient());
 
         await host.RunAsync(["session", "new", "Test Session"], CancellationToken.None);
         var result = await host.RunAsync(["status"], CancellationToken.None);
@@ -101,7 +101,7 @@ public sealed class ReportingCommandsTests : IDisposable
     [Fact]
     public async Task Status_command_with_missing_session_returns_some_result()
     {
-        var host = new AppHost("1.0.0", _dataRoot, null, new FakeAnthropicMessageClient());
+        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient());
 
         var result = await host.RunAsync(["status", "--session", "nonexistent"], CancellationToken.None);
 
@@ -112,7 +112,7 @@ public sealed class ReportingCommandsTests : IDisposable
     [Fact]
     public async Task Stats_command_shows_aggregate_statistics()
     {
-        var host = new AppHost("1.0.0", _dataRoot, null, new FakeAnthropicMessageClient());
+        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient());
 
         var result = await host.RunAsync(["stats"], CancellationToken.None);
 
@@ -127,7 +127,7 @@ public sealed class ReportingCommandsTests : IDisposable
     [Fact]
     public async Task Stats_command_with_missing_session_returns_some_result()
     {
-        var host = new AppHost("1.0.0", _dataRoot, null, new FakeAnthropicMessageClient());
+        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient());
 
         var result = await host.RunAsync(["stats", "--session", "nonexistent"], CancellationToken.None);
 
@@ -138,7 +138,7 @@ public sealed class ReportingCommandsTests : IDisposable
     [Fact]
     public async Task Usage_command_shows_aggregate_usage()
     {
-        var host = new AppHost("1.0.0", _dataRoot, null, new FakeAnthropicMessageClient());
+        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient());
 
         var result = await host.RunAsync(["usage"], CancellationToken.None);
 
@@ -150,7 +150,7 @@ public sealed class ReportingCommandsTests : IDisposable
     [Fact]
     public async Task Usage_command_shows_session_specific_usage()
     {
-        var host = new AppHost("1.0.0", _dataRoot, null, new FakeAnthropicMessageClient());
+        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient());
 
         await host.RunAsync(["session", "new", "Usage Test"], CancellationToken.None);
         var listResult = await host.RunAsync(["session", "list"], CancellationToken.None);
@@ -166,7 +166,7 @@ public sealed class ReportingCommandsTests : IDisposable
     [Fact]
     public async Task Usage_command_with_missing_session_returns_some_result()
     {
-        var host = new AppHost("1.0.0", _dataRoot, null, new FakeAnthropicMessageClient());
+        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient());
 
         var result = await host.RunAsync(["usage", "--session", "nonexistent"], CancellationToken.None);
 
@@ -177,7 +177,7 @@ public sealed class ReportingCommandsTests : IDisposable
     [Fact]
     public async Task Reporting_commands_are_listed_in_help()
     {
-        var host = new AppHost("1.0.0", _dataRoot, null, new FakeAnthropicMessageClient());
+        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient());
 
         var result = await host.RunAsync(["--help"], CancellationToken.None);
 
@@ -191,7 +191,7 @@ public sealed class ReportingCommandsTests : IDisposable
     [Fact]
     public async Task Reporting_commands_have_help_text()
     {
-        var host = new AppHost("1.0.0", _dataRoot, null, new FakeAnthropicMessageClient());
+        var host = new AppHost("1.0.0", _dataRoot, new FakeAnthropicMessageClient());
 
         var doctorHelp = await host.RunAsync(["doctor", "--help"], CancellationToken.None);
         var statusHelp = await host.RunAsync(["status", "--help"], CancellationToken.None);

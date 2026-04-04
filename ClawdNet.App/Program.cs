@@ -7,10 +7,7 @@ var dataRoot = string.IsNullOrWhiteSpace(localAppData)
     ? Path.Combine(AppContext.BaseDirectory, ".clawdnet")
     : Path.Combine(localAppData, "ClawdNet");
 
-// Resolve legacy config directory for compatibility with legacy TypeScript CLI
-var legacyConfigDir = LegacyConfigPaths.GetLegacyConfigDir();
-
-await using var host = new AppHost(version, dataRoot, legacyConfigDir);
+await using var host = new AppHost(version, dataRoot);
 var result = await host.RunAsync(args, CancellationToken.None);
 
 if (!string.IsNullOrWhiteSpace(result.StdOut))
