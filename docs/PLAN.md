@@ -60,17 +60,24 @@ Use this file to decide what to build next. Use [ARCHITECTURE.md](./ARCHITECTURE
 
 ## Next Milestones
 
-### [/] Session Branching and Resume Parity v2
+### [v] Session Branching and Resume Parity v2
 
 - Priority: P0
 - Depends on: Legacy Context and Config Compatibility v1
 - Deliverables:
-  - address remaining P0 session gaps such as `--from-pr`, `--fork-session`, and rewind-at-message behavior, or explicitly re-scope them
-  - continue improving session metadata parity (`--name`, rename/tag) where it materially affects resume/discovery workflows
+  - `--fork-session` flag implemented: creates new session with copied history when used with `--continue` or `--resume`
+  - `--name` / `-n` root flag implemented: sets session title at launch
+  - `session rename <id> <new-name>` CLI subcommand added
+  - `session tag <id> <tag-name>` CLI subcommand added (toggle behavior)
+  - `session fork <id> [title]` CLI subcommand added
+  - `/rename` slash command added to REPL (already existed in TUI)
+  - `/tag` slash command added to TUI and REPL
+  - `Tags` field added to `ConversationSession` model
+  - `session show` now displays tags
 - Main risks: session-history mutation semantics and compatibility with persisted transcripts
 - Exit criteria: unresolved P0 session parity rows are either implemented and verified or moved to intentional deviations
 
-### [ ] MCP Parity v2
+### [/] MCP Parity v2
 
 - Priority: P0/P1
 - Depends on: Legacy Context and Config Compatibility v1

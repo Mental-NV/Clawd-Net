@@ -306,6 +306,8 @@ public sealed class AppHost : IAsyncDisposable
         var permissionMode = PermissionMode.Default;
         var continueFlag = false;
         string? resumeQuery = null;
+        var forkSession = false;
+        string? name = null;
 
         for (var index = 0; index < args.Count; index++)
         {
@@ -334,12 +336,19 @@ public sealed class AppHost : IAsyncDisposable
                     // -r/--resume without value: signal resume mode with no specific query
                     resumeQuery = string.Empty;
                     break;
+                case "--fork-session":
+                    forkSession = true;
+                    break;
+                case "-n" when index + 1 < args.Count:
+                case "--name" when index + 1 < args.Count:
+                    name = args[++index];
+                    break;
                 default:
                     // Treat a single non-flag argument as a positional prompt
                     if (args.Count == 1 && !args[0].StartsWith("-", StringComparison.Ordinal))
                     {
                         initialPrompt = args[0];
-                        options = new ReplLaunchOptions(sessionId, model, permissionMode, provider, initialPrompt, continueFlag, resumeQuery);
+                        options = new ReplLaunchOptions(sessionId, model, permissionMode, provider, initialPrompt, continueFlag, resumeQuery, forkSession, name);
                         return true;
                     }
                     options = new ReplLaunchOptions();
@@ -347,7 +356,7 @@ public sealed class AppHost : IAsyncDisposable
             }
         }
 
-        options = new ReplLaunchOptions(sessionId, model, permissionMode, provider, initialPrompt, continueFlag, resumeQuery);
+        options = new ReplLaunchOptions(sessionId, model, permissionMode, provider, initialPrompt, continueFlag, resumeQuery, forkSession, name);
         return true;
     }
 

@@ -257,6 +257,9 @@ file sealed class TestConversationStore : ClawdNet.Core.Abstractions.IConversati
     public Task SaveAsync(ClawdNet.Core.Models.ConversationSession session, CancellationToken cancellationToken) => Task.CompletedTask;
     public Task<ClawdNet.Core.Models.ConversationSession?> GetMostRecentAsync(CancellationToken cancellationToken) => Task.FromResult<ClawdNet.Core.Models.ConversationSession?>(null);
     public Task<IReadOnlyList<ClawdNet.Core.Models.ConversationSession>> SearchAsync(string query, CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<ClawdNet.Core.Models.ConversationSession>>(new List<ClawdNet.Core.Models.ConversationSession>());
+    public Task<ClawdNet.Core.Models.ConversationSession> ForkAsync(string sessionId, string? newTitle, CancellationToken cancellationToken) => throw new System.NotImplementedException();
+    public Task RenameAsync(string sessionId, string newTitle, CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task UpdateTagsAsync(string sessionId, IReadOnlyList<string> tags, CancellationToken cancellationToken) => Task.CompletedTask;
 }
 
 file sealed class TestTaskStore : ClawdNet.Core.Abstractions.ITaskStore

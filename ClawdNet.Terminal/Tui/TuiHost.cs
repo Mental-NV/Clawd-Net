@@ -604,6 +604,34 @@ public sealed class TuiHost : ITuiHost
                     }
                 }
 
+                if (prompt.StartsWith("/tag ", StringComparison.OrdinalIgnoreCase))
+                {
+                    var tagName = prompt["/tag ".Length..].Trim();
+                    if (!string.IsNullOrWhiteSpace(tagName) && _currentSession is not null)
+                    {
+                        var currentTags = _currentSession.EffectiveTags.ToList();
+                        if (currentTags.Contains(tagName, StringComparer.OrdinalIgnoreCase))
+                        {
+                            currentTags.RemoveAll(t => string.Equals(t, tagName, StringComparison.OrdinalIgnoreCase));
+                            await _conversationStore.UpdateTagsAsync(_currentSession.Id, currentTags, cancellationToken);
+                            _currentSession = _currentSession with { Tags = currentTags, UpdatedAtUtc = DateTimeOffset.UtcNow };
+                            _activityState = TerminalActivityState.Ready;
+                            _activityDetail = $"Tag '{tagName}' removed.";
+                            AddActivityFeed($"session | tag | remove | '{tagName}'");
+                        }
+                        else
+                        {
+                            currentTags.Add(tagName);
+                            await _conversationStore.UpdateTagsAsync(_currentSession.Id, currentTags, cancellationToken);
+                            _currentSession = _currentSession with { Tags = currentTags, UpdatedAtUtc = DateTimeOffset.UtcNow };
+                            _activityState = TerminalActivityState.Ready;
+                            _activityDetail = $"Tag '{tagName}' added.";
+                            AddActivityFeed($"session | tag | add | '{tagName}'");
+                        }
+                        return true;
+                    }
+                }
+
                 return false;
         }
     }
@@ -762,13 +790,31 @@ public sealed class TuiHost : ITuiHost
                     string.IsNullOrWhiteSpace(options.Provider) ? mostRecent.Provider : options.Provider,
                     cancellationToken);
                 var resolvedModel = ResolveModel(mostRecent, options.Model, provider.Name, provider.DefaultModel);
+
+                // Handle --fork-session: create a new session with copied history
+                if (options.ForkSession)
+                {
+                    var forked = await _conversationStore.ForkAsync(mostRecent.Id, options.Name, cancellationToken);
+                    var forkedUpdated = forked with
+                    {
+                        Provider = provider.Name,
+                        Model = resolvedModel,
+                    };
+                    return forkedUpdated;
+                }
+
                 var updated = mostRecent with
                 {
                     Provider = provider.Name,
                     Model = resolvedModel
                 };
+                if (!string.IsNullOrWhiteSpace(options.Name))
+                {
+                    updated = updated with { Title = options.Name.Trim() };
+                }
                 if (!string.Equals(mostRecent.Provider, updated.Provider, StringComparison.OrdinalIgnoreCase) ||
-                    !string.Equals(mostRecent.Model, updated.Model, StringComparison.Ordinal))
+                    !string.Equals(mostRecent.Model, updated.Model, StringComparison.Ordinal) ||
+                    !string.IsNullOrWhiteSpace(options.Name))
                 {
                     await _conversationStore.SaveAsync(updated, cancellationToken);
                 }
@@ -794,13 +840,31 @@ public sealed class TuiHost : ITuiHost
                 string.IsNullOrWhiteSpace(options.Provider) ? matchedSession.Provider : options.Provider,
                 cancellationToken);
             var matchedModel = ResolveModel(matchedSession, options.Model, matchedProvider.Name, matchedProvider.DefaultModel);
+
+            // Handle --fork-session: create a new session with copied history
+            if (options.ForkSession)
+            {
+                var forked = await _conversationStore.ForkAsync(matchedSession.Id, options.Name, cancellationToken);
+                var forkedUpdated = forked with
+                {
+                    Provider = matchedProvider.Name,
+                    Model = matchedModel,
+                };
+                return forkedUpdated;
+            }
+
             var matchedUpdated = matchedSession with
             {
                 Provider = matchedProvider.Name,
                 Model = matchedModel
             };
+            if (!string.IsNullOrWhiteSpace(options.Name))
+            {
+                matchedUpdated = matchedUpdated with { Title = options.Name.Trim() };
+            }
             if (!string.Equals(matchedSession.Provider, matchedUpdated.Provider, StringComparison.OrdinalIgnoreCase) ||
-                !string.Equals(matchedSession.Model, matchedUpdated.Model, StringComparison.Ordinal))
+                !string.Equals(matchedSession.Model, matchedUpdated.Model, StringComparison.Ordinal) ||
+                !string.IsNullOrWhiteSpace(options.Name))
             {
                 await _conversationStore.SaveAsync(matchedUpdated, cancellationToken);
             }
@@ -821,13 +885,31 @@ public sealed class TuiHost : ITuiHost
                 string.IsNullOrWhiteSpace(options.Provider) ? mostRecent.Provider : options.Provider,
                 cancellationToken);
             var resolvedModel = ResolveModel(mostRecent, options.Model, provider.Name, provider.DefaultModel);
+
+            // Handle --fork-session: create a new session with copied history
+            if (options.ForkSession)
+            {
+                var forked = await _conversationStore.ForkAsync(mostRecent.Id, options.Name, cancellationToken);
+                var forkedUpdated = forked with
+                {
+                    Provider = provider.Name,
+                    Model = resolvedModel,
+                };
+                return forkedUpdated;
+            }
+
             var updated = mostRecent with
             {
                 Provider = provider.Name,
                 Model = resolvedModel
             };
+            if (!string.IsNullOrWhiteSpace(options.Name))
+            {
+                updated = updated with { Title = options.Name.Trim() };
+            }
             if (!string.Equals(mostRecent.Provider, updated.Provider, StringComparison.OrdinalIgnoreCase) ||
-                !string.Equals(mostRecent.Model, updated.Model, StringComparison.Ordinal))
+                !string.Equals(mostRecent.Model, updated.Model, StringComparison.Ordinal) ||
+                !string.IsNullOrWhiteSpace(options.Name))
             {
                 await _conversationStore.SaveAsync(updated, cancellationToken);
             }
@@ -853,8 +935,13 @@ public sealed class TuiHost : ITuiHost
                 Provider = provider.Name,
                 Model = resolvedModel
             };
+            if (!string.IsNullOrWhiteSpace(options.Name))
+            {
+                updated = updated with { Title = options.Name.Trim() };
+            }
             if (!string.Equals(existing.Provider, updated.Provider, StringComparison.OrdinalIgnoreCase) ||
-                !string.Equals(existing.Model, updated.Model, StringComparison.Ordinal))
+                !string.Equals(existing.Model, updated.Model, StringComparison.Ordinal) ||
+                !string.IsNullOrWhiteSpace(options.Name))
             {
                 await _conversationStore.SaveAsync(updated, cancellationToken);
             }
@@ -869,7 +956,8 @@ public sealed class TuiHost : ITuiHost
             : !string.IsNullOrWhiteSpace(resolvedProvider.DefaultModel)
                 ? resolvedProvider.DefaultModel!
                 : throw new ModelProviderConfigurationException(resolvedProvider.Name, "Model must be specified because the provider has no default model configured.");
-        return await _conversationStore.CreateAsync("TUI session", model, cancellationToken, resolvedProvider.Name);
+        var sessionTitle = !string.IsNullOrWhiteSpace(options.Name) ? options.Name.Trim() : "TUI session";
+        return await _conversationStore.CreateAsync(sessionTitle, model, cancellationToken, resolvedProvider.Name);
     }
 
     private async Task<ConversationSession> UpdateSessionProviderAsync(
@@ -1182,6 +1270,8 @@ public sealed class TuiHost : ITuiHost
                         "/provider <name> [model]",
                         "/permissions",
                         "/config",
+                        "/rename <name>",
+                        "/tag <tag>",
                         "/tasks",
                         "/tasks <id>",
                         "/pty",

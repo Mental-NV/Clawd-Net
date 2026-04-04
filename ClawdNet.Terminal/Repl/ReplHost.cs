@@ -389,7 +389,7 @@ public sealed class ReplHost : IReplHost
             case "/help":
                 SetActivity(
                     TerminalActivityState.ShowingHelp,
-                    "Commands: /help, /session, /provider, /permissions, /config, /tasks, /pty, /open, /browse, /clear, /bottom, /exit. Keys: Up/Down history, PgUp/PgDn scroll, End bottom, F3 PTY overlay in TUI.");
+                    "Commands: /help, /session, /provider, /permissions, /config, /rename, /tag, /tasks, /pty, /open, /browse, /clear, /bottom, /exit. Keys: Up/Down history, PgUp/PgDn scroll, End bottom, F3 PTY overlay in TUI.");
                 return true;
             case "/session":
                 SetActivity(
@@ -435,6 +435,50 @@ public sealed class ReplHost : IReplHost
                 ShowConfigInfo();
                 return true;
             default:
+                if (prompt.StartsWith("/rename ", StringComparison.OrdinalIgnoreCase))
+                {
+                    var newName = prompt["/rename ".Length..].Trim();
+                    if (!string.IsNullOrWhiteSpace(newName))
+                    {
+                        _currentSession = _currentSession with { Title = newName };
+                        await _conversationStore.SaveAsync(_currentSession, cancellationToken);
+                        SetActivity(TerminalActivityState.ShowingSession, $"Session renamed to '{_currentSession.Title}'");
+                    }
+                    else
+                    {
+                        SetActivity(TerminalActivityState.Error, "Usage: /rename <new-name>");
+                    }
+                    return true;
+                }
+
+                if (prompt.StartsWith("/tag ", StringComparison.OrdinalIgnoreCase))
+                {
+                    var tagName = prompt["/tag ".Length..].Trim();
+                    if (!string.IsNullOrWhiteSpace(tagName))
+                    {
+                        var currentTags = _currentSession.EffectiveTags.ToList();
+                        if (currentTags.Contains(tagName, StringComparer.OrdinalIgnoreCase))
+                        {
+                            currentTags.RemoveAll(t => string.Equals(t, tagName, StringComparison.OrdinalIgnoreCase));
+                            await _conversationStore.UpdateTagsAsync(_currentSession.Id, currentTags, cancellationToken);
+                            _currentSession = _currentSession with { Tags = currentTags };
+                            SetActivity(TerminalActivityState.ShowingSession, $"Tag '{tagName}' removed.");
+                        }
+                        else
+                        {
+                            currentTags.Add(tagName);
+                            await _conversationStore.UpdateTagsAsync(_currentSession.Id, currentTags, cancellationToken);
+                            _currentSession = _currentSession with { Tags = currentTags };
+                            SetActivity(TerminalActivityState.ShowingSession, $"Tag '{tagName}' added.");
+                        }
+                    }
+                    else
+                    {
+                        SetActivity(TerminalActivityState.Error, "Usage: /tag <tag-name>");
+                    }
+                    return true;
+                }
+
                 if (prompt.StartsWith("/provider ", StringComparison.OrdinalIgnoreCase))
                 {
                     var args = prompt["/provider ".Length..].Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -492,13 +536,31 @@ public sealed class ReplHost : IReplHost
                     string.IsNullOrWhiteSpace(options.Provider) ? mostRecent.Provider : options.Provider,
                     cancellationToken);
                 var resolvedModel = ResolveModel(mostRecent, options.Model, provider.Name, provider.DefaultModel);
+
+                // Handle --fork-session: create a new session with copied history
+                if (options.ForkSession)
+                {
+                    var forked = await _conversationStore.ForkAsync(mostRecent.Id, options.Name, cancellationToken);
+                    var forkedUpdated = forked with
+                    {
+                        Provider = provider.Name,
+                        Model = resolvedModel,
+                    };
+                    return forkedUpdated;
+                }
+
                 var updated = mostRecent with
                 {
                     Provider = provider.Name,
                     Model = resolvedModel
                 };
+                if (!string.IsNullOrWhiteSpace(options.Name))
+                {
+                    updated = updated with { Title = options.Name.Trim() };
+                }
                 if (!string.Equals(mostRecent.Provider, updated.Provider, StringComparison.OrdinalIgnoreCase) ||
-                    !string.Equals(mostRecent.Model, updated.Model, StringComparison.Ordinal))
+                    !string.Equals(mostRecent.Model, updated.Model, StringComparison.Ordinal) ||
+                    !string.IsNullOrWhiteSpace(options.Name))
                 {
                     await _conversationStore.SaveAsync(updated, cancellationToken);
                 }
@@ -524,13 +586,31 @@ public sealed class ReplHost : IReplHost
                 string.IsNullOrWhiteSpace(options.Provider) ? matchedSession.Provider : options.Provider,
                 cancellationToken);
             var matchedModel = ResolveModel(matchedSession, options.Model, matchedProvider.Name, matchedProvider.DefaultModel);
+
+            // Handle --fork-session: create a new session with copied history
+            if (options.ForkSession)
+            {
+                var forked = await _conversationStore.ForkAsync(matchedSession.Id, options.Name, cancellationToken);
+                var forkedUpdated = forked with
+                {
+                    Provider = matchedProvider.Name,
+                    Model = matchedModel,
+                };
+                return forkedUpdated;
+            }
+
             var matchedUpdated = matchedSession with
             {
                 Provider = matchedProvider.Name,
                 Model = matchedModel
             };
+            if (!string.IsNullOrWhiteSpace(options.Name))
+            {
+                matchedUpdated = matchedUpdated with { Title = options.Name.Trim() };
+            }
             if (!string.Equals(matchedSession.Provider, matchedUpdated.Provider, StringComparison.OrdinalIgnoreCase) ||
-                !string.Equals(matchedSession.Model, matchedUpdated.Model, StringComparison.Ordinal))
+                !string.Equals(matchedSession.Model, matchedUpdated.Model, StringComparison.Ordinal) ||
+                !string.IsNullOrWhiteSpace(options.Name))
             {
                 await _conversationStore.SaveAsync(matchedUpdated, cancellationToken);
             }
@@ -551,13 +631,31 @@ public sealed class ReplHost : IReplHost
                 string.IsNullOrWhiteSpace(options.Provider) ? mostRecent.Provider : options.Provider,
                 cancellationToken);
             var resolvedModel = ResolveModel(mostRecent, options.Model, provider.Name, provider.DefaultModel);
+
+            // Handle --fork-session: create a new session with copied history
+            if (options.ForkSession)
+            {
+                var forked = await _conversationStore.ForkAsync(mostRecent.Id, options.Name, cancellationToken);
+                var forkedUpdated = forked with
+                {
+                    Provider = provider.Name,
+                    Model = resolvedModel,
+                };
+                return forkedUpdated;
+            }
+
             var updated = mostRecent with
             {
                 Provider = provider.Name,
                 Model = resolvedModel
             };
+            if (!string.IsNullOrWhiteSpace(options.Name))
+            {
+                updated = updated with { Title = options.Name.Trim() };
+            }
             if (!string.Equals(mostRecent.Provider, updated.Provider, StringComparison.OrdinalIgnoreCase) ||
-                !string.Equals(mostRecent.Model, updated.Model, StringComparison.Ordinal))
+                !string.Equals(mostRecent.Model, updated.Model, StringComparison.Ordinal) ||
+                !string.IsNullOrWhiteSpace(options.Name))
             {
                 await _conversationStore.SaveAsync(updated, cancellationToken);
             }
@@ -583,8 +681,13 @@ public sealed class ReplHost : IReplHost
                 Provider = provider.Name,
                 Model = resolvedModel
             };
+            if (!string.IsNullOrWhiteSpace(options.Name))
+            {
+                updated = updated with { Title = options.Name.Trim() };
+            }
             if (!string.Equals(existing.Provider, updated.Provider, StringComparison.OrdinalIgnoreCase) ||
-                !string.Equals(existing.Model, updated.Model, StringComparison.Ordinal))
+                !string.Equals(existing.Model, updated.Model, StringComparison.Ordinal) ||
+                !string.IsNullOrWhiteSpace(options.Name))
             {
                 await _conversationStore.SaveAsync(updated, cancellationToken);
             }
@@ -599,7 +702,8 @@ public sealed class ReplHost : IReplHost
             : !string.IsNullOrWhiteSpace(resolvedProvider.DefaultModel)
                 ? resolvedProvider.DefaultModel!
                 : throw new ModelProviderConfigurationException(resolvedProvider.Name, "Model must be specified because the provider has no default model configured.");
-        return await _conversationStore.CreateAsync("Interactive session", model, cancellationToken, resolvedProvider.Name);
+        var sessionTitle = !string.IsNullOrWhiteSpace(options.Name) ? options.Name.Trim() : "Interactive session";
+        return await _conversationStore.CreateAsync(sessionTitle, model, cancellationToken, resolvedProvider.Name);
     }
 
     private async Task<ConversationSession> UpdateSessionProviderAsync(

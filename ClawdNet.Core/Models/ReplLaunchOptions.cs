@@ -7,4 +7,6 @@ public sealed record ReplLaunchOptions(
     string? Provider = null,
     string? InitialPrompt = null,
     bool Continue = false,
-    string? ResumeQuery = null);
+    string? ResumeQuery = null,
+    bool ForkSession = false,
+    string? Name = null);

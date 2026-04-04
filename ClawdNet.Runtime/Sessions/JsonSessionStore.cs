@@ -158,6 +158,92 @@ public sealed class JsonSessionStore : IConversationStore
         }
     }
 
+    public async Task<ConversationSession> ForkAsync(string sessionId, string? newTitle, CancellationToken cancellationToken)
+    {
+        await _sync.WaitAsync(cancellationToken);
+        try
+        {
+            var sessions = await ReadSessionsAsync(cancellationToken);
+            var source = sessions.FirstOrDefault(s =>
+                string.Equals(s.Id, sessionId, StringComparison.OrdinalIgnoreCase));
+            if (source is null)
+            {
+                throw new ConversationStoreException($"Session '{sessionId}' was not found and cannot be forked.");
+            }
+
+            var timestamp = DateTimeOffset.UtcNow;
+            var forkedSession = source with
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Title = string.IsNullOrWhiteSpace(newTitle) ? source.Title : newTitle.Trim(),
+                CreatedAtUtc = timestamp,
+                UpdatedAtUtc = timestamp,
+                // Copy messages as a new list to avoid shared references
+                Messages = source.Messages.ToList(),
+            };
+
+            sessions.Add(forkedSession);
+            await WriteSessionsAsync(sessions, cancellationToken);
+            return forkedSession;
+        }
+        finally
+        {
+            _sync.Release();
+        }
+    }
+
+    public async Task RenameAsync(string sessionId, string newTitle, CancellationToken cancellationToken)
+    {
+        await _sync.WaitAsync(cancellationToken);
+        try
+        {
+            var sessions = await ReadSessionsAsync(cancellationToken);
+            var index = sessions.FindIndex(s =>
+                string.Equals(s.Id, sessionId, StringComparison.OrdinalIgnoreCase));
+            if (index < 0)
+            {
+                throw new ConversationStoreException($"Session '{sessionId}' was not found and cannot be renamed.");
+            }
+
+            sessions[index] = sessions[index] with
+            {
+                Title = newTitle.Trim(),
+                UpdatedAtUtc = DateTimeOffset.UtcNow,
+            };
+            await WriteSessionsAsync(sessions, cancellationToken);
+        }
+        finally
+        {
+            _sync.Release();
+        }
+    }
+
+    public async Task UpdateTagsAsync(string sessionId, IReadOnlyList<string> tags, CancellationToken cancellationToken)
+    {
+        await _sync.WaitAsync(cancellationToken);
+        try
+        {
+            var sessions = await ReadSessionsAsync(cancellationToken);
+            var index = sessions.FindIndex(s =>
+                string.Equals(s.Id, sessionId, StringComparison.OrdinalIgnoreCase));
+            if (index < 0)
+            {
+                throw new ConversationStoreException($"Session '{sessionId}' was not found and tags cannot be updated.");
+            }
+
+            sessions[index] = sessions[index] with
+            {
+                Tags = tags.ToList(),
+                UpdatedAtUtc = DateTimeOffset.UtcNow,
+            };
+            await WriteSessionsAsync(sessions, cancellationToken);
+        }
+        finally
+        {
+            _sync.Release();
+        }
+    }
+
     private async Task<List<ConversationSession>> ReadSessionsAsync(CancellationToken cancellationToken)
     {
         if (!File.Exists(_storePath))
@@ -182,13 +268,15 @@ public sealed class JsonSessionStore : IConversationStore
         var updatedAt = session.UpdatedAtUtc == default ? createdAt : session.UpdatedAtUtc;
         var model = string.IsNullOrWhiteSpace(session.Model) ? "claude-sonnet-4-5" : session.Model;
         var provider = string.IsNullOrWhiteSpace(session.Provider) ? "anthropic" : session.Provider;
+        var tags = session.Tags ?? [];
 
         return session with
         {
             CreatedAtUtc = createdAt,
             UpdatedAtUtc = updatedAt,
             Model = model,
-            Provider = provider
+            Provider = provider,
+            Tags = tags,
         };
     }
 }
