@@ -356,9 +356,14 @@ The .NET CLI currently has a much smaller entry surface:
 - Default interactive mode:
   - `clawdnet`
   - launches the full-screen TUI by default
-- Interactive launch with a narrow flag set:
+- Interactive launch with root flags:
   - `clawdnet --session <id> --provider <name> --model <name> --permission-mode <mode>`
-  - any other argument shape falls through to command dispatch instead of interactive launch
+  - `clawdnet --continue`
+  - `clawdnet --resume [query]`
+- Root shorthand headless flows:
+  - `clawdnet [prompt]`
+  - `clawdnet -p [prompt]`
+  - `clawdnet --print [prompt]`
 - Fallback REPL:
   - available only behind the internal `legacy-repl` feature gate
 - Headless command mode:
@@ -370,24 +375,29 @@ The .NET CLI currently has a much smaller entry surface:
 
 | Command | Shape | Current Notes |
 | --- | --- | --- |
+| `--help`, `-h` | no subcommand | Root help and `<command> --help` are supported |
 | `--version`, `-v`, `-V` | no subcommand | Returns `<version> (ClawdNet)` |
-| `ask` | `ask [--session <id>] [--provider <name>] [--model <name>] [--permission-mode <mode>] [--json] <prompt>` | Main headless query entry |
+| `ask` | `ask [--session <id>] [--provider <name>] [--model <name>] [--permission-mode <mode>] [--json] [--output-format <text|json|stream-json>] [--input-format <text|stream-json>] [--allowed-tools <tools...>] [--disallowed-tools <tools...>] [--system-prompt <text>|--system-prompt-file <path>] [--settings <file-or-json>] [--add-dir <paths...>] <prompt>` | Main headless query entry; `--settings` is parsed but not applied; `--add-dir` is parsed but not wired into query-time config loading |
+| `auth` | `status`, `login`, `logout` | Env-var auth inspection plus guidance; no OAuth/keychain flow |
 | `provider` | `list`, `show <name>` | Additive .NET provider surface |
 | `platform` | `open <path> [--line N] [--column N]`, `browse <url>` | Additive .NET platform surface |
 | `task` | `list`, `show <id>`, `cancel <id>` | Task inspection and control only |
 | `plugin` | `list`, `show <name-or-id>`, `reload` | No install / marketplace lifecycle yet |
 | `mcp` | `list`, `ping <server>`, `tools [server]` | Inspection only |
 | `lsp` | `list`, `ping <server>`, `diagnostics <path>` | Inspection / diagnostics only |
-| `session` | `new [title]`, `list` | No interactive resume picker or show command |
-| `tool` | `tool <toolName> [args...]` | Passes joined args as raw text and `{"text": "..."}`
+| `session` | `new [title]`, `list`, `show <id>` | Includes read-only session inspection; interactive resume still centers on root flags/TUI |
+| `tool` | `tool <toolName> [args...]` | Passes joined args as raw text and `{"text": "..."}` |
 
 #### Current Top-Level Aliases
 
 Current built-in aliases are minimal:
 
+- `--help` / `-h`
 - `--version`
 - `-v`
 - `-V`
+- `--continue` / `-c`
+- `--resume` / `-r`
 
 Legacy aliases such as `plugins`, `upgrade`, and `rc` are not currently mirrored by the built-in .NET dispatcher.
 
@@ -487,7 +497,7 @@ The current TUI / terminal input layer supports at least:
 
 #### Current Config Sources
 
-Current .NET state and config are rooted under the app data directory:
+Current active `.NET` state and config are rooted under the app data directory:
 
 - default root:
   - `<LocalApplicationData>/ClawdNet`
@@ -502,6 +512,9 @@ Current .NET state and config are rooted under the app data directory:
 - persisted state:
   - `sessions.json`
   - `tasks.json`
+  - `pty-transcripts/<session-id>.jsonl`
+
+The repo also contains staged legacy-compatibility readers for `.claude` settings, `CLAUDE.md`, `.mcp.json`, and legacy JSONL transcripts, but those are not currently wired into the live ask/TUI/session-resume flow.
 
 #### Relevant Environment Variables
 
@@ -518,14 +531,12 @@ The current .NET implementation visibly depends on:
 - `AWS_BEARER_TOKEN_BEDROCK`
 - `CLAUDE_CODE_SKIP_BEDROCK_AUTH`
 - `ANTHROPIC_BEDROCK_BASE_URL`
-- `CLAUDE_CODE_USE_VERTEX`
 - `GOOGLE_APPLICATION_CREDENTIALS`
 - `ANTHROPIC_VERTEX_PROJECT_ID`
 - `GOOGLE_CLOUD_PROJECT` / `GCLOUD_PROJECT`
 - `CLOUD_ML_REGION`
 - `CLAUDE_CODE_SKIP_VERTEX_AUTH`
 - `VERTEX_REGION_CLAUDE_*` (per-model region overrides)
-- `CLAUDE_CODE_USE_FOUNDRY`
 - `ANTHROPIC_FOUNDRY_API_KEY`
 - `ANTHROPIC_FOUNDRY_RESOURCE`
 - `ANTHROPIC_FOUNDRY_BASE_URL`
@@ -533,7 +544,7 @@ The current .NET implementation visibly depends on:
 - `$VISUAL`
 - `$EDITOR`
 
-No `CLAUDE_CONFIG_DIR` compatibility layer is currently visible in the .NET runtime.
+`CLAUDE_CONFIG_DIR` and `CLAUDE_CODE_DISABLE_AUTO_MEMORY` are referenced by staged compatibility helpers, but not by the active query/session flow yet.
 
 #### Output and Report Formats
 
@@ -541,15 +552,16 @@ The current .NET command surface exposes:
 
 - full-screen TUI for interactive use
 - fallback REPL behind a feature gate
+- root positional prompt shorthand (`clawdnet "prompt"`)
+- root `-p/--print` headless mode
 - plain-text command output for most subcommands
-- `ask --json` for one structured payload shape
+- `ask --json`
+- `ask --output-format json`
+- `ask --output-format stream-json`
+- `ask --input-format stream-json --output-format stream-json`
 
 The current .NET CLI does not expose:
 
-- root positional prompt shorthand
-- `-p/--print`
-- `stream-json`
-- structured stdin
 - JSON schema output shaping
 - hook-event or partial-message stream controls
 
@@ -560,12 +572,15 @@ Current .NET file and integration surface includes:
 - JSON config files under the app data root
 - plugin manifests under `plugins/`
 - `sessions.json` and `tasks.json`
+- PTY transcript JSONL files under `pty-transcripts/`
 - platform open/browse launchers
 - MCP server integration
 - LSP integration
 - plugin subprocess commands, hooks, and tools
 - PTY subprocess sessions
-- Anthropic and OpenAI provider clients
+- Anthropic, OpenAI, Bedrock, Vertex AI, and Foundry provider clients
+
+Legacy compatibility parser classes for `.claude` settings, memory files, `.mcp.json`, and JSONL transcripts exist, but they are not part of the active runtime path yet.
 
 #### Error / Exit Behavior
 
@@ -595,10 +610,10 @@ This matrix compares the legacy TypeScript CLI behavior against the desired or c
 | Invocation | Root interactive shell | `claude [prompt]` launches Ink UI by default | `clawdnet` launches TUI by default; keep no-arg interactive launch as primary surface | P0 | Implemented | Current .NET matches the user outcome, and now also supports root positional prompt shorthand | Manual: `dotnet run --project ClawdNet.App --` |
 | Invocation | Root positional prompt | Legacy root accepts `[prompt]` directly | `clawdnet "prompt"` routes to ask behavior | P0 | Implemented | Root positional prompt shorthand is now supported | Smoke: `clawdnet "hello"` routes to ask |
 | Headless | `-p/--print` text mode | Legacy supports headless one-shot text output from root command | `-p/--print` routes to ask behavior | P0 | Implemented | `-p` and `--print` flags extract the prompt and route to ask handler | Handler tests + manual smoke |
-| Headless | JSON / stream-json output | Legacy supports `text`, `json`, `stream-json`, structured stdin, hook/partial streaming | Current minimum is `ask --json`; decide whether full stream-json parity is required | P0 | Implemented | .NET now exposes `--output-format` (text, json, stream-json) and `--input-format` (text, stream-json) on the ask command; stream-json emits NDJSON event lines via the existing StreamAskAsync pipeline; cross-flag validation enforced (input-format=stream-json requires output-format=stream-json); minimum viable event set emitted (user turn accepted, assistant deltas, tool calls, permission decisions, task events, turn completed/failed); plugin hook events, partial message dedup, replay-user-messages, sdk-url, json-schema, and hard-fail are deferred | Compare stdout shape, exit codes, and NDJSON line structure |
+| Headless | JSON / stream-json output | Legacy supports `text`, `json`, `stream-json`, structured stdin, hook/partial streaming | Support `text`, `json`, and `stream-json` output plus structured stdin subset | P0 | Implemented | .NET now exposes `--output-format` (text, json, stream-json) and `--input-format` (text, stream-json) on the ask command; stream-json emits NDJSON event lines via the existing StreamAskAsync pipeline; cross-flag validation enforced (input-format=stream-json requires output-format=stream-json); minimum viable event set emitted (user turn accepted, assistant deltas, tool calls, permission decisions, task events, turn completed/failed); plugin hook events, partial message dedup, replay-user-messages, sdk-url, json-schema, and hard-fail are deferred | Compare stdout shape, exit codes, and NDJSON line structure |
 | Help | Root help and subcommand help | Legacy Commander help is broad and discoverable | `--help`/`-h` at root and per-command level | P0 | Implemented | Root help lists all commands with summaries; `<command> --help` shows detailed usage | Smoke: `clawdnet --help`, `clawdnet ask --help` |
 | Version | `--version`, `-v`, `-V` | Legacy fast-path version output | Preserve version flags | P0 | Implemented | Straightforward parity row | Smoke: `clawdnet --version` |
-| Invocation | Top-level aliases | Legacy exposes aliases such as `plugins`, `upgrade`, and `rc` for selected commands | Preserve high-value aliases or explicitly drop them | P2 | Not Started | Current built-in `.NET` aliases are effectively version-only | Smoke: alias invocation checks |
+| Invocation | Top-level aliases | Legacy exposes aliases such as `plugins`, `upgrade`, and `rc` for selected commands | Preserve high-value aliases or explicitly drop them | P2 | Not Started | Current built-in `.NET` aliases are still limited to help/version and continue/resume flag forms; legacy command-family aliases are still missing | Smoke: alias invocation checks |
 | Session | Session create / list | Legacy has persistent sessions plus interactive resume flows | Preserve create/list and expand to full resume/discovery parity | P0 | Implemented | `.NET` has `session new`, `session list`, `session show`, `--session`, `--continue`, and `--resume` | `session list`, `session show`, interactive `--continue`, `--resume`, regression tests |
 | Session | `--continue`, `--resume` (v1) | Legacy supports `-c/--continue` for most recent session, `-r/--resume [value]` for search-based resume | `.NET` supports `-c/--continue` (most recent) and `-r/--resume [query]` (ID prefix or title substring match) | P0 | Implemented | Resume loads existing session with its provider/model/message history; ambiguous matches error with candidate list; no sessions errors guide user to create one first | Smoke: `clawdnet -c`, `clawdnet -r "query"`, `clawdnet --resume` |
 | Session | `--from-pr`, `--fork-session`, rewind-at-message | Legacy supports fork/resume from PRs and rewind to specific messages | Defer to later milestone | P0 | Not Started | Out of scope for PLAN-17 | Fixture-based resume tests |
@@ -608,8 +623,8 @@ This matrix compares the legacy TypeScript CLI behavior against the desired or c
 | Model / runtime | Effort / thinking / budgets / max turns | Legacy exposes `--effort`, `--thinking`, turn and budget controls | Add only if migration requires these runtime controls | P1 | Not Started | Important for workflow parity, but not yet in .NET surface | CLI smoke + query-engine tests |
 | Permissions | Permission mode | Legacy supports `--permission-mode` and dangerous skip variants | Preserve `default`, `accept-edits`, `bypass-permissions` semantics | P0 | Implemented | `.NET` covers these three modes; dangerous-skip variants are not exposed separately | `ask --permission-mode`, interactive launch flags |
 | Permissions | Tool allow / deny lists | Legacy supports `--allowed-tools`, `--tools`, `--disallowed-tools` | Add explicit CLI control if required for migration | P0 | Implemented | `.NET` now supports `--allowed-tools` and `--disallowed-tools` on the ask command; tools are filtered from the model-visible tool list; comma or space-separated lists accepted; `--tools` (base tools allowlist) is deferred | `ask --allowed-tools`, `ask --disallowed-tools` handler tests |
-| Context | System prompt / settings injection | Legacy supports `--settings`, `--system-prompt`, prompt files, append prompt files | Add explicit context injection or document a replacement strategy | P0 | Implemented | `.NET` now supports `--system-prompt <text>`, `--system-prompt-file <path>`, and `--settings <file-or-json>` on the ask command; system prompt overrides the default for the query; append variants are deferred; legacy settings and CLAUDE.md files are automatically loaded and merged | `ask --system-prompt`, `ask --system-prompt-file` handler tests |
-| Context | `--add-dir`, trust / workspace expansion | Legacy supports explicit extra directories for tool access | `.NET` supports `--add-dir <paths...>` on ask command | P1 | Implemented | `.NET` loads `.claude/settings.json`, `.claude/settings.local.json`, `.mcp.json`, and `CLAUDE.md` files from each added directory | `ask --add-dir` handler tests |
+| Context | System prompt / settings injection | Legacy supports `--settings`, `--system-prompt`, prompt files, append prompt files | Add explicit context injection or document a replacement strategy | P0 | In Progress | `.NET` supports `--system-prompt` and `--system-prompt-file`; `--settings` is parsed but not applied yet; append variants are deferred; legacy settings and CLAUDE.md auto-loading are not active in the current query path | `ask --system-prompt`, `ask --system-prompt-file` handler tests |
+| Context | `--add-dir`, trust / workspace expansion | Legacy supports explicit extra directories for tool access | `.NET` should either honor `--add-dir` in the query path or stop advertising it as supported | P1 | In Progress | `--add-dir` is accepted by the ask parser but is not currently connected to settings, memory, or MCP loading | parser tests + end-to-end smoke once wired |
 | Integrations | MCP inspection | Legacy has list/get/add/remove/serve/reset flows | Current minimum should preserve list/ping/tools and decide on management parity | P0 | In Progress | `.NET` can inspect and proxy tools, but not manage config from CLI | `mcp list`, `mcp ping`, `mcp tools` |
 | Integrations | MCP management | Legacy can add/remove/get/reset project choices and import desktop config | Add management commands or explicitly defer them | P1 | Not Started | Important operator surface missing | Fixture-based config file checks |
 | Integrations | LSP inspection / diagnostics | Legacy has IDE-oriented flows rather than a dedicated public `lsp` CLI | Keep current `.NET` `lsp list/ping/diagnostics` as minimum inspection surface | P1 | Changed | .NET surface is additive rather than parity-shaped | `lsp list`, `lsp ping`, `lsp diagnostics` |
@@ -629,7 +644,7 @@ This matrix compares the legacy TypeScript CLI behavior against the desired or c
 | Productivity UI | `/skills`, `/memory`, `/agents`, `/passes`, `/plan` | Legacy has many management UIs in Ink | Decide which remain first-party vs plugin/skill surfaces in `.NET` | P1 | Deferred | Useful, but not all are necessarily core migration blockers | TUI/workflow acceptance tests |
 | External surfaces | `chrome`, `desktop`, `mobile`, `ide`, GitHub/Slack app install flows | Legacy integrates with companion tools and external apps | Keep only the surfaces that are still product-relevant; defer the rest explicitly | P2 | Deferred | High scope; not required for core CLI migration | Manual only |
 | Remote / distributed | daemon, ps/logs/attach/kill, remote-control, bridge, server, `ssh`, `open <cc-url>` | Legacy has substantial remote/runtime infrastructure | Re-scope deliberately; do not accidentally promise parity here | P2 | Deferred | Large separate program; not present in current .NET CLI | Dedicated design and manual smoke |
-| Config compatibility | `~/.claude`, `.claude/settings*.json`, `.mcp.json`, JSONL transcripts | Legacy uses user and project-local layout | `.NET` reads legacy layout for settings, memory files, and MCP config | P0 | Implemented | `.NET` now loads `~/.claude/settings.json`, `.claude/settings.json`, `.claude/settings.local.json` with merge priority; `CLAUDE.md` files from user and project paths; `.mcp.json` from project root with parent walk; JSONL transcripts readable for session resume; `CLAUDE_CONFIG_DIR` env var respected; `--add-dir` flag on ask command | `dotnet test` (260 tests, +46 new compatibility tests) |
+| Config compatibility | `~/.claude`, `.claude/settings*.json`, `.mcp.json`, JSONL transcripts | Legacy uses user and project-local layout | `.NET` should eventually decide between true compatibility and explicit migration/import behavior | P0 | In Progress | Compatibility helper classes exist for legacy settings, memory, project `.mcp.json`, `CLAUDE_CONFIG_DIR`, and JSONL transcript parsing, but they are not currently wired into the active ask/TUI/session-resume path | usage search + end-to-end compatibility smoke once wired |
 | Secrets / auth assumptions | OAuth + keychain + env in legacy, env/config in `.NET` | Legacy auth model is richer than plain env vars | Decide whether `.NET` remains env/config only or adds auth UX | P0 | Changed | This is a real migration risk even if commands work | Provider smoke with and without config |
 | Additive .NET surface | `provider` command family | No direct legacy root equivalent | Keep as additive if provider abstraction stays first-class | P2 | Implemented | New surface should not block parity work | `provider list`, `provider show` |
 | Additive .NET surface | `platform open` / `platform browse`, `/open`, `/browse` | No direct legacy root equivalent | Keep as additive lightweight platform integration | P2 | Implemented | Useful operator feature; not legacy parity | `platform open`, `platform browse` |
@@ -641,7 +656,7 @@ This section tracks the legacy UI-style terminal flows that were implemented wit
 | Legacy Ink Flow | What it does today | Target .NET handling | Priority | Risk / ambiguity |
 | --- | --- | --- | --- | --- |
 | Main interactive shell | Conversation transcript, prompt entry, slash commands, approvals, status, streaming | Preserve as interactive terminal UI in the TUI | P0 | High: this is the anchor surface for the whole migration |
-| Resume / continue / session picker | Select or resume prior sessions, search, continue/fork | Preserve as interactive TUI drawer / picker | P0 | High: current `.NET` only has `--session` and `session list` |
+| Resume / continue / session picker | Select or resume prior sessions, search, continue/fork | Preserve as interactive TUI drawer / picker | P0 | High: `.NET` now has `--session`, `--continue`, `--resume`, `session show`, and a TUI sessions drawer, but not full legacy picker/fork flow parity |
 | Permission dialogs and trust UI | Approval flows, trust warnings, bypass-permissions confirmation, file-permission scope decisions | Preserve as interactive modal / overlay | P0 | High: safety UX must remain understandable |
 | Edit review / approval dialogs | Review model-proposed edits and approve or deny | Preserve as interactive modal / overlay | P0 | Medium: `.NET` already has edit review overlays, but not full legacy surface |
 | Help UI | Rich help / shortcut / command browsing | Preserve as interactive overlay or drawer | P1 | Low |
@@ -663,17 +678,17 @@ This section documents the current compatibility position between the legacy CLI
 
 | Surface | Legacy TypeScript CLI | Current .NET CLI | Compatibility decision / current position |
 | --- | --- | --- | --- |
-| Global config root | `CLAUDE_CONFIG_DIR` or `~/.claude` | `<LocalApplicationData>/ClawdNet` or fallback `.clawdnet` next to app | Compatible; `CLAUDE_CONFIG_DIR` env var is respected |
-| User settings | `~/.claude/settings.json` | Loaded via `LegacySettingsLoader` | Compatible; merged with project and local settings |
-| User memory | `~/.claude/CLAUDE.md` | Loaded via `MemoryFileLoader` | Compatible; concatenated into system prompt |
-| Project settings | `.claude/settings.json` | Loaded via `LegacySettingsLoader` | Compatible; overrides user settings |
-| Project-local overrides | `.claude/settings.local.json` | Loaded via `LegacySettingsLoader` | Compatible; overrides project settings |
-| MCP config | project `.mcp.json` plus CLI `--mcp-config` | `config/mcp.json` under app data + `.mcp.json` from project tree | Partially compatible; `.mcp.json` loaded from project root and parent directories; `--mcp-config` CLI flag not yet supported |
+| Global config root | `CLAUDE_CONFIG_DIR` or `~/.claude` | `<LocalApplicationData>/ClawdNet` or fallback `.clawdnet` next to app | Changed; `CLAUDE_CONFIG_DIR` is only referenced by inactive compatibility helpers today |
+| User settings | `~/.claude/settings.json` | App-data config is active; `LegacySettingsLoader` exists but is unused by current query flow | Not currently compatible |
+| User memory | `~/.claude/CLAUDE.md` | `MemoryFileLoader` exists but is unused by current query flow | Not currently compatible |
+| Project settings | `.claude/settings.json` | App-data config is active; `LegacySettingsLoader` exists but is unused by current query flow | Not currently compatible |
+| Project-local overrides | `.claude/settings.local.json` | App-data config is active; `LegacySettingsLoader` exists but is unused by current query flow | Not currently compatible |
+| MCP config | project `.mcp.json` plus CLI `--mcp-config` | `config/mcp.json` under app data; project `.mcp.json` parser exists but is inactive | Changed; no active `.mcp.json` or `--mcp-config` parity yet |
 | LSP config | legacy IDE/LSP settings flow | `config/lsp.json` under app data | Changed; not legacy-compatible |
 | Provider config | Anthropic-first, plus provider env toggles | `config/providers.json` and explicit provider catalog | Changed; new abstraction |
 | Platform config | Mostly implicit legacy shell/editor behavior | `config/platform.json` | Additive .NET behavior |
 | Plugins | `~/.claude/plugins`, marketplace, `--plugin-dir` | `plugins/<plugin-id>/plugin.json` under app data | Changed; no marketplace or plugin-dir parity |
-| Sessions | JSONL transcripts under `~/.claude/projects/...` | `sessions.json` store | Compatible; `LegacyTranscriptReader` can read legacy JSONL transcripts for session resume |
+| Sessions | JSONL transcripts under `~/.claude/projects/...` | `sessions.json` store; `LegacyTranscriptReader` exists but is unused by current resume flow | Changed; no active legacy resume/import path yet |
 | Worker / task state | legacy task-related project files and UI flows | `tasks.json` store | Changed |
 | Secrets / auth | env, OAuth, keychain, setup/login flows | provider env vars and config files | Changed; auth UX missing |
 | Editor launch assumptions | legacy CLI uses shell/editor flows implicitly in several UIs | `.NET` uses configured launcher, `$VISUAL`, `$EDITOR`, `code -g`, then OS fallback | Changed, but currently explicit and additive |
@@ -683,9 +698,9 @@ This section documents the current compatibility position between the legacy CLI
 Agents should treat the following assumptions as unresolved migration work until explicit compatibility decisions are made:
 
 - whether `.NET` should read any legacy `~/.claude` or project-local `.claude` state directly
-- whether legacy JSONL transcripts must be importable or resumable
+- whether legacy JSONL transcripts must be importable or resumable through the live `--resume` flow
 - whether auth parity requires OAuth/keychain support, or whether env/config-only auth is acceptable
-- whether `.mcp.json` and `--mcp-config` must be preserved as-is
+- whether `.mcp.json` and `--mcp-config` must be preserved as-is instead of treated as import-only compatibility
 - whether plugin install/update workflows should remain marketplace-driven or move to a different distribution story
 
 ## F. Intentional Deviations
@@ -729,8 +744,13 @@ Current built-in command surface:
 
 ```bash
 dotnet run --project ./ClawdNet.App -- --version
+dotnet run --project ./ClawdNet.App -- --help
+dotnet run --project ./ClawdNet.App -- "hello"
+dotnet run --project ./ClawdNet.App -- -p "hello"
+dotnet run --project ./ClawdNet.App -- auth status
 dotnet run --project ./ClawdNet.App -- provider list
 dotnet run --project ./ClawdNet.App -- session list
+dotnet run --project ./ClawdNet.App -- session show <session-id>
 dotnet run --project ./ClawdNet.App -- task list
 dotnet run --project ./ClawdNet.App -- plugin list
 dotnet run --project ./ClawdNet.App -- mcp list
@@ -742,6 +762,8 @@ Headless ask flow:
 
 ```bash
 dotnet run --project ./ClawdNet.App -- ask --json "hello"
+dotnet run --project ./ClawdNet.App -- ask --output-format stream-json "hello"
+echo '{"type":"user","message":{"role":"user","content":"hello"}}' | dotnet run --project ./ClawdNet.App -- ask --input-format stream-json --output-format stream-json
 ```
 
 Platform surface:

@@ -88,7 +88,7 @@ Provider selection is explicit and first-class.
 - Per-turn overrides may update an existing session's provider and model for future turns.
 - Provider choice is never inferred from a model name.
 - The shared model contracts remain `ModelRequest`, `ModelResponse`, and `ModelStreamEvent`.
-- Anthropic and OpenAI adapters normalize into the same shared model layer.
+- All built-in provider adapters normalize into the same shared model layer.
 
 Current provider defaults:
 
@@ -100,6 +100,7 @@ Current provider defaults:
 - AWS Bedrock supports standard AWS credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`), bearer token auth (`AWS_BEARER_TOKEN_BEDROCK`), and skip-auth mode (`CLAUDE_CODE_SKIP_BEDROCK_AUTH=1`). Region defaults to `us-east-1` via `AWS_REGION`/`AWS_DEFAULT_REGION`. Custom endpoints are supported via `ANTHROPIC_BEDROCK_BASE_URL`. Bedrock uses the Converse API with AWS SigV4 signing and supports ARN-format model IDs and cross-region inference profiles.
 - Google Vertex AI supports GCP service account key authentication via `GOOGLE_APPLICATION_CREDENTIALS`, project ID via `ANTHROPIC_VERTEX_PROJECT_ID`/`GOOGLE_CLOUD_PROJECT`/`GCLOUD_PROJECT`, and skip-auth mode (`CLAUDE_CODE_SKIP_VERTEX_AUTH=1`). Region defaults to `us-east5` via `CLOUD_ML_REGION`, with per-model overrides via `VERTEX_REGION_CLAUDE_*` env vars. Model IDs use the `model-name@YYYYMMDD` format with automatic resolution from short names. Vertex AI uses the `rawPredict` and `streamGenerateContent` endpoints with Anthropic-compatible message format.
 - Azure Foundry supports API key auth via `ANTHROPIC_FOUNDRY_API_KEY` and skip-auth mode (`CLAUDE_CODE_SKIP_FOUNDRY_AUTH=1`). Endpoint is constructed from `ANTHROPIC_FOUNDRY_RESOURCE` (format: `https://{resource}.services.ai.azure.com/anthropic`) or overridden via `ANTHROPIC_FOUNDRY_BASE_URL`. Model names are simple deployment identifiers. Foundry uses the same Anthropic messages API format.
+- Auth is currently environment-variable-based across providers; legacy OAuth/keychain flows are not implemented.
 
 ## Persistence Model
 
@@ -232,6 +233,8 @@ The architecture intentionally keeps these integrations inside the common runtim
 The headless CLI remains a first-class surface.
 
 - `ask` is buffered by default.
+- Root positional prompts and `-p/--print` route into the same headless query path.
+- `ask` supports `text`, `json`, and `stream-json` output modes, plus `stream-json` stdin.
 - Non-interactive commands are expected to remain behaviorally stable across milestones.
 - New capabilities should be added through the shared runtime first, then exposed to the CLI.
 
@@ -293,17 +296,24 @@ When configuration files are absent, the project prefers sane defaults or in-mem
 
 ### Legacy Config Compatibility
 
-The .NET CLI includes a compatibility layer for the legacy TypeScript CLI configuration layout:
+The codebase currently contains staged compatibility helpers for the legacy TypeScript CLI configuration layout, but they are not yet wired into the active query, TUI, or session-resume path.
 
-- `CLAUDE_CONFIG_DIR` env var overrides the legacy config root (defaults to `~/.claude/`)
-- Legacy settings are loaded and merged from `~/.claude/settings.json`, `.claude/settings.json`, and `.claude/settings.local.json` with later sources overriding earlier ones
-- `CLAUDE.md` memory files are loaded from user (`~/.claude/CLAUDE.md`) and project (`{cwd}/CLAUDE.md`, `{cwd}/.claude/CLAUDE.md`) paths, plus rules directories (`~/.claude/rules/*.md`, `{cwd}/.claude/rules/*.md`)
-- Project `.mcp.json` files are loaded from the current directory and parent directories (closest wins on name conflicts)
-- The `--add-dir` flag on the `ask` command adds extra directories to scan for `.claude/` config files
-- `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` disables automatic CLAUDE.md loading
-- Legacy JSONL transcripts under `~/.claude/projects/` are readable for session resume
-- Legacy config loading is additive; .NET config files take precedence when both exist
-- Missing legacy files are handled gracefully with no errors
+What exists today:
+
+- `LegacyConfigPaths` mirrors `CLAUDE_CONFIG_DIR` and the legacy `~/.claude` path layout
+- `LegacySettingsLoader` can parse and merge `settings.json` and `settings.local.json`
+- `MemoryFileLoader` can read `CLAUDE.md` and `rules/*.md`
+- `ProjectMcpConfigLoader` can parse project `.mcp.json` files
+- `LegacyTranscriptReader` can parse legacy JSONL transcript files
+
+Current limitation:
+
+- active runtime behavior still uses `config/providers.json`, `config/platform.json`, `config/mcp.json`, `config/lsp.json`, `sessions.json`, and `tasks.json` under the `.NET` app-data root
+- `ask --settings` is parsed but not applied to the current query path
+- `ask --add-dir` is parsed but not currently connected to settings, memory, or MCP loading
+- legacy JSONL transcripts are not yet part of the live `--resume` or `--continue` flow
+
+This is an explicit migration gap, not an accepted compatibility result.
 
 ## Rollout and Compatibility Decisions
 
@@ -336,6 +346,7 @@ These defaults are now part of the working project baseline:
 - default legacy provider normalization is `anthropic`
 - provider choice is explicit, not model-name inferred
 - built-in providers are Anthropic, OpenAI, AWS Bedrock, Google Vertex AI, and Azure Foundry
+- auth is currently environment-variable-based rather than OAuth/keychain-based
 - Bedrock uses AWS SigV4 signing, bearer token auth, or skip-auth mode
 - Bedrock region defaults to `us-east-1` via `AWS_REGION`/`AWS_DEFAULT_REGION`
 - Bedrock supports ARN-format model IDs and cross-region inference profiles

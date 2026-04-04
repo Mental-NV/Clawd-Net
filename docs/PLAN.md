@@ -20,115 +20,97 @@ Use this file to decide what to build next. Use [ARCHITECTURE.md](./ARCHITECTURE
 - `[/]` in progress
 - `[v]` implemented
 
-## Completed Milestones
-
-These areas are already landed and should be treated as the current foundation, not near-term roadmap items.
-
-- [v] Core runtime and session foundation
-- [v] Rich interactive terminal and REPL foundation
-- [v] True streaming query execution
-- [v] Reviewable patch-based edit workflow
-- [v] PTY runtime and PTY UX v1-v2
-- [v] Task orchestration v1-v2
-- [v] Plugin platform v2-v3
-- [v] Full TUI program v1-v2
-- [v] Provider and platform expansion v1
-- [v] Advanced Orchestration v3
-- [v] Full TUI Parity v3
-- [v] PTY UX v3
-- [v] Plugin Platform v4
-- [v] Root Help, -p/--print, and Root Positional Prompt
-- [v] Stream-JSON Output Mode
-- [v] Session Resume Family v1 (--continue, --resume, session show)
-- [v] Remaining P0 Parity Gaps (tool filtering, system prompt injection, auth CLI)
-- [v] Legacy Config Compatibility Layer
-
 ## Current Execution Order
 
-Unless explicitly redirected, execute future work in this order:
-
-1. Provider and Platform Expansion v2 (already complete — see Next Milestones)
+- The roadmap is now driven by unresolved `P0` and then `P1` gaps in [PARITY.md](./PARITY.md).
+- Finish one milestone at a time, in order, unless the user explicitly redirects.
 
 ## Active Milestone
 
-None — all roadmap milestones are complete.
+### [/] Legacy Context and Config Compatibility v1
 
-### [v] PLAN-18: Remaining P0 Parity Gaps
-
-- Priority: `P0`
-- Effort: `1-2 weeks`
-- Risk: `Medium`
-- Status: Complete
-- Delivered:
-  - `--allowed-tools` and `--disallowed-tools` flags on ask command (comma or space-separated)
-  - `--system-prompt <text>` and `--system-prompt-file <path>` flags on ask command
-  - `--settings <file-or-json>` flag on ask command (file path stored, loading deferred to future milestone)
-  - `auth status` command showing provider authentication state
-  - `auth login`/`logout` return helpful messages directing users to env-var-based auth
-  - QueryEngine filters tools based on allowed/disallowed lists
-  - System prompt injection overrides default system prompt per query
-- Validation:
-  - `dotnet build` passed
-  - `dotnet test` passed (214 tests)
-  - Smoke tests: `auth status`, `ask --help`, `ask --allowed-tools`, `ask --system-prompt`
-- Notes:
-  - `--tools` (base tools allowlist that denies all others) is deferred
-  - `--append-system-prompt` and `--append-system-prompt-file` are deferred
-  - OAuth/keychain auth from legacy CLI is documented as deferred in PARITY.md
-
-### [v] PLAN-19: Legacy Config Compatibility Layer
-
-- Priority: `P0`
-- Effort: `1 week`
-- Risk: `Medium`
-- Status: Complete
-- Delivered:
-  - `CLAUDE_CONFIG_DIR` env var support for overriding the legacy config root
-  - Legacy settings loading: `~/.claude/settings.json`, `.claude/settings.json`, `.claude/settings.local.json`
-  - `CLAUDE.md` memory file loading (user, project, local, rules directories)
-  - `.mcp.json` project-level MCP config loading with parent directory walk
-  - `--add-dir <paths...>` flag on ask command for extra directories to scan for `.claude/` config
-  - Legacy JSONL transcript reader for session resume from `~/.claude/projects/`
-  - `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` env var to disable automatic memory file loading
-  - All loaders handle missing files gracefully with no errors
-  - 46 new unit tests covering all config compatibility services
-- Validation:
-  - `dotnet build` passed
-  - `dotnet test` passed (260 tests, +46 new)
-  - All new services tested: `LegacyConfigPaths`, `LegacySettingsLoader`, `MemoryFileLoader`, `ProjectMcpConfigLoader`, `LegacyTranscriptReader`
-- Notes:
-  - Managed/policy settings (`/etc/claude-code/`) are deferred
-  - Memory system (`MEMORY.md`, auto-memory directories, team memory sync) is deferred
-  - Plugin marketplace from `~/.claude/plugins/` is deferred
-  - Legacy transcript import is read-only; transcripts are not migrated to .NET format
+- Priority: P0
+- Why now: this is the largest cluster of currently documented parity drift in the live runtime. `--settings` and `--add-dir` are advertised but not functionally wired, and the staged legacy `.claude` / `.mcp.json` / JSONL compatibility helpers are not part of the active ask, TUI, or resume flow.
+- Deliverables:
+  - wire `--settings` into the active query path or stop exposing it as supported
+  - wire `--add-dir` into the active settings / memory / MCP compatibility path or remove the surface
+  - decide and implement the active compatibility behavior for legacy `.claude` settings, `CLAUDE.md`, project `.mcp.json`, and legacy JSONL transcript resume/import
+  - update `README.md`, `ARCHITECTURE.md`, and `PARITY.md` to match the real compatibility contract
+- Main risks:
+  - accidentally over-merging legacy config into the new runtime
+  - changing model behavior in ways that are hard to observe without targeted regression tests
+  - expanding compatibility semantics without a clean precedence model
+- Exit criteria:
+  - no advertised context/config compatibility flag is parser-only
+  - active runtime compatibility behavior is verified end-to-end and documented consistently
+  - `PARITY.md` no longer describes this area as parser-only or inactive helper-only behavior
 
 ## Next Milestones
 
-### [v] Provider and Platform Expansion v2
+### [ ] Safety and Approval UX Parity v1
 
-- Priority: `P5`
-- Effort: `2-4 weeks`
-- Risk: `Medium-High`
-- Status: Completed (PLAN-13 through PLAN-15)
-- Why this was fifth:
-  - it is useful, but less central than orchestration, TUI, and PTY depth
+- Priority: P0
+- Depends on: Legacy Context and Config Compatibility v1
 - Deliverables:
-  - broader provider coverage and/or deeper platform integration
-  - stronger editor or native integration beyond the current open-path and open-URL actions
-- Dependencies:
-  - no hard dependency
-- Main risks:
-  - provider API drift
-  - OS and editor integration variance
-  - growing platform-specific complexity in shared runtime code
-- Exit criteria:
-  - added providers or platform actions integrate cleanly with the existing provider-neutral runtime
-  - session and task behavior remains explicit and stable
+  - broaden TUI safety surfaces beyond the current approval/edit overlays
+  - add visible trust / permissions / hook-config flows where parity requires them
+  - reconcile the current stronger `.NET` edit-review flow with legacy user expectations, documenting any accepted deviation
+- Main risks: TUI scope creep and unclear boundary between parity vs additive UX improvement
+- Exit criteria: `PARITY.md` no longer lists safety UI as only partially implemented
+
+### [ ] Session Branching and Resume Parity v2
+
+- Priority: P0
+- Depends on: Legacy Context and Config Compatibility v1
+- Deliverables:
+  - address remaining P0 session gaps such as `--from-pr`, `--fork-session`, and rewind-at-message behavior, or explicitly re-scope them
+  - continue improving session metadata parity (`--name`, rename/tag) where it materially affects resume/discovery workflows
+- Main risks: session-history mutation semantics and compatibility with persisted transcripts
+- Exit criteria: unresolved P0 session parity rows are either implemented and verified or moved to intentional deviations
+
+### [ ] MCP Parity v2
+
+- Priority: P0/P1
+- Depends on: Legacy Context and Config Compatibility v1
+- Deliverables:
+  - finish the current P0 MCP inspection parity hardening
+  - implement or intentionally defer legacy MCP management actions (`add`, `remove`, `get`, reset/import flows)
+  - make the `.NET` MCP config contract and project-config story explicit
+- Main risks: config precedence conflicts between app-data config and project-local config
+- Exit criteria: `PARITY.md` MCP rows are either verified or intentionally deviated
+
+### [ ] Auth and Migration Compatibility Decision
+
+- Priority: P0
+- Depends on: Legacy Context and Config Compatibility v1
+- Deliverables:
+  - decide whether `.NET` will remain env-var auth only or add OAuth/keychain parity
+  - implement the chosen path or record an explicit accepted deviation in `PARITY.md`
+  - ensure auth docs and command help are aligned with the chosen migration contract
+- Main risks: opening a large auth surface without full product intent
+- Exit criteria: auth is no longer an unresolved P0 changed area
+
+### [ ] Runtime Controls and Settings UI v1
+
+- Priority: P1
+- Depends on: Safety and Approval UX Parity v1
+- Deliverables:
+  - add missing high-value runtime controls such as effort/thinking/budget surfaces where migration requires them
+  - add the first high-value config/model/settings interactive pickers in TUI
+- Main risks: adding knobs without clear provider/runtime support underneath
+- Exit criteria: the highest-value `P1` model/runtime/config UI gaps are no longer not-started
+
+### [ ] Reporting and Workflow Surface Recovery
+
+- Priority: P1
+- Depends on: Safety and Approval UX Parity v1
+- Deliverables:
+  - restore or intentionally replace the most important reporting surfaces (`doctor`, `status`, `stats`, `usage`, `cost`, `insights`)
+  - decide which workflow commands remain first-party vs plugin/skill territory
+- Main risks: large surface area with mixed product ownership
+- Exit criteria: the major reporting/workflow parity rows are either implemented, deferred with rationale, or explicitly deviated
 
 ## Execution Notes
 
-- All high-priority milestones (P1-P4) are now complete.
-- `Provider and Platform Expansion v2` (P5) is complete.
-- PLAN-16 (Root Help, -p/--print, Root Positional Prompt) is complete — adds `--help`/`-h` at root and per-command level, `-p/--print` headless mode, and root positional prompt shorthand.
-- Remaining P0 parity gaps (from PARITY.md): session resume family, system prompt/settings injection, auth CLI, legacy config compatibility, stream-json output.
-- Future work beyond the current roadmap should be scoped and added as new milestones in this file.
+- Keep completed execution-slice detail in the corresponding `docs/PLAN-XX.md` files, not here.
+- When a milestone is completed, mark it `[v]`, promote the next highest-priority unresolved item to `[/]`, and keep the ordering aligned with unresolved `P0` then `P1` rows in [PARITY.md](./PARITY.md).

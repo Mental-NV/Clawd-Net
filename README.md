@@ -95,7 +95,6 @@ export OPENAI_API_KEY=your_key_here
 - `ask --disallowed-tools <tools...> <prompt>`
 - `ask --system-prompt <text> <prompt>`
 - `ask --system-prompt-file <path> <prompt>`
-- `ask --add-dir <paths...> <prompt>`
 - `auth status`
 - `auth login` (env-var auth guidance)
 - `auth logout` (env-var auth guidance)
@@ -176,7 +175,7 @@ Example:
 }
 ```
 
-If `providers.json` is missing, `ClawdNet` seeds built-in `anthropic` and `openai` providers automatically.
+If `providers.json` is missing, `ClawdNet` seeds built-in `anthropic`, `openai`, `bedrock`, `vertex`, and `foundry` providers automatically.
 
 ## Platform Configuration
 
