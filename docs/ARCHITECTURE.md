@@ -146,7 +146,13 @@ Structured patch review is the preferred editing path.
 - Approval is coarse: approve the whole batch or reject it.
 - If any patch in the batch is invalid, the full batch is rejected to avoid partial surprise application.
 
-This keeps the edit experience safe and understandable without implementing a full patch staging UI yet.
+This is the accepted migration replacement for the legacy edit/review flows. The
+legacy CLI used per-tool Ink approval modals without a structured patch format.
+The `.NET` model provides stronger safety guarantees: explicit unified diff
+preview, structured patch format with hunks, atomic batch application with
+automatic rollback on failure, and TUI overlay for review. Both serve the same
+core user outcome of reviewing and approving/denying model-proposed edits. The
+decision is documented as an intentional deviation in PARITY.md.
 
 ## PTY Architecture
 

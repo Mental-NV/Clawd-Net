@@ -46,20 +46,21 @@ Use this file to decide what to build next. Use [ARCHITECTURE.md](./ARCHITECTURE
   - [x] `ARCHITECTURE.md` and `PARITY.md` describe app-owned configuration as the only supported contract
   - [x] `PARITY.md` no longer treats legacy settings compatibility as an unresolved migration target
 
-### [ ] Edit Workflow Parity Decision v1
+### [v] Edit Workflow Parity Decision v1
 
 - Priority: P0
 - Depends on: Own Settings Only Refactor v1
 - Why next: edit review is still marked as a `Changed` P0 area in [PARITY.md](./PARITY.md). The current patch-first workflow is deliberate, but the migration ledger still treats it as unresolved.
 - Deliverables:
-  - compare legacy edit/review expectations with the current patch-batch approval model
-  - close any remaining approval/review UX gaps that are necessary for migration acceptance
-  - if the patch-first model is the accepted replacement, record it as an intentional deviation
+  - [x] compare legacy edit/review expectations with the current patch-batch approval model
+  - [x] close any remaining approval/review UX gaps that are necessary for migration acceptance
+  - [x] if the patch-first model is the accepted replacement, record it as an intentional deviation
 - Main risks:
   - conflating product improvement with strict parity
   - over-expanding the edit surface beyond current runtime needs
 - Exit criteria:
-  - the edit workflow row in [PARITY.md](./PARITY.md) is either verified or moved to intentional deviations with rationale
+  - [x] the edit workflow row in [PARITY.md](./PARITY.md) is verified
+  - [x] intentional deviation documented with rationale
 
 ### [ ] Plugin Lifecycle Parity v2
 
