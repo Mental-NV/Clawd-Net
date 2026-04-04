@@ -89,29 +89,49 @@ Use this file to decide what to build next. Use [ARCHITECTURE.md](./ARCHITECTURE
   - [x] dotnet build passes
   - [x] dotnet test passes
 
-### [ ] Legacy Transcript Import Decision v1
+### [v] Legacy Transcript Import Decision v1
 
 - Priority: P1
 - Depends on: Own Settings Only Refactor v1
-- Why next: legacy settings compatibility is no longer a goal, but legacy JSONL transcript import or resume is still a separate open question in [PARITY.md](./PARITY.md).
+- Why now: legacy settings compatibility is no longer a goal, and legacy JSONL transcript compatibility has now been explicitly dropped rather than kept as an open migration question.
 - Deliverables:
-  - decide whether legacy transcript import or resume is needed at all
-  - if yes, design it as an explicit import or migration surface rather than implicit settings compatibility
-  - if no, record the decision as a documented non-goal or intentional deviation
+  - [x] decided that legacy transcript import and resume are not migration goals
+  - [x] removed transcript compatibility from the active parity target set
+  - [x] documented the decision as an intentional deviation in [PARITY.md](./PARITY.md) and [ARCHITECTURE.md](./ARCHITECTURE.md)
 - Main risks:
   - conflating session import with configuration compatibility
   - keeping dead transcript compatibility code without a product outcome
 - Exit criteria:
-  - transcript compatibility is either implemented as an explicit workflow or removed from the open migration ledger
+  - [x] transcript compatibility removed from the open migration ledger
+
+### [/] Auth Parity and Provider Defaults v1
+
+- Priority: P0
+- Depends on: Own Settings Only Refactor v1
+- Why now: auth is now the last unresolved `P0` migration area. Env-var-only auth is no longer the accepted end state, and the explicit provider model is accepted but still needs smoother defaults where practical.
+- Deliverables:
+  - add OAuth-capable auth support without regressing current env-var-based provider auth
+  - revise `auth login` and `auth logout` so they no longer frame OAuth as an intentional non-goal
+  - preserve explicit provider selection while smoothing default provider and model behavior where it materially improves usability
+  - update [PARITY.md](./PARITY.md), [ARCHITECTURE.md](./ARCHITECTURE.md), and [README.md](../README.md) to match the implemented auth contract
+- Main risks:
+  - OAuth flow complexity, including callback handling and token refresh
+  - choosing a token persistence model that is secure enough without dragging in unnecessary platform complexity
+  - regressing existing env-var-based and CI-friendly provider flows while broadening auth support
+- Exit criteria:
+  - the auth parity rows in [PARITY.md](./PARITY.md) are no longer unresolved
+  - provider selection remains explicit, with smoother defaults documented and tested
+  - `auth login`, `auth status`, and `auth logout` reflect the supported auth contract
 
 ### [ ] Config UI and Interactive Settings Parity v1
 
 - Priority: P1
-- Depends on: Edit Workflow Parity Decision v1
-- Why next: the TUI and REPL now expose `/config`, `/permissions`, `/effort`, and `/thinking`, but settings-picker parity is still incomplete.
+- Depends on: Auth Parity and Provider Defaults v1
+- Why next: the TUI and REPL now expose `/config`, `/permissions`, `/effort`, and `/thinking`, but only the highest-value remaining picker flows should be migrated.
 - Deliverables:
-  - promote the highest-value remaining interactive settings flows into TUI drawers or overlays
-  - decide which legacy picker-style flows are worth preserving vs simplifying to plain text
+  - promote only the highest-value remaining interactive settings flows into TUI drawers or overlays
+  - focus picker work on provider/model, runtime controls, and closely related safety/config surfaces
+  - leave lower-value theme/color/output-style parity as plain-text or deferred unless strong migration value emerges
   - keep slash-command help and TUI help overlays aligned with the actual interactive surface
 - Main risks:
   - TUI scope creep
@@ -123,9 +143,10 @@ Use this file to decide what to build next. Use [ARCHITECTURE.md](./ARCHITECTURE
 
 - Priority: P1
 - Depends on: Config UI and Interactive Settings Parity v1
-- Why next: PTY and task orchestration are both ahead of the legacy CLI in some ways, but [PARITY.md](./PARITY.md) still marks them as changed because the mapping from legacy terminal/task workflows is unresolved.
+- Why next: PTY and task orchestration are both ahead of the legacy CLI in some ways, but the remaining parity work should be limited to targeted workflow mapping, not model replacement.
 - Deliverables:
-  - decide which legacy `/tasks` and terminal workflows must map onto current PTY and worker-task features
+  - map only a small number of high-value legacy terminal workflows onto the current PTY model
+  - keep the worker-task model as the baseline and add only the minimum scheduled/background behavior that proves necessary
   - close the highest-value UX and inspection gaps that block migration acceptance
   - document any accepted deviations where the `.NET` model intentionally replaces the legacy flow
 - Main risks:
@@ -137,11 +158,11 @@ Use this file to decide what to build next. Use [ARCHITECTURE.md](./ARCHITECTURE
 ### [ ] Workflow Command Recovery v1
 
 - Priority: P1
-- Depends on: PTY and Task Workflow Parity v1
-- Why next: legacy workflow commands such as `/review`, `/init`, `/commit`, `/branch`, and `/diff` are still absent from the first-party `.NET` surface.
+- Depends on: Auth Parity and Provider Defaults v1
+- Why next: legacy workflow commands such as `/review`, `/init`, `/commit`, `/branch`, and `/diff` are still absent from the first-party `.NET` surface, and the chosen direction is now to restore most of them rather than only a minimal subset.
 - Deliverables:
-  - decide which workflow commands remain first-party migration targets
-  - implement the smallest high-value workflow set or move them to explicit defer/deviation status
+  - restore most legacy workflow commands that still belong in the first-party CLI
+  - draw and document the boundary between first-party workflow commands and plugin or skill territory
   - keep any remaining workflow scope aligned with plugins and skills instead of ad hoc built-ins
 - Main risks:
   - importing too much product-specific workflow behavior without clear ownership
@@ -149,17 +170,32 @@ Use this file to decide what to build next. Use [ARCHITECTURE.md](./ARCHITECTURE
 - Exit criteria:
   - workflow UI rows in [PARITY.md](./PARITY.md) no longer remain untriaged
 
-### [ ] Distribution and Bootstrap Surface Decision v1
+### [ ] Alias Compatibility v1
+
+- Priority: P2
+- Depends on: Workflow Command Recovery v1
+- Why next: a small number of legacy aliases are worth keeping for migration smoothness, but broad alias parity is not.
+- Deliverables:
+  - identify the small high-value alias set worth preserving
+  - implement only those aliases
+  - document intentionally dropped aliases in [PARITY.md](./PARITY.md)
+- Main risks:
+  - cluttering the command dispatcher with low-value compatibility shims
+  - expanding alias scope beyond what materially helps migration
+- Exit criteria:
+  - top-level alias parity is no longer an untriaged gap in [PARITY.md](./PARITY.md)
+
+### [v] Distribution and Bootstrap Surface Decision v1
 
 - Priority: P1
 - Depends on: Workflow Command Recovery v1
-- Why next: legacy `install`, `update`, `setup-token`, and shell-completion surfaces still have no `.NET` migration decision.
+- Why now: the product direction is now explicit: distribution stays outside the CLI for now, and shell completion is the only lightweight follow-up worth reconsidering later.
 - Deliverables:
-  - decide whether ClawdNet will ship first-party install and update commands
-  - decide the migration position for token/bootstrap helpers and shell completion
-  - document accepted non-goals if distribution remains external to the CLI
+  - [x] decided that ClawdNet will not ship first-party install, update, or setup-token commands in the current migration scope
+  - [x] documented distribution as external to the CLI for now
+  - [x] kept shell completion as an optional future follow-up only if it is cheap and clearly valuable
 - Main risks:
   - tying runtime migration work to packaging/distribution choices prematurely
   - documenting end-user promises that the repo does not actually support
 - Exit criteria:
-  - distribution and bootstrap parity rows are either implemented, deferred with rationale, or intentionally dropped
+  - [x] distribution and bootstrap parity rows moved out of the open decision set and documented with rationale

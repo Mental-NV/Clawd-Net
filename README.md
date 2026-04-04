@@ -120,8 +120,8 @@ export OPENAI_API_KEY=your_key_here
 - `ask --max-turns <N> <prompt>`
 - `ask --max-budget-usd <amount> <prompt>`
 - `auth status`
-- `auth login` (env-var auth guidance)
-- `auth logout` (env-var auth guidance)
+- `auth login` (current env-var auth guidance)
+- `auth logout` (current env-var auth guidance)
 - `provider list`
 - `provider show <name>`
 - `platform open <path> [--line N] [--column N]`
@@ -213,9 +213,7 @@ Supported configuration lives in:
 
 Legacy TypeScript config and memory surfaces such as `~/.claude`,
 `.claude/settings*.json`, `CLAUDE.md`, `CLAUDE_CONFIG_DIR`, and project
-`.mcp.json` are not part of the supported `.NET` configuration contract. Any
-remaining compatibility code in the implementation should be treated as
-transitional and subject to removal.
+`.mcp.json` are not part of the supported `.NET` configuration contract.
 
 ## Provider Configuration
 

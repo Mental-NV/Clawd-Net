@@ -90,6 +90,7 @@ Provider selection is explicit and first-class.
 - Provider is session-scoped and task-scoped.
 - Per-turn overrides may update an existing session's provider and model for future turns.
 - Provider choice is never inferred from a model name.
+- Explicit provider selection is a retained product decision; future UX work should smooth defaults rather than hide providers behind heuristics.
 - The shared model contracts remain `ModelRequest`, `ModelResponse`, and `ModelStreamEvent`.
 - All built-in provider adapters normalize into the same shared model layer.
 
@@ -103,7 +104,8 @@ Current provider defaults:
 - AWS Bedrock supports standard AWS credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`), bearer token auth (`AWS_BEARER_TOKEN_BEDROCK`), and skip-auth mode (`CLAUDE_CODE_SKIP_BEDROCK_AUTH=1`). Region defaults to `us-east-1` via `AWS_REGION`/`AWS_DEFAULT_REGION`. Custom endpoints are supported via `ANTHROPIC_BEDROCK_BASE_URL`. Bedrock uses the Converse API with AWS SigV4 signing and supports ARN-format model IDs and cross-region inference profiles.
 - Google Vertex AI supports GCP service account key authentication via `GOOGLE_APPLICATION_CREDENTIALS`, project ID via `ANTHROPIC_VERTEX_PROJECT_ID`/`GOOGLE_CLOUD_PROJECT`/`GCLOUD_PROJECT`, and skip-auth mode (`CLAUDE_CODE_SKIP_VERTEX_AUTH=1`). Region defaults to `us-east5` via `CLOUD_ML_REGION`, with per-model overrides via `VERTEX_REGION_CLAUDE_*` env vars. Model IDs use the `model-name@YYYYMMDD` format with automatic resolution from short names. Vertex AI uses the `rawPredict` and `streamGenerateContent` endpoints with Anthropic-compatible message format.
 - Azure Foundry supports API key auth via `ANTHROPIC_FOUNDRY_API_KEY` and skip-auth mode (`CLAUDE_CODE_SKIP_FOUNDRY_AUTH=1`). Endpoint is constructed from `ANTHROPIC_FOUNDRY_RESOURCE` (format: `https://{resource}.services.ai.azure.com/anthropic`) or overridden via `ANTHROPIC_FOUNDRY_BASE_URL`. Model names are simple deployment identifiers. Foundry uses the same Anthropic messages API format.
-- Auth is currently environment-variable-based across providers; legacy OAuth/keychain flows are not implemented.
+- Auth is currently environment-variable-based across providers.
+- OAuth support is still a planned parity target; env-var-only auth is not the final product direction.
 
 ## Persistence Model
 
@@ -175,6 +177,7 @@ PTY support exists as a distinct long-lived execution surface.
 - PTY sessions track duration (computed from start/completion timestamps) and output line count.
 - PTY sessions can be marked as background (model-initiated vs user-initiated).
 - The TUI PTY drawer displays duration, line count, background status, and timeout warnings.
+- The current PTY model is the accepted replacement baseline; future parity work should map only a small number of high-value legacy terminal workflows onto it.
 
 Current interrupt priority is an explicit product default:
 
@@ -194,6 +197,7 @@ Worker tasks are first-class records backed by their own worker sessions.
 - Read-only worker inspection is supported.
 - Running or pending tasks discovered on startup are normalized to interrupted instead of being resumed automatically.
 - Parent tasks can supervise direct child tasks and wait for child completion before finalizing.
+- The current worker-task model is the accepted baseline; future parity work should add only the minimum scheduled or background semantics that prove necessary.
 
 Current task scope is intentionally bounded:
 
@@ -217,7 +221,8 @@ The plugin platform is local, manifest-driven, and subprocess-based.
 - Invalid plugin extensions invalidate only that extension entry, not the whole plugin.
 - Built-in command and tool names are reserved and cannot be overridden by plugins.
 - Plugin reload must add, update, and remove plugin contributions cleanly without requiring app restart.
-- Marketplace-style discovery and update flows are still outside the current implementation scope.
+- Local-only plugin lifecycle is the accepted product model for now.
+- Marketplace-style discovery and update flows are not a current goal; a curated registry is the only plausible future expansion.
 
 Hook behavior is intentionally conservative:
 
@@ -234,6 +239,7 @@ MCP and LSP are integrated as runtime subsystems rather than special-case UI fea
 - They surface model-visible tools through the shared tool pipeline.
 - Their runtime activity is visible through transcript and terminal activity surfaces rather than dedicated management dashboards.
 - Dedicated MCP and LSP commands remain available for non-interactive inspection and diagnostics.
+- The current explicit `lsp` CLI is the accepted minimum first-party inspection surface; a small interactive diagnostics view can be added later if it proves necessary.
 
 The architecture intentionally keeps these integrations inside the common runtime and tool model instead of creating a second subsystem interface.
 
@@ -324,7 +330,7 @@ Implications of this decision:
 - legacy `~/.claude`, project `.claude/settings*.json`, `CLAUDE.md`, `CLAUDE_CONFIG_DIR`, and project `.mcp.json` are not supported settings surfaces
 - `--settings` is only an explicit `.NET` settings input, not a promise of legacy settings compatibility
 - legacy settings compatibility code has been fully removed from the active runtime
-- legacy JSONL transcript import or resume, if kept at all, is a separate migration decision and not part of the settings model
+- legacy JSONL transcript import or resume is not a migration goal and is not part of the settings model
 
 ## Rollout and Compatibility Decisions
 
@@ -357,7 +363,7 @@ These defaults are now part of the working project baseline:
 - default legacy provider normalization is `anthropic`
 - provider choice is explicit, not model-name inferred
 - built-in providers are Anthropic, OpenAI, AWS Bedrock, Google Vertex AI, and Azure Foundry
-- auth is currently environment-variable-based rather than OAuth/keychain-based
+- auth is currently environment-variable-based, but OAuth support remains a planned parity target
 - Bedrock uses AWS SigV4 signing, bearer token auth, or skip-auth mode
 - Bedrock region defaults to `us-east-1` via `AWS_REGION`/`AWS_DEFAULT_REGION`
 - Bedrock supports ARN-format model IDs and cross-region inference profiles
@@ -382,6 +388,7 @@ These defaults are now part of the working project baseline:
 - tasks persist metadata but do not durably resume active execution
 - worker inspection is read-only
 - plugin execution remains subprocess-based
+- local-only plugin lifecycle is the accepted distribution model for now
 - the TUI is the default no-arg interactive shell
 - slash commands remain available but secondary in the TUI
 - platform integration is limited to opening files and URLs for now
@@ -400,6 +407,8 @@ The following areas have been intentionally deferred:
 - deep editor or IDE integrations beyond open-file and open-URL
 - voice and audio features
 - mouse support, fuzzy search, and heavyweight dashboard-style pane systems
+- legacy JSONL transcript import or resume
+- first-party install, update, and setup-token commands (shell completion may still be added later if cheap)
 
 These are not omissions by accident. They are deferred scope choices made to keep the migration coherent and shippable.
 
