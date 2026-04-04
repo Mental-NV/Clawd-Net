@@ -116,13 +116,17 @@ Use this file to decide what to build next. Use [ARCHITECTURE.md](./ARCHITECTURE
   - add the first high-value config/model/settings interactive pickers in TUI
 - Exit criteria: the highest-value `P1` model/runtime/config UI gaps are no longer not-started
 
-### [ ] Reporting and Workflow Surface Recovery
+### [v] Reporting and Workflow Surface Recovery
 
 - Priority: P1
 - Depends on: Safety and Approval UX Parity v1
 - Deliverables:
-  - restore or intentionally replace the most important reporting surfaces (`doctor`, `status`, `stats`, `usage`, `cost`, `insights`)
-  - decide which workflow commands remain first-party vs plugin/skill territory
+  - `doctor` command: system diagnostics (version, runtime, config, providers, sessions, plugins, MCP, LSP)
+  - `status` command: current session status (provider, model, message count, session info)
+  - `stats` command: usage statistics (session counts, message counts, provider/tag distribution)
+  - `usage` command: token/cost usage with graceful degradation (message counts per session)
+  - `cost` and `insights` deferred (require billing API and analytics infrastructure)
+  - workflow commands remain deferred to separate workflow milestone
 - Main risks: large surface area with mixed product ownership
 - Exit criteria: the major reporting/workflow parity rows are either implemented, deferred with rationale, or explicitly deviated
 

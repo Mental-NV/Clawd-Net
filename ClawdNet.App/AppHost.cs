@@ -93,6 +93,10 @@ public sealed class AppHost : IAsyncDisposable
             "tool",
             "auth",
             "version",
+            "doctor",
+            "status",
+            "stats",
+            "usage",
             "--version",
             "-v",
             "-V"
@@ -197,7 +201,11 @@ public sealed class AppHost : IAsyncDisposable
             new SessionCommandHandler(),
             new ToolCommandHandler(),
             new VersionCommandHandler(),
-            new AuthCommandHandler(_providerCatalog)
+            new AuthCommandHandler(_providerCatalog),
+            new DoctorCommandHandler(),
+            new StatusCommandHandler(),
+            new StatsCommandHandler(),
+            new UsageCommandHandler()
         ];
         var helpHandler = new HelpCommandHandler(_handlers);
         var allHandlers = new ICommandHandler[] { helpHandler }.Concat(_handlers);
@@ -225,6 +233,7 @@ public sealed class AppHost : IAsyncDisposable
         }
 
         // Handle root positional prompt: single non-flag argument treated as ask prompt
+        // But only if it's not a known command name
         if (TryParseRootPositionalPrompt(args, out var rootPrompt) && rootPrompt is not null)
         {
             return await ExecuteAskAsync(rootPrompt, args, cancellationToken);
@@ -284,7 +293,23 @@ public sealed class AppHost : IAsyncDisposable
             return true;
         }
 
+        // Don't launch interactive mode if the args match a known command
+        if (args.Count > 0 && IsKnownCommand(args[0]))
+        {
+            return false;
+        }
+
         return TryParseReplLaunchOptions(args, out _);
+    }
+
+    private static bool IsKnownCommand(string arg)
+    {
+        var knownCommands = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "ask", "provider", "platform", "task", "plugin", "lsp", "mcp",
+            "session", "tool", "auth", "version", "doctor", "status", "stats", "usage"
+        };
+        return knownCommands.Contains(arg);
     }
 
     private static ReplLaunchOptions ParseReplLaunchOptions(IReadOnlyList<string> args)
@@ -494,7 +519,8 @@ public sealed class AppHost : IAsyncDisposable
         prompt = null;
 
         // A single non-flag argument is treated as a positional prompt
-        if (args.Count == 1 && !args[0].StartsWith("-", StringComparison.Ordinal))
+        // But only if it's not a known command name
+        if (args.Count == 1 && !args[0].StartsWith("-", StringComparison.Ordinal) && !IsKnownCommand(args[0]))
         {
             prompt = args[0];
             return true;

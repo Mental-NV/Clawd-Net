@@ -117,6 +117,13 @@ export OPENAI_API_KEY=your_key_here
 - `lsp list`
 - `lsp ping <server>`
 - `lsp diagnostics <path>`
+- `doctor`
+- `status`
+- `status --session <id>`
+- `stats`
+- `stats --session <id>`
+- `usage`
+- `usage --session <id>`
 - `tool echo <text>`
 
 Common interactive commands:
