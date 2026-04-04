@@ -17,6 +17,7 @@ public sealed class TuiHost : ITuiHost
     private readonly ITaskManager _taskManager;
     private readonly IProviderCatalog _providerCatalog;
     private readonly IPlatformLauncher _platformLauncher;
+    private readonly IToolRegistry _toolRegistry;
     private readonly PromptHistoryBuffer _promptHistory = new();
 
     private ConversationSession? _currentSession;
@@ -50,7 +51,8 @@ public sealed class TuiHost : ITuiHost
         IPtyManager ptyManager,
         ITaskManager taskManager,
         IProviderCatalog? providerCatalog = null,
-        IPlatformLauncher? platformLauncher = null)
+        IPlatformLauncher? platformLauncher = null,
+        IToolRegistry? toolRegistry = null)
     {
         _terminalSession = terminalSession;
         _conversationStore = conversationStore;
@@ -60,6 +62,7 @@ public sealed class TuiHost : ITuiHost
         _taskManager = taskManager;
         _providerCatalog = providerCatalog ?? new TerminalFallbackProviderCatalog();
         _platformLauncher = platformLauncher ?? new TerminalNullPlatformLauncher();
+        _toolRegistry = toolRegistry ?? new TerminalFallbackToolRegistry();
     }
 
     public async Task<CommandExecutionResult> RunAsync(ReplLaunchOptions options, CancellationToken cancellationToken)
@@ -396,6 +399,12 @@ public sealed class TuiHost : ITuiHost
                 return true;
             case "/context":
                 await ShowSessionContextAsync(cancellationToken);
+                return true;
+            case "/permissions":
+                ShowPermissionsOverlay();
+                return true;
+            case "/config":
+                ShowConfigOverlay();
                 return true;
             default:
                 if (prompt.StartsWith("/tasks ", StringComparison.OrdinalIgnoreCase))
@@ -1171,6 +1180,8 @@ public sealed class TuiHost : ITuiHost
                         "/session",
                         "/provider",
                         "/provider <name> [model]",
+                        "/permissions",
+                        "/config",
                         "/tasks",
                         "/tasks <id>",
                         "/pty",
@@ -1185,6 +1196,69 @@ public sealed class TuiHost : ITuiHost
                         "/exit"
                     ])
             ]);
+        _focus = TuiFocusTarget.Overlay;
+    }
+
+    private void ShowPermissionsOverlay()
+    {
+        var modeDescription = _currentPermissionMode switch
+        {
+            PermissionMode.Default => "Read-only tools are allowed automatically. Write and execute tools require approval.",
+            PermissionMode.AcceptEdits => "Read-only and write tools are allowed automatically. Execute tools require approval.",
+            PermissionMode.BypassPermissions => "All tools are allowed automatically. No approval prompts will appear.",
+            _ => "Unknown permission mode."
+        };
+
+        var readOnlyCount = _toolRegistry.Tools.Count(t => t.Category == ToolCategory.ReadOnly);
+        var writeCount = _toolRegistry.Tools.Count(t => t.Category == ToolCategory.Write);
+        var executeCount = _toolRegistry.Tools.Count(t => t.Category == ToolCategory.Execute);
+
+        var sections = new List<TuiOverlaySection>
+        {
+            new TuiOverlaySection("Current mode", [modeDescription]),
+            new TuiOverlaySection("Tool categories", [
+                $"  ReadOnly: {readOnlyCount} (auto-allowed)",
+                $"  Write:    {writeCount} ({(_currentPermissionMode == PermissionMode.AcceptEdits || _currentPermissionMode == PermissionMode.BypassPermissions ? "auto-allowed" : "requires approval")})",
+                $"  Execute:  {executeCount} ({(_currentPermissionMode == PermissionMode.BypassPermissions ? "auto-allowed" : "requires approval")})"
+            ])
+        };
+
+        if (_currentPermissionMode == PermissionMode.BypassPermissions)
+        {
+            sections.Add(new TuiOverlaySection("Warning", [
+                "BYPASS-PERMISSIONS MODE: All tools execute without approval.",
+                "Only use this mode in trusted environments with safe inputs."
+            ]));
+        }
+
+        _overlay = new TuiOverlayState(
+            TuiOverlayKind.Permissions,
+            "Permissions",
+            $"Mode: {_currentPermissionMode.ToString().ToLowerInvariant()}",
+            sections);
+        _focus = TuiFocusTarget.Overlay;
+    }
+
+    private void ShowConfigOverlay()
+    {
+        var configLines = new List<string>
+        {
+            $"  Provider:      {_currentSession?.Provider ?? "(none)"}",
+            $"  Model:         {_currentSession?.Model ?? "(none)"}",
+            $"  Session:       {_currentSession?.Id ?? "(none)"}",
+            $"  Permission:    {_currentPermissionMode.ToString().ToLowerInvariant()}"
+        };
+
+        var sections = new List<TuiOverlaySection>
+        {
+            new TuiOverlaySection("Current session config", configLines)
+        };
+
+        _overlay = new TuiOverlayState(
+            TuiOverlayKind.Config,
+            "Configuration",
+            "Active session and runtime configuration",
+            sections);
         _focus = TuiFocusTarget.Overlay;
     }
 

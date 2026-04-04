@@ -62,6 +62,7 @@ public sealed class ConsoleTuiRenderer : ITuiRenderer
     private string RenderContext(TuiState state)
     {
         var builder = new StringBuilder();
+        builder.AppendLine($"permission={ConsoleTranscriptRenderer.FormatPermissionMode(state.PermissionMode)}");
         if (!string.IsNullOrWhiteSpace(state.ActivityDetail))
         {
             builder.AppendLine($"activity={state.ActivityState} | {state.ActivityDetail}");

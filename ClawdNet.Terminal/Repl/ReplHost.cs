@@ -18,6 +18,7 @@ public sealed class ReplHost : IReplHost
     private readonly ITaskManager _taskManager;
     private readonly IProviderCatalog _providerCatalog;
     private readonly IPlatformLauncher _platformLauncher;
+    private readonly IToolRegistry _toolRegistry;
     private readonly PromptHistoryBuffer _promptHistory = new();
     private TerminalActivityState _activityState = TerminalActivityState.Ready;
     private string? _activityDetail;
@@ -37,7 +38,8 @@ public sealed class ReplHost : IReplHost
         IPtyManager ptyManager,
         ITaskManager taskManager,
         IProviderCatalog? providerCatalog = null,
-        IPlatformLauncher? platformLauncher = null)
+        IPlatformLauncher? platformLauncher = null,
+        IToolRegistry? toolRegistry = null)
     {
         _terminalSession = terminalSession;
         _conversationStore = conversationStore;
@@ -47,6 +49,7 @@ public sealed class ReplHost : IReplHost
         _taskManager = taskManager;
         _providerCatalog = providerCatalog ?? new TerminalFallbackProviderCatalog();
         _platformLauncher = platformLauncher ?? new TerminalNullPlatformLauncher();
+        _toolRegistry = toolRegistry ?? new TerminalFallbackToolRegistry();
         _approvalHandler = new TerminalApprovalHandler(terminalSession, HandleActivityChange);
     }
 
@@ -386,7 +389,7 @@ public sealed class ReplHost : IReplHost
             case "/help":
                 SetActivity(
                     TerminalActivityState.ShowingHelp,
-                    "Commands: /help, /session, /provider, /tasks, /pty, /open, /browse, /clear, /bottom, /exit. Keys: Up/Down history, PgUp/PgDn scroll, End bottom, F3 PTY overlay in TUI.");
+                    "Commands: /help, /session, /provider, /permissions, /config, /tasks, /pty, /open, /browse, /clear, /bottom, /exit. Keys: Up/Down history, PgUp/PgDn scroll, End bottom, F3 PTY overlay in TUI.");
                 return true;
             case "/session":
                 SetActivity(
@@ -424,6 +427,12 @@ public sealed class ReplHost : IReplHost
             case "/bottom":
                 ScrollBottom();
                 SetActivity(TerminalActivityState.Ready, "Returned to live output.");
+                return true;
+            case "/permissions":
+                ShowPermissionsInfo();
+                return true;
+            case "/config":
+                ShowConfigInfo();
                 return true;
             default:
                 if (prompt.StartsWith("/provider ", StringComparison.OrdinalIgnoreCase))
@@ -683,6 +692,63 @@ public sealed class ReplHost : IReplHost
     {
         _activityState = state;
         _activityDetail = detail;
+    }
+
+    private void ShowPermissionsInfo()
+    {
+        var modeDescription = _currentPermissionMode switch
+        {
+            PermissionMode.Default => "Read-only tools are allowed automatically. Write and execute tools require approval.",
+            PermissionMode.AcceptEdits => "Read-only and write tools are allowed automatically. Execute tools require approval.",
+            PermissionMode.BypassPermissions => "All tools are allowed automatically. No approval prompts will appear.",
+            _ => "Unknown permission mode."
+        };
+
+        var readOnlyCount = _toolRegistry.Tools.Count(t => t.Category == ToolCategory.ReadOnly);
+        var writeCount = _toolRegistry.Tools.Count(t => t.Category == ToolCategory.Write);
+        var executeCount = _toolRegistry.Tools.Count(t => t.Category == ToolCategory.Execute);
+
+        var lines = new List<string>
+        {
+            $"Mode: {_currentPermissionMode.ToString().ToLowerInvariant()}",
+            modeDescription,
+            string.Empty,
+            "Tool categories:",
+            $"  ReadOnly: {readOnlyCount} (auto-allowed)",
+            $"  Write:    {writeCount} ({(_currentPermissionMode == PermissionMode.AcceptEdits || _currentPermissionMode == PermissionMode.BypassPermissions ? "auto-allowed" : "requires approval")})",
+            $"  Execute:  {executeCount} ({(_currentPermissionMode == PermissionMode.BypassPermissions ? "auto-allowed" : "requires approval")})"
+        };
+
+        if (_currentPermissionMode == PermissionMode.BypassPermissions)
+        {
+            lines.Add(string.Empty);
+            lines.Add("WARNING: BYPASS-PERMISSIONS MODE - All tools execute without approval.");
+            lines.Add("Only use this mode in trusted environments with safe inputs.");
+        }
+
+        SetActivity(TerminalActivityState.ShowingSession, string.Join(Environment.NewLine, lines));
+        if (_currentSession is not null)
+        {
+            Render(_currentSession, _currentPermissionMode, _visibleStartIndex, clearScreen: true);
+        }
+    }
+
+    private void ShowConfigInfo()
+    {
+        var lines = new List<string>
+        {
+            "Active session configuration:",
+            $"  Provider:   {_currentSession?.Provider ?? "(none)"}",
+            $"  Model:      {_currentSession?.Model ?? "(none)"}",
+            $"  Session:    {_currentSession?.Id ?? "(none)"}",
+            $"  Permission: {_currentPermissionMode.ToString().ToLowerInvariant()}"
+        };
+
+        SetActivity(TerminalActivityState.ShowingSession, string.Join(Environment.NewLine, lines));
+        if (_currentSession is not null)
+        {
+            Render(_currentSession, _currentPermissionMode, _visibleStartIndex, clearScreen: true);
+        }
     }
 
     private void HandleActivityChange(TerminalActivityState state, string? detail)

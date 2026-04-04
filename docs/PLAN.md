@@ -47,7 +47,7 @@ Use this file to decide what to build next. Use [ARCHITECTURE.md](./ARCHITECTURE
 
 ## Next Milestones
 
-### [/] Safety and Approval UX Parity v1
+### [v] Safety and Approval UX Parity v1
 
 - Priority: P0
 - Depends on: Legacy Context and Config Compatibility v1
@@ -58,7 +58,9 @@ Use this file to decide what to build next. Use [ARCHITECTURE.md](./ARCHITECTURE
 - Main risks: TUI scope creep and unclear boundary between parity vs additive UX improvement
 - Exit criteria: `PARITY.md` no longer lists safety UI as only partially implemented
 
-### [ ] Session Branching and Resume Parity v2
+## Next Milestones
+
+### [/] Session Branching and Resume Parity v2
 
 - Priority: P0
 - Depends on: Legacy Context and Config Compatibility v1

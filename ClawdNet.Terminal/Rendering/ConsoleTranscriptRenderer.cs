@@ -133,13 +133,13 @@ public sealed class ConsoleTranscriptRenderer : ITranscriptRenderer
         };
     }
 
-    private static string FormatPermissionMode(PermissionMode permissionMode)
+    internal static string FormatPermissionMode(PermissionMode permissionMode)
     {
         return permissionMode switch
         {
             PermissionMode.Default => "default",
             PermissionMode.AcceptEdits => "accept-edits",
-            PermissionMode.BypassPermissions => "bypass-permissions",
+            PermissionMode.BypassPermissions => "bypass-permissions!",
             _ => permissionMode.ToString()
         };
     }

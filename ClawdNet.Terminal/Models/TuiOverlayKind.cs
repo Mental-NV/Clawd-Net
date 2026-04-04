@@ -8,5 +8,7 @@ public enum TuiOverlayKind
     EditReview,
     Error,
     Session,
-    PtyFullScreen
+    PtyFullScreen,
+    Permissions,
+    Config
 }
