@@ -21,17 +21,29 @@ Usage: clawdnet auth <subcommand> [options]
 
 Manage authentication credentials for model providers.
 
+ClawdNet uses environment variables for provider authentication.
+OAuth/keychain auth from the legacy CLI is intentionally not supported.
+
 Subcommands:
   status    Show authentication status for configured providers
+  login     Guidance on setting provider API keys
+  logout    Guidance on unsetting provider API keys
+
+Environment Variables:
+  Anthropic:    ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL
+  OpenAI:       OPENAI_API_KEY, OPENAI_BASE_URL
+  AWS Bedrock:  AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION
+                AWS_BEARER_TOKEN_BEDROCK, CLAUDE_CODE_SKIP_BEDROCK_AUTH
+  Vertex AI:    GOOGLE_APPLICATION_CREDENTIALS, ANTHROPIC_VERTEX_PROJECT_ID
+                CLOUD_ML_REGION, CLAUDE_CODE_SKIP_VERTEX_AUTH
+  Azure Foundry: ANTHROPIC_FOUNDRY_API_KEY, ANTHROPIC_FOUNDRY_RESOURCE
+                 CLAUDE_CODE_SKIP_FOUNDRY_AUTH
 
 Examples:
   clawdnet auth status
   clawdnet auth status --provider anthropic
-
-Note:
-  ClawdNet uses environment variables for authentication.
-  Set ANTHROPIC_API_KEY, OPENAI_API_KEY, etc. before running queries.
-  OAuth/keychain auth from the legacy CLI is not currently supported.
+  clawdnet auth login
+  clawdnet auth logout
 """;
 
     public bool CanHandle(CommandRequest request)
@@ -55,12 +67,21 @@ Note:
         return subcommand switch
         {
             "status" => await ExecuteStatusAsync(context, request, cancellationToken),
-            "login" => CommandExecutionResult.Failure(
-                "Interactive OAuth login is not currently supported. " +
-                "Set provider API keys via environment variables (e.g., ANTHROPIC_API_KEY, OPENAI_API_KEY).", 1),
-            "logout" => CommandExecutionResult.Failure(
-                "Logout is not supported in env-var-based auth. " +
-                "Unset the relevant environment variables to disable auth.", 1),
+            "login" => CommandExecutionResult.Success(
+                "ClawdNet uses environment variables for provider authentication.\n" +
+                "OAuth/keychain auth from the legacy CLI is intentionally not supported.\n\n" +
+                "To authenticate, set the appropriate environment variables for your provider:\n" +
+                "  Anthropic:    export ANTHROPIC_API_KEY=your-key\n" +
+                "  OpenAI:       export OPENAI_API_KEY=your-key\n" +
+                "  AWS Bedrock:  export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=us-east-1\n" +
+                "  Vertex AI:    export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json\n" +
+                "  Azure Foundry: export ANTHROPIC_FOUNDRY_API_KEY=your-key\n\n" +
+                "Run 'clawdnet auth status' to verify your configuration."),
+            "logout" => CommandExecutionResult.Success(
+                "ClawdNet uses environment variables for provider authentication.\n" +
+                "To logout, unset the relevant environment variables:\n" +
+                "  unset ANTHROPIC_API_KEY OPENAI_API_KEY\n\n" +
+                "Run 'clawdnet auth status' to verify you are logged out."),
             _ => CommandExecutionResult.Failure($"Unknown auth subcommand '{subcommand}'. Use status, login, or logout.", 1)
         };
     }

@@ -93,18 +93,21 @@ Use this file to decide what to build next. Use [ARCHITECTURE.md](./ARCHITECTURE
 - Exit criteria: `PARITY.md` MCP rows are either verified or intentionally deviated
   - Deferred: `mcp serve`, `mcp add-from-claude-desktop`, `mcp reset-project-choices`, `mcp xaa`, `--mcp-config` root flag, `/mcp` slash command
 
-### [/] Auth and Migration Compatibility Decision
+### [v] Auth and Migration Compatibility Decision
 
 - Priority: P0
 - Depends on: Legacy Context and Config Compatibility v1
 - Deliverables:
-  - decide whether `.NET` will remain env-var auth only or add OAuth/keychain parity
-  - implement the chosen path or record an explicit accepted deviation in `PARITY.md`
-  - ensure auth docs and command help are aligned with the chosen migration contract
+  - Decision: `.NET` remains env-var auth only; OAuth/keychain is documented as an accepted deviation
+  - `auth login` now returns helpful setup guidance with env var examples for all providers
+  - `auth logout` now returns helpful teardown guidance
+  - `auth --help` documents all supported provider environment variables
+  - `PARITY.md` updated with intentional deviation for auth
+  - Secrets/auth assumptions row updated with decision rationale
 - Main risks: opening a large auth surface without full product intent
 - Exit criteria: auth is no longer an unresolved P0 changed area
 
-### [ ] Runtime Controls and Settings UI v1
+### [/] Runtime Controls and Settings UI v1
 
 - Priority: P1
 - Depends on: Safety and Approval UX Parity v1
