@@ -104,24 +104,24 @@ Use this file to decide what to build next. Use [ARCHITECTURE.md](./ARCHITECTURE
 - Exit criteria:
   - [x] transcript compatibility removed from the open migration ledger
 
-### [/] Auth Parity and Provider Defaults v1
+### [v] Auth Parity and Provider Defaults v1
 
 - Priority: P0
 - Depends on: Own Settings Only Refactor v1
 - Why now: auth is now the last unresolved `P0` migration area. Env-var-only auth is no longer the accepted end state, and the explicit provider model is accepted but still needs smoother defaults where practical.
 - Deliverables:
-  - add OAuth-capable auth support without regressing current env-var-based provider auth
-  - revise `auth login` and `auth logout` so they no longer frame OAuth as an intentional non-goal
-  - preserve explicit provider selection while smoothing default provider and model behavior where it materially improves usability
-  - update [PARITY.md](./PARITY.md), [ARCHITECTURE.md](./ARCHITECTURE.md), and [README.md](../README.md) to match the implemented auth contract
+  - [x] add OAuth-capable auth support without regressing current env-var-based provider auth
+  - [x] revise `auth login` and `auth logout` so they no longer frame OAuth as an intentional non-goal
+  - [x] preserve explicit provider selection while smoothing default provider and model behavior where it materially improves usability
+  - [x] update [PARITY.md](./PARITY.md), [ARCHITECTURE.md](./ARCHITECTURE.md), and [README.md](../README.md) to match the implemented auth contract
 - Main risks:
   - OAuth flow complexity, including callback handling and token refresh
   - choosing a token persistence model that is secure enough without dragging in unnecessary platform complexity
   - regressing existing env-var-based and CI-friendly provider flows while broadening auth support
 - Exit criteria:
-  - the auth parity rows in [PARITY.md](./PARITY.md) are no longer unresolved
-  - provider selection remains explicit, with smoother defaults documented and tested
-  - `auth login`, `auth status`, and `auth logout` reflect the supported auth contract
+  - [x] the auth parity rows in [PARITY.md](./PARITY.md) are no longer unresolved
+  - [x] provider selection remains explicit, with smoother defaults documented and tested
+  - [x] `auth login`, `auth status`, and `auth logout` reflect the supported auth contract
 
 ### [ ] Config UI and Interactive Settings Parity v1
 

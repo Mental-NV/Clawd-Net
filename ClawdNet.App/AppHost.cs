@@ -4,6 +4,7 @@ using ClawdNet.Core.Models;
 using ClawdNet.Core.Services;
 using ClawdNet.Core.Tools;
 using ClawdNet.Runtime.Anthropic;
+using ClawdNet.Runtime.Auth;
 using ClawdNet.Runtime.Editing;
 using ClawdNet.Runtime.FeatureGates;
 using ClawdNet.Runtime.Permissions;
@@ -41,6 +42,8 @@ public sealed class AppHost : IAsyncDisposable
     private readonly IMcpClient _mcpClient;
     private readonly ILspClient _lspClient;
     private readonly IPtyManager _ptyManager;
+    private readonly ITokenStore _tokenStore;
+    private readonly IOAuthService _oauthService;
     private readonly SemaphoreSlim _pluginInitializationLock = new(1, 1);
     private readonly SemaphoreSlim _taskInitializationLock = new(1, 1);
     private readonly SemaphoreSlim _mcpInitializationLock = new(1, 1);
@@ -69,7 +72,9 @@ public sealed class AppHost : IAsyncDisposable
         ITaskManager? taskManager = null,
         IReplHost? replHost = null,
         ITuiHost? tuiHost = null,
-        ITerminalSession? terminalSession = null)
+        ITerminalSession? terminalSession = null,
+        ITokenStore? tokenStore = null,
+        IOAuthService? oauthService = null)
     {
         _featureGate = featureGate ?? new DictionaryFeatureGate();
         processRunner ??= new SystemProcessRunner();
@@ -180,6 +185,10 @@ public sealed class AppHost : IAsyncDisposable
         _replHost = replHost ?? new ReplHost(terminalSession, conversationStore, queryEngine, transcriptRenderer, _ptyManager, _taskManager, _providerCatalog, _platformLauncher, _toolRegistry);
         _tuiHost = tuiHost ?? new TuiHost(terminalSession, conversationStore, queryEngine, tuiRenderer, _ptyManager, _taskManager, _providerCatalog, _platformLauncher, _toolRegistry);
 
+        // Auth services
+        tokenStore ??= new FileTokenStore(dataRoot);
+        oauthService ??= new AnthropicOAuthService(tokenStore);
+
         _context = new CommandContext(_featureGate, _toolRegistry, toolExecutor, conversationStore, _taskStore, _taskManager, queryEngine, _providerCatalog, _mcpClient, _lspClient, _pluginCatalog, _pluginRuntime, _platformLauncher, permissionService, transcriptRenderer, version);
 
         _handlers =
@@ -194,7 +203,7 @@ public sealed class AppHost : IAsyncDisposable
             new SessionCommandHandler(),
             new ToolCommandHandler(),
             new VersionCommandHandler(),
-            new AuthCommandHandler(_providerCatalog),
+            new AuthCommandHandler(_providerCatalog, oauthService),
             new DoctorCommandHandler(),
             new StatusCommandHandler(),
             new StatsCommandHandler(),
@@ -206,6 +215,8 @@ public sealed class AppHost : IAsyncDisposable
 
         McpClient = _mcpClient;
         LspClient = _lspClient;
+        _tokenStore = tokenStore;
+        _oauthService = oauthService;
     }
 
     public IMcpClient McpClient { get; }
@@ -249,6 +260,8 @@ public sealed class AppHost : IAsyncDisposable
         await _mcpClient.DisposeAsync();
         await _lspClient.DisposeAsync();
         await _ptyManager.DisposeAsync();
+        await _tokenStore.DisposeAsync();
+        await _oauthService.DisposeAsync();
         _pluginInitializationLock.Dispose();
         _taskInitializationLock.Dispose();
         _mcpInitializationLock.Dispose();

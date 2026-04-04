@@ -104,8 +104,10 @@ Current provider defaults:
 - AWS Bedrock supports standard AWS credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`), bearer token auth (`AWS_BEARER_TOKEN_BEDROCK`), and skip-auth mode (`CLAUDE_CODE_SKIP_BEDROCK_AUTH=1`). Region defaults to `us-east-1` via `AWS_REGION`/`AWS_DEFAULT_REGION`. Custom endpoints are supported via `ANTHROPIC_BEDROCK_BASE_URL`. Bedrock uses the Converse API with AWS SigV4 signing and supports ARN-format model IDs and cross-region inference profiles.
 - Google Vertex AI supports GCP service account key authentication via `GOOGLE_APPLICATION_CREDENTIALS`, project ID via `ANTHROPIC_VERTEX_PROJECT_ID`/`GOOGLE_CLOUD_PROJECT`/`GCLOUD_PROJECT`, and skip-auth mode (`CLAUDE_CODE_SKIP_VERTEX_AUTH=1`). Region defaults to `us-east5` via `CLOUD_ML_REGION`, with per-model overrides via `VERTEX_REGION_CLAUDE_*` env vars. Model IDs use the `model-name@YYYYMMDD` format with automatic resolution from short names. Vertex AI uses the `rawPredict` and `streamGenerateContent` endpoints with Anthropic-compatible message format.
 - Azure Foundry supports API key auth via `ANTHROPIC_FOUNDRY_API_KEY` and skip-auth mode (`CLAUDE_CODE_SKIP_FOUNDRY_AUTH=1`). Endpoint is constructed from `ANTHROPIC_FOUNDRY_RESOURCE` (format: `https://{resource}.services.ai.azure.com/anthropic`) or overridden via `ANTHROPIC_FOUNDRY_BASE_URL`. Model names are simple deployment identifiers. Foundry uses the same Anthropic messages API format.
-- Auth is currently environment-variable-based across providers.
-- OAuth support is still a planned parity target; env-var-only auth is not the final product direction.
+- Auth supports both environment-variable-based authentication and interactive OAuth browser login for the Anthropic provider via `auth login --browser`.
+- OAuth tokens are stored in file-based secure storage (`.credentials.json` under app data) with 0o600 permissions and automatic refresh before expiry.
+- Env-var auth remains fully functional for CI/CD and automation scenarios.
+- macOS keychain and Windows Credential Manager integration are deferred.
 
 ## Persistence Model
 
@@ -363,7 +365,8 @@ These defaults are now part of the working project baseline:
 - default legacy provider normalization is `anthropic`
 - provider choice is explicit, not model-name inferred
 - built-in providers are Anthropic, OpenAI, AWS Bedrock, Google Vertex AI, and Azure Foundry
-- auth is currently environment-variable-based, but OAuth support remains a planned parity target
+- auth supports both environment variables and OAuth browser login (`auth login --browser`) for Anthropic
+- OAuth tokens persist in file-based secure storage with auto-refresh
 - Bedrock uses AWS SigV4 signing, bearer token auth, or skip-auth mode
 - Bedrock region defaults to `us-east-1` via `AWS_REGION`/`AWS_DEFAULT_REGION`
 - Bedrock supports ARN-format model IDs and cross-region inference profiles
@@ -409,6 +412,7 @@ The following areas have been intentionally deferred:
 - mouse support, fuzzy search, and heavyweight dashboard-style pane systems
 - legacy JSONL transcript import or resume
 - first-party install, update, and setup-token commands (shell completion may still be added later if cheap)
+- macOS keychain and Windows Credential Manager integration (file-based token storage is the current baseline)
 
 These are not omissions by accident. They are deferred scope choices made to keep the migration coherent and shippable.
 

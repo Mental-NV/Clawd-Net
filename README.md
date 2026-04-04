@@ -120,8 +120,9 @@ export OPENAI_API_KEY=your_key_here
 - `ask --max-turns <N> <prompt>`
 - `ask --max-budget-usd <amount> <prompt>`
 - `auth status`
-- `auth login` (current env-var auth guidance)
-- `auth logout` (current env-var auth guidance)
+- `auth login` (env-var guidance)
+- `auth login --browser` (OAuth browser login for Anthropic)
+- `auth logout` (clears OAuth tokens, env-var guidance)
 - `provider list`
 - `provider show <name>`
 - `platform open <path> [--line N] [--column N]`

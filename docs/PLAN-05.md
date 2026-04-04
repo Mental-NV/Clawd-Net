@@ -1,76 +1,142 @@
-# PLAN-05: PTY UX v3, Slice 1
+# PLAN-05: Auth Parity and Provider Defaults v1
 
 ## Objective
 
-Land the first implementation slice of `PTY UX v3` by improving PTY lifecycle visibility, adding explicit PTY status reporting, and enhancing the PTY drawer with richer session state information.
+Implement OAuth-capable authentication support for the primary Anthropic provider without regressing current env-var-based provider auth. Revise `auth login` and `auth logout` so they no longer frame OAuth as an intentional non-goal. Preserve explicit provider selection while smoothing default provider and model behavior.
 
 ## Scope
 
-This slice covers:
+- Implement a local OAuth login flow for Anthropic (browser redirect + local callback) that stores tokens securely
+- Add token persistence using file-based storage (with 0o600 permissions on Linux/macOS) as the baseline, since keychain integration is platform-specific and complex
+- Implement automatic token refresh before expiry
+- Revise `auth login` to support both env-var guidance and interactive OAuth login (`--browser` flag)
+- Revise `auth logout` to clear OAuth tokens as well as env-var guidance
+- Smooth default provider and model behavior: ensure provider defaults are well-documented and practical
+- Update `auth status` to report OAuth token status alongside env-var status
 
-- `/pty status <id>` command showing detailed PTY session info (command, cwd, runtime, output size, clipped status)
-- PTY session list with status indicators (running/stopped/exited) in session drawer
-- PTY output clipping indicator in the UI (show when output has been clipped)
-- PTY close-all command (`/pty close-all`) to clean up all sessions
-- Improved PTY error messages for common failure modes
+## Non-Goals
 
-This slice does not attempt:
+- macOS keychain integration (too platform-specific for this milestone; file-based secure storage is the baseline)
+- Windows credential manager integration
+- Full claude.ai subscriber profile integration (email, org, subscription type display)
+- MCP server OAuth flow
+- Console (API key helper) login flow
+- SSO / `--sso` login flow
+- Cross-App Access (XAA) auth
 
-- richer attach and detach semantics (deferred to slice 2)
-- better long-running PTY ergonomics (deferred to slice 2)
-- clearer terminal-mode behavior (deferred to slice 2)
-- PTY transcript persistence
-- PTY restart/resume after app restart
+## Files Likely to Change
 
-## Assumptions and Non-Goals
-
-- PTY sessions remain process-local and conservative.
-- PTY output remains bounded and clipped.
-- Changes are additive; existing PTY behavior remains backward-compatible.
-- No changes to PTY security or permission model.
-
-## Likely Change Areas
-
-- `ClawdNet.Terminal/Tui/TuiHost.cs` — new PTY slash commands, enhanced drawer
-- `ClawdNet.Terminal/Rendering/ConsoleTuiRenderer.cs` — render PTY status
-- `ClawdNet.Core/Models/PtySessionState.cs` — add clipping indicator display
-- `ClawdNet.Tests/PtyManagerTests.cs` — already exists, may need updates
-- `ClawdNet.Tests/TuiHostTests.cs` — new PTY command tests
+- `ClawdNet.Core/Commands/AuthCommandHandler.cs` — revise login/logout/status to support OAuth
+- `ClawdNet.Core/Abstractions/` — new interfaces for token storage and OAuth service
+- `ClawdNet.Runtime/` — new OAuth service, token persistence, token refresh
+- `ClawdNet.App/AppHost.cs` — register new services
+- `ClawdNet.Tests/` — new auth tests
+- `docs/PARITY.md` — update auth rows
+- `docs/ARCHITECTURE.md` — update auth section
+- `README.md` — update auth documentation
+- `docs/PLAN.md` — mark milestone complete
 
 ## Implementation Plan
 
-1. Add `/pty status <id>` command showing detailed PTY session info
-2. Add `/pty close-all` command to close all PTY sessions
-3. Enhance PTY drawer to show output clipping indicator
-4. Improve PTY error messages for common failures
-5. Add tests for new PTY commands
-6. Run sequential validation and smoke tests.
-7. Update `docs/PLAN-05.md` and `docs/PLAN.md`.
+### Step 1: Define token storage abstraction
+- Create `ITokenStore` interface in `ClawdNet.Core/Abstractions/`
+- Implement `FileTokenStore` in `ClawdNet.Runtime/` — stores tokens as JSON with 0o600 permissions
+- Token model: `accessToken`, `refreshToken`, `expiresAt`, `scopes`
+- Storage location: `<AppData>/ClawdNet/.credentials.json`
 
-## Implementation Results
+### Step 2: Implement OAuth service
+- Create `IOAuthService` interface in `ClawdNet.Core/Abstractions/`
+- Implement `AnthropicOAuthService` in `ClawdNet.Runtime/Auth/`
+  - PKCE code verifier/challenge generation (SHA-256, base64url)
+  - Build authorization URL (Anthropic OAuth endpoints)
+  - Start local HTTP listener for callback
+  - Exchange authorization code for tokens
+  - Token refresh logic
+  - Profile info fetching (email, subscription type)
+- Use Anthropic's OAuth constants:
+  - Client ID from legacy: `9d1c250a-e61b-44d9-88ed-5944d1962f5e`
+  - Scopes for claude.ai: standard user scopes
+  - Auth URL: `https://console.anthropic.com` or claude.ai endpoints
 
-- Added `/pty status <id>` command showing detailed PTY session info (command, cwd, running state, exit code, output clipping, timestamps)
-- Added `/pty close-all` command to close all running PTY sessions
-- Enhanced PTY error messages for missing session IDs
-- Added tests for PTY status display and close-all behavior
+### Step 3: Revise AuthCommandHandler
+- `auth login`:
+  - Default: show env-var guidance (preserves CI/CD behavior)
+  - `--browser` flag: initiate OAuth flow, open browser, wait for callback, store tokens
+  - Report success/failure with account info on success
+- `auth logout`:
+  - Clear OAuth tokens from token store
+  - Show env-var unset guidance
+- `auth status`:
+  - Report OAuth token status if tokens exist
+  - Report env-var status for all providers
+  - Show account info (email, subscription type) if OAuth tokens are present
+
+### Step 4: Register services in AppHost
+- Register `ITokenStore` -> `FileTokenStore`
+- Register `IOAuthService` -> `AnthropicOAuthService`
+- Pass `IOAuthService` to `AuthCommandHandler`
+
+### Step 5: Add tests
+- FileTokenStore tests (write, read, delete, permissions)
+- OAuth service unit tests (code generation, URL building, token exchange — mocked HTTP)
+- AuthCommandHandler tests (status with/without tokens, login browser flag, logout)
+
+### Step 6: Update documentation
+- PARITY.md: mark auth rows as Implemented/Verified
+- ARCHITECTURE.md: update auth section with OAuth support
+- README.md: add auth login --browser example
+- PLAN.md: mark milestone as complete
+
+## Validation Plan
+
+1. `dotnet build ClawdNet.slnx` — must pass
+2. `dotnet test ClawdNet.slnx` — must pass
+3. Manual smoke: `clawdnet auth status` — shows env-var and OAuth token status
+4. Manual smoke: `clawdnet auth login --help` — shows browser flag
+5. Manual smoke: `clawdnet auth logout` — clears tokens
 
 ## Validation Results
 
-Completed sequentially:
+- `dotnet build ClawdNet.slnx` — PASSED (0 errors)
+- `dotnet test ClawdNet.slnx` — PASSED (244 tests: 244 passed, 0 failed)
+  - New tests: FileTokenStoreTests (6 tests), AuthCommandHandlerTests (8 tests)
 
-1. `dotnet build ./ClawdNet.slnx`
-   - passed
-2. `dotnet test ./ClawdNet.slnx`
-   - passed
-   - `124` tests passing (122 existing + 2 new)
-   - new tests: `Tui_pty_status_command_shows_session_detail`, `Tui_pty_close_all_closes_sessions_via_manager`
-3. Smoke checks
-   - `dotnet run --project ./ClawdNet.App --`
-     - TUI launches successfully
+## What Changed
 
-## Remaining Follow-Ups For This Milestone
+### New files
+- `ClawdNet.Core/Abstractions/ITokenStore.cs` — token storage interface
+- `ClawdNet.Core/Abstractions/IOAuthService.cs` — OAuth service interface
+- `ClawdNet.Core/Models/OAuthTokens.cs` — OAuth token model
+- `ClawdNet.Runtime/Auth/FileTokenStore.cs` — file-based token persistence with 0o600 permissions
+- `ClawdNet.Runtime/Auth/AnthropicOAuthService.cs` — PKCE-based OAuth flow with local callback
+- `ClawdNet.Tests/FileTokenStoreTests.cs` — token store unit tests
+- `ClawdNet.Tests/AuthCommandHandlerTests.cs` — auth command unit tests
 
-- richer attach and detach semantics for PTY sessions
-- better long-running PTY ergonomics
-- clearer terminal-mode behavior beyond the current bounded context and overlay model
-- PTY transcript persistence
+### Modified files
+- `ClawdNet.Core/Commands/AuthCommandHandler.cs` — revised to support OAuth login, status, and logout
+- `ClawdNet.App/AppHost.cs` — registered token store and OAuth service
+- `docs/PARITY.md` — auth rows updated to Implemented
+- `docs/ARCHITECTURE.md` — auth section updated with OAuth support
+- `docs/PLAN.md` — milestone marked complete
+- `README.md` — auth commands updated
+
+## Remaining Follow-ups
+
+- macOS keychain integration (deferred — file-based storage is the current baseline)
+- Windows Credential Manager integration (deferred)
+- MCP server OAuth flow (out of scope)
+- SSO / `--sso` login flow (out of scope)
+- Console (API key helper) login flow (out of scope)
+- claude.ai subscriber profile integration (email, org, subscription type display — partial: email and subscription type shown)
+
+## Rollback Notes
+
+- OAuth login is opt-in via `--browser` flag; env-var auth remains fully functional
+- Token store is file-based and isolated to app data directory; deleting `.credentials.json` reverts to env-var-only behavior
+- No changes to provider resolution or model client factory that could regress existing flows
+
+## Risks
+
+- OAuth callback listener may conflict with existing ports on localhost
+- Token storage without keychain is less secure than ideal, but is consistent with the legacy plain-text fallback storage
+- Scope kept narrow to avoid pulling in MCP OAuth, SSO, or XAA flows
