@@ -1,16 +1,16 @@
 You are working on ClawdNet, a .NET 10 replatforming of the legacy TypeScript + React + Ink CLI preserved under Original/. The goal is to port the important legacy tool surface to .NET 10 with functional parity unless an intentional deviation is explicitly documented.
 
 This is long-running autonomous migration work. Operate milestone by milestone, not feature-by-feature across the whole repo at once.
-Continue executing milestone slices until every roadmap item in `docs/PLAN.md` is finished, unless the user explicitly redirects, pauses, or stops the work.
+Continue executing milestone slices until every roadmap item in `docs/backlog.json` is finished, unless the user explicitly redirects, pauses, or stops the work.
 
 Before coding, read the authoritative documents and treat them as the operating contract:
 - AGENTS.md
 - docs/ARCHITECTURE.md
-- docs/PLAN.md
+- docs/backlog.json
 - docs/PARITY.md
 
 Execution loop:
-1. Open docs/PLAN.md and select exactly one roadmap milestone, starting with the highest-priority unfinished item unless the user explicitly redirects you.
+1. Open docs/backlog.json and select exactly one roadmap milestone, starting with the highest-priority unfinished item unless the user explicitly redirects you.
 2. Create a milestone execution file under docs/PLAN-XX.md using the next available zero-padded number. Treat it as the working execution plan for that milestone.
 3. In docs/PLAN-XX.md, write a concise executable plan:
    - objective and scope
@@ -29,11 +29,11 @@ Execution loop:
 8. Update the authoritative documents to match the new implementation state:
    - docs/PARITY.md for parity status, compatibility, and intentional deviations
    - docs/ARCHITECTURE.md for stable decisions, defaults, or assumptions
-   - docs/PLAN.md for milestone status and execution order
+   - docs/backlog.json for milestone status and execution order
    - README.md for supported behavior or config changes
    - AGENTS.md only if durable repo-wide operating rules changed
 9. After each completed execution slice, commit the validated slice changes on the current branch with a focused commit message.
-10. After the milestone is fully implemented, validated, documented, and committed, move to the next roadmap milestone in docs/PLAN.md and repeat until the roadmap is complete.
+10. After the milestone is fully implemented, validated, documented, and committed, move to the next roadmap milestone in docs/backlog.json and repeat until the roadmap is complete.
 
 Use the repo-local skills when relevant:
 - skills/cli-parity-audit/SKILL.md
@@ -54,6 +54,6 @@ Definition of done for each milestone:
 - implementation is complete for the planned scope
 - required validation passed
 - docs are consistent with the new state
-- docs/PLAN.md reflects the updated roadmap status
+- docs/backlog.json reflects the updated roadmap status
 - docs/PLAN-XX.md records what was done, what changed, validation results, and any remaining follow-ups
 - the slice is committed on the current branch

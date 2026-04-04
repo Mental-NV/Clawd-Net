@@ -1,0 +1,550 @@
+{
+  "version": "1.0.0",
+  "items": [
+    {
+      "id": "own-settings-only-refactor-v1",
+      "title": "Own Settings Only Refactor v1",
+      "status": "done",
+      "priority": "P0",
+      "order": 10,
+      "dependsOn": [],
+      "why": "The architecture and parity decision is now explicit: legacy settings compatibility is not a goal. The runtime still contained transitional `.claude` / `CLAUDE.md` / `CLAUDE_CONFIG_DIR` / project `.mcp.json` compatibility paths. These have been removed so the app has only its own settings model.",
+      "deliverables": [
+        {
+          "id": "remove-legacy-settings",
+          "text": "removed legacy settings, memory, and project `.mcp.json` compatibility from the active ask and interactive runtime paths",
+          "done": true
+        },
+        {
+          "id": "narrow-settings-flag",
+          "text": "narrowed `--settings` to app-owned explicit settings input only",
+          "done": true
+        },
+        {
+          "id": "remove-add-dir",
+          "text": "removed `--add-dir` as a legacy settings compatibility surface",
+          "done": true
+        },
+        {
+          "id": "remove-env-vars",
+          "text": "removed transitional references to legacy settings env vars from the supported runtime path",
+          "done": true
+        },
+        {
+          "id": "update-tests-docs",
+          "text": "updated tests and docs so the supported contract is unambiguously app-owned configuration only",
+          "done": true
+        }
+      ],
+      "risks": [
+        "leaving dead compatibility code connected to the runtime in subtle ways",
+        "breaking explicit `.NET` settings injection while removing legacy-scanning behavior",
+        "doc and help-text drift if parser surfaces remain after behavior changes"
+      ],
+      "exitCriteria": [
+        {
+          "id": "no-legacy-deps",
+          "text": "the live runtime no longer depends on legacy settings compatibility helpers",
+          "done": true
+        },
+        {
+          "id": "docs-updated",
+          "text": "`ARCHITECTURE.md` and `PARITY.md` describe app-owned configuration as the only supported contract",
+          "done": true
+        },
+        {
+          "id": "parity-resolved",
+          "text": "`PARITY.md` no longer treats legacy settings compatibility as an unresolved migration target",
+          "done": true
+        }
+      ],
+      "validation": {
+        "commands": []
+      },
+      "completedAt": "2026-04-04T00:00:00Z"
+    },
+    {
+      "id": "edit-workflow-parity-decision-v1",
+      "title": "Edit Workflow Parity Decision v1",
+      "status": "done",
+      "priority": "P0",
+      "order": 20,
+      "dependsOn": ["own-settings-only-refactor-v1"],
+      "why": "Edit review is still marked as a `Changed` P0 area in PARITY.md. The current patch-first workflow is deliberate, but the migration ledger still treats it as unresolved.",
+      "deliverables": [
+        {
+          "id": "compare-workflows",
+          "text": "compare legacy edit/review expectations with the current patch-batch approval model",
+          "done": true
+        },
+        {
+          "id": "close-gaps",
+          "text": "close any remaining approval/review UX gaps that are necessary for migration acceptance",
+          "done": true
+        },
+        {
+          "id": "document-deviation",
+          "text": "if the patch-first model is the accepted replacement, record it as an intentional deviation",
+          "done": true
+        }
+      ],
+      "risks": [
+        "conflating product improvement with strict parity",
+        "over-expanding the edit surface beyond current runtime needs"
+      ],
+      "exitCriteria": [
+        {
+          "id": "parity-verified",
+          "text": "the edit workflow row in PARITY.md is verified",
+          "done": true
+        },
+        {
+          "id": "deviation-documented",
+          "text": "intentional deviation documented with rationale",
+          "done": true
+        }
+      ],
+      "validation": {
+        "commands": []
+      },
+      "completedAt": "2026-04-04T00:00:00Z",
+      "artifacts": {
+        "planFile": "PLAN-27.md"
+      }
+    },
+    {
+      "id": "plugin-lifecycle-parity-v2",
+      "title": "Plugin Lifecycle Parity v2",
+      "status": "done",
+      "priority": "P1",
+      "order": 30,
+      "dependsOn": ["edit-workflow-parity-decision-v1"],
+      "why": "Plugin inspect/reload and local lifecycle flows exist, but PARITY.md still shows plugin lifecycle parity as partial because validate, update, and marketplace behavior are unresolved.",
+      "deliverables": [
+        {
+          "id": "decide-contract",
+          "text": "decided the supported local plugin lifecycle contract for install, uninstall, enable, disable, status, reload, and validation",
+          "done": true
+        },
+        {
+          "id": "implement-validate",
+          "text": "implemented `plugin validate <path>` command (medium effort, high parity value)",
+          "done": true
+        },
+        {
+          "id": "implement-disable-all",
+          "text": "implemented `plugin disable --all` flag (low effort)",
+          "done": true
+        },
+        {
+          "id": "implement-keep-data",
+          "text": "implemented `plugin uninstall --keep-data` flag (low effort)",
+          "done": true
+        },
+        {
+          "id": "document-marketplace",
+          "text": "documented marketplace and update behavior as out of scope (intentional deviations)",
+          "done": true
+        },
+        {
+          "id": "document-scope",
+          "text": "documented single-scope (app-data plugins directory) as the supported model",
+          "done": true
+        },
+        {
+          "id": "update-docs",
+          "text": "updated PARITY.md, ARCHITECTURE.md, and PLAN.md accordingly",
+          "done": true
+        }
+      ],
+      "risks": [
+        "opening a large distribution surface accidentally",
+        "mixing local-dev plugin workflows with end-user marketplace expectations"
+      ],
+      "exitCriteria": [
+        {
+          "id": "parity-resolved",
+          "text": "plugin lifecycle parity rows are no longer `In Progress` or `Not Started` without an explicit reason",
+          "done": true
+        },
+        {
+          "id": "validate-implemented",
+          "text": "`plugin validate <path>` implemented and tested",
+          "done": true
+        },
+        {
+          "id": "disable-all-implemented",
+          "text": "`plugin disable --all` implemented",
+          "done": true
+        },
+        {
+          "id": "keep-data-implemented",
+          "text": "`plugin uninstall --keep-data` implemented",
+          "done": true
+        },
+        {
+          "id": "marketplace-documented",
+          "text": "marketplace/update/scope documented as deferred/intentional deviations",
+          "done": true
+        },
+        {
+          "id": "parity-updated",
+          "text": "PARITY.md plugin lifecycle rows resolved",
+          "done": true
+        },
+        {
+          "id": "arch-updated",
+          "text": "ARCHITECTURE.md updated",
+          "done": true
+        },
+        {
+          "id": "build-passes",
+          "text": "dotnet build passes",
+          "done": true
+        },
+        {
+          "id": "test-passes",
+          "text": "dotnet test passes",
+          "done": true
+        }
+      ],
+      "validation": {
+        "commands": [
+          "dotnet build ./ClawdNet.slnx",
+          "dotnet test ./ClawdNet.slnx"
+        ]
+      },
+      "completedAt": "2026-04-04T00:00:00Z",
+      "artifacts": {
+        "planFile": "PLAN-28.md"
+      }
+    },
+    {
+      "id": "legacy-transcript-import-decision-v1",
+      "title": "Legacy Transcript Import Decision v1",
+      "status": "done",
+      "priority": "P1",
+      "order": 40,
+      "dependsOn": ["own-settings-only-refactor-v1"],
+      "why": "Legacy settings compatibility is no longer a goal, and legacy JSONL transcript compatibility has now been explicitly dropped rather than kept as an open migration question.",
+      "deliverables": [
+        {
+          "id": "decide-no-import",
+          "text": "decided that legacy transcript import and resume are not migration goals",
+          "done": true
+        },
+        {
+          "id": "remove-from-parity",
+          "text": "removed transcript compatibility from the active parity target set",
+          "done": true
+        },
+        {
+          "id": "document-deviation",
+          "text": "documented the decision as an intentional deviation in PARITY.md and ARCHITECTURE.md",
+          "done": true
+        }
+      ],
+      "risks": [
+        "conflating session import with configuration compatibility",
+        "keeping dead transcript compatibility code without a product outcome"
+      ],
+      "exitCriteria": [
+        {
+          "id": "removed-from-ledger",
+          "text": "transcript compatibility removed from the open migration ledger",
+          "done": true
+        }
+      ],
+      "validation": {
+        "commands": []
+      },
+      "completedAt": "2026-04-04T00:00:00Z"
+    },
+    {
+      "id": "auth-parity-and-provider-defaults-v1",
+      "title": "Auth Parity and Provider Defaults v1",
+      "status": "done",
+      "priority": "P0",
+      "order": 50,
+      "dependsOn": ["own-settings-only-refactor-v1"],
+      "why": "Auth is now the last unresolved P0 migration area. Env-var-only auth is no longer the accepted end state, and the explicit provider model is accepted but still needs smoother defaults where practical.",
+      "deliverables": [
+        {
+          "id": "add-oauth",
+          "text": "add OAuth-capable auth support without regressing current env-var-based provider auth",
+          "done": true
+        },
+        {
+          "id": "revise-auth-commands",
+          "text": "revise `auth login` and `auth logout` so they no longer frame OAuth as an intentional non-goal",
+          "done": true
+        },
+        {
+          "id": "preserve-explicit-provider",
+          "text": "preserve explicit provider selection while smoothing default provider and model behavior where it materially improves usability",
+          "done": true
+        },
+        {
+          "id": "update-docs",
+          "text": "update PARITY.md, ARCHITECTURE.md, and README.md to match the implemented auth contract",
+          "done": true
+        }
+      ],
+      "risks": [
+        "OAuth flow complexity, including callback handling and token refresh",
+        "choosing a token persistence model that is secure enough without dragging in unnecessary platform complexity",
+        "regressing existing env-var-based and CI-friendly provider flows while broadening auth support"
+      ],
+      "exitCriteria": [
+        {
+          "id": "parity-resolved",
+          "text": "the auth parity rows in PARITY.md are no longer unresolved",
+          "done": true
+        },
+        {
+          "id": "provider-explicit",
+          "text": "provider selection remains explicit, with smoother defaults documented and tested",
+          "done": true
+        },
+        {
+          "id": "commands-updated",
+          "text": "`auth login`, `auth status`, and `auth logout` reflect the supported auth contract",
+          "done": true
+        }
+      ],
+      "validation": {
+        "commands": []
+      },
+      "completedAt": "2026-04-04T00:00:00Z"
+    },
+    {
+      "id": "config-ui-and-interactive-settings-parity-v1",
+      "title": "Config UI and Interactive Settings Parity v1",
+      "status": "done",
+      "priority": "P1",
+      "order": 60,
+      "dependsOn": ["auth-parity-and-provider-defaults-v1"],
+      "why": "The TUI and REPL now expose `/config`, `/permissions`, `/effort`, and `/thinking`, but only the highest-value remaining picker flows should be migrated.",
+      "deliverables": [
+        {
+          "id": "promote-high-value-flows",
+          "text": "promote only the highest-value remaining interactive settings flows into TUI drawers or overlays",
+          "done": true
+        },
+        {
+          "id": "focus-picker-work",
+          "text": "focus picker work on provider/model, runtime controls, and closely related safety/config surfaces",
+          "done": true
+        },
+        {
+          "id": "defer-low-value",
+          "text": "leave lower-value theme/color/output-style parity as plain-text or deferred unless strong migration value emerges",
+          "done": true
+        },
+        {
+          "id": "align-help",
+          "text": "keep slash-command help and TUI help overlays aligned with the actual interactive surface",
+          "done": true
+        }
+      ],
+      "risks": [
+        "TUI scope creep",
+        "implementing visually richer settings flows without clear parity value"
+      ],
+      "exitCriteria": [
+        {
+          "id": "parity-resolved",
+          "text": "config and settings picker rows in PARITY.md are either implemented, deferred with rationale, or intentionally changed",
+          "done": true
+        }
+      ],
+      "validation": {
+        "commands": []
+      },
+      "completedAt": "2026-04-04T23:04:00Z",
+      "artifacts": {
+        "planFile": "PLAN-29.md"
+      }
+    },
+    {
+      "id": "pty-and-task-workflow-parity-v1",
+      "title": "PTY and Task Workflow Parity v1",
+      "status": "done",
+      "priority": "P1",
+      "order": 70,
+      "dependsOn": ["config-ui-and-interactive-settings-parity-v1"],
+      "why": "PTY and task orchestration are both ahead of the legacy CLI in some ways, but the remaining parity work should be limited to targeted workflow mapping, not model replacement.",
+      "deliverables": [
+        {
+          "id": "map-terminal-workflows",
+          "text": "map only a small number of high-value legacy terminal workflows onto the current PTY model",
+          "done": true
+        },
+        {
+          "id": "keep-worker-task-baseline",
+          "text": "keep the worker-task model as the baseline and add only the minimum scheduled/background behavior that proves necessary",
+          "done": true
+        },
+        {
+          "id": "close-ux-gaps",
+          "text": "close the highest-value UX and inspection gaps that block migration acceptance",
+          "done": true
+        },
+        {
+          "id": "document-deviations",
+          "text": "document any accepted deviations where the `.NET` model intentionally replaces the legacy flow",
+          "done": true
+        }
+      ],
+      "risks": [
+        "trying to force old task semantics onto the new orchestration model",
+        "broadening PTY scope into a separate terminal product"
+      ],
+      "exitCriteria": [
+        {
+          "id": "parity-resolved",
+          "text": "PTY and task parity rows are either verified or explicitly deviated with rationale",
+          "done": true
+        }
+      ],
+      "validation": {
+        "commands": []
+      },
+      "completedAt": "2026-04-04T23:07:00Z",
+      "artifacts": {
+        "planFile": "PLAN-30.md"
+      }
+    },
+    {
+      "id": "workflow-command-recovery-v1",
+      "title": "Workflow Command Recovery v1",
+      "status": "done",
+      "priority": "P1",
+      "order": 80,
+      "dependsOn": ["auth-parity-and-provider-defaults-v1"],
+      "why": "Legacy workflow commands such as `/review`, `/init`, `/commit`, `/branch`, and `/diff` are still absent from the first-party `.NET` surface, and the chosen direction is now to restore most of them rather than only a minimal subset.",
+      "deliverables": [
+        {
+          "id": "restore-workflow-commands",
+          "text": "restore most legacy workflow commands that still belong in the first-party CLI",
+          "done": true
+        },
+        {
+          "id": "document-boundary",
+          "text": "draw and document the boundary between first-party workflow commands and plugin or skill territory",
+          "done": true
+        },
+        {
+          "id": "align-scope",
+          "text": "keep any remaining workflow scope aligned with plugins and skills instead of ad hoc built-ins",
+          "done": true
+        }
+      ],
+      "risks": [
+        "importing too much product-specific workflow behavior without clear ownership",
+        "overlapping built-ins with plugin or skill territory"
+      ],
+      "exitCriteria": [
+        {
+          "id": "workflow-ui-triaged",
+          "text": "workflow UI rows in PARITY.md no longer remain untriaged",
+          "done": true
+        }
+      ],
+      "validation": {
+        "commands": [
+          "dotnet build ./ClawdNet.slnx",
+          "dotnet test ./ClawdNet.slnx"
+        ]
+      },
+      "completedAt": "2026-04-04T23:14:00Z",
+      "artifacts": {
+        "planFile": "PLAN-31.md"
+      }
+    },
+    {
+      "id": "alias-compatibility-v1",
+      "title": "Alias Compatibility v1",
+      "status": "todo",
+      "priority": "P2",
+      "order": 90,
+      "dependsOn": ["workflow-command-recovery-v1"],
+      "why": "A small number of legacy aliases are worth keeping for migration smoothness, but broad alias parity is not.",
+      "deliverables": [
+        {
+          "id": "identify-aliases",
+          "text": "identify the small high-value alias set worth preserving",
+          "done": false
+        },
+        {
+          "id": "implement-aliases",
+          "text": "implement only those aliases",
+          "done": false
+        },
+        {
+          "id": "document-dropped",
+          "text": "document intentionally dropped aliases in PARITY.md",
+          "done": false
+        }
+      ],
+      "risks": [
+        "cluttering the command dispatcher with low-value compatibility shims",
+        "expanding alias scope beyond what materially helps migration"
+      ],
+      "exitCriteria": [
+        {
+          "id": "parity-resolved",
+          "text": "top-level alias parity is no longer an untriaged gap in PARITY.md",
+          "done": false
+        }
+      ],
+      "validation": {
+        "commands": [
+          "dotnet build ./ClawdNet.slnx",
+          "dotnet test ./ClawdNet.slnx"
+        ]
+      }
+    },
+    {
+      "id": "distribution-and-bootstrap-surface-decision-v1",
+      "title": "Distribution and Bootstrap Surface Decision v1",
+      "status": "done",
+      "priority": "P1",
+      "order": 100,
+      "dependsOn": ["workflow-command-recovery-v1"],
+      "why": "The product direction is now explicit: distribution stays outside the CLI for now, and shell completion is the only lightweight follow-up worth reconsidering later.",
+      "deliverables": [
+        {
+          "id": "decide-no-install",
+          "text": "decided that ClawdNet will not ship first-party install, update, or setup-token commands in the current migration scope",
+          "done": true
+        },
+        {
+          "id": "document-external",
+          "text": "documented distribution as external to the CLI for now",
+          "done": true
+        },
+        {
+          "id": "keep-completion-optional",
+          "text": "kept shell completion as an optional future follow-up only if it is cheap and clearly valuable",
+          "done": true
+        }
+      ],
+      "risks": [
+        "tying runtime migration work to packaging/distribution choices prematurely",
+        "documenting end-user promises that the repo does not actually support"
+      ],
+      "exitCriteria": [
+        {
+          "id": "parity-resolved",
+          "text": "distribution and bootstrap parity rows moved out of the open decision set and documented with rationale",
+          "done": true
+        }
+      ],
+      "validation": {
+        "commands": []
+      },
+      "completedAt": "2026-04-04T00:00:00Z"
+    }
+  ]
+}
