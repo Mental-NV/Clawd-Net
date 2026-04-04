@@ -27,7 +27,7 @@ Use this file to decide what to build next. Use [ARCHITECTURE.md](./ARCHITECTURE
 
 ## Active Milestone
 
-### [/] Legacy Context and Config Compatibility v1
+### [v] Legacy Context and Config Compatibility v1
 
 - Priority: P0
 - Why now: this is the largest cluster of currently documented parity drift in the live runtime. `--settings` and `--add-dir` are advertised but not functionally wired, and the staged legacy `.claude` / `.mcp.json` / JSONL compatibility helpers are not part of the active ask, TUI, or resume flow.
@@ -47,7 +47,7 @@ Use this file to decide what to build next. Use [ARCHITECTURE.md](./ARCHITECTURE
 
 ## Next Milestones
 
-### [ ] Safety and Approval UX Parity v1
+### [/] Safety and Approval UX Parity v1
 
 - Priority: P0
 - Depends on: Legacy Context and Config Compatibility v1

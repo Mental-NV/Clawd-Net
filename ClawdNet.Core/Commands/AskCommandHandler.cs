@@ -3,6 +3,7 @@ using ClawdNet.Core.Abstractions;
 using ClawdNet.Core.Exceptions;
 using ClawdNet.Core.Models;
 using ClawdNet.Core.Serialization;
+using ClawdNet.Core.Services;
 
 namespace ClawdNet.Core.Commands;
 
@@ -84,6 +85,17 @@ Examples:
                 return CommandExecutionResult.Failure("ask requires a prompt.", 1);
             }
 
+            // Load and merge settings from --settings, --add-dir, and legacy config
+            var (mergedAllowedTools, mergedDisallowedTools, memoryContent) = await LoadSettingsAndMemoryAsync(
+                context, options, cancellationToken);
+
+            // Merge tool lists: explicit flags win over settings
+            var finalAllowedTools = MergeToolLists(options.AllowedTools, mergedAllowedTools);
+            var finalDisallowedTools = MergeToolLists(options.DisallowedTools, mergedDisallowedTools);
+
+            // Compose system prompt: explicit/system-prompt-file + memory content
+            var systemPrompt = ComposeSystemPrompt(options.SystemPrompt, memoryContent);
+
             if (options.OutputFormat == "stream-json")
             {
                 // Install stdout guard for stream-json mode
@@ -99,9 +111,11 @@ Examples:
                         null,
                         true,
                         options.Provider,
-                        options.AllowedTools,
-                        options.DisallowedTools,
-                        options.SystemPrompt),
+                        finalAllowedTools,
+                        finalDisallowedTools,
+                        systemPrompt,
+                        options.SettingsFile,
+                        options.AddDirs),
                     cancellationToken))
                 {
                     var ndjsonLine = NdjsonSerializer.Serialize(streamEvent);
@@ -125,9 +139,11 @@ Examples:
                     null,
                     true,
                     options.Provider,
-                    options.AllowedTools,
-                    options.DisallowedTools,
-                    options.SystemPrompt),
+                    finalAllowedTools,
+                    finalDisallowedTools,
+                    systemPrompt,
+                    options.SettingsFile,
+                    options.AddDirs),
                 cancellationToken);
 
             if (options.OutputFormat == "json" || options.Json)
@@ -162,6 +178,180 @@ Examples:
         {
             return CommandExecutionResult.Failure(ex.Message, 3);
         }
+    }
+
+    private async Task<(IReadOnlyCollection<string>? AllowedTools, IReadOnlyCollection<string>? DisallowedTools, string? MemoryContent)> LoadSettingsAndMemoryAsync(
+        CommandContext context,
+        AskOptions options,
+        CancellationToken cancellationToken)
+    {
+        var allowedTools = new List<string>();
+        var disallowedTools = new List<string>();
+        string? memoryContent = null;
+
+        _ = cancellationToken;
+
+        // Load settings from --settings file/JSON
+        if (!string.IsNullOrWhiteSpace(options.SettingsFile))
+        {
+            var settings = LoadSettingsFromString(options.SettingsFile);
+            if (settings is not null)
+            {
+                ExtractToolSettings(settings, allowedTools, disallowedTools);
+            }
+        }
+
+        // Load settings and memory from --add-dir
+        if (options.AddDirs is not null)
+        {
+            foreach (var dir in options.AddDirs)
+            {
+                // Load settings from added directory
+                var dirSettings = context.LegacySettingsLoader?.LoadSettingsFromDirectory(dir);
+                if (dirSettings is not null)
+                {
+                    ExtractToolSettings(dirSettings, allowedTools, disallowedTools);
+                }
+            }
+
+            // Load memory files from added directories
+            memoryContent = context.MemoryFileLoader?.LoadMemory(additionalDirs: options.AddDirs);
+        }
+
+        return (
+            allowedTools.Count > 0 ? allowedTools : null,
+            disallowedTools.Count > 0 ? disallowedTools : null,
+            memoryContent);
+    }
+
+    private static Dictionary<string, object?>? LoadSettingsFromString(string value)
+    {
+        // If it looks like JSON, parse it directly
+        if (value.TrimStart().StartsWith("{", StringComparison.Ordinal))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(value);
+                var result = new Dictionary<string, object?>();
+                foreach (var property in doc.RootElement.EnumerateObject())
+                {
+                    result[property.Name] = ConvertJsonValue(property.Value);
+                }
+                return result;
+            }
+            catch (JsonException)
+            {
+                // If inline JSON fails, treat it as a file path
+            }
+        }
+
+        // Treat as file path
+        try
+        {
+            if (!File.Exists(value))
+            {
+                return null;
+            }
+
+            var content = File.ReadAllText(value);
+            using var doc2 = JsonDocument.Parse(content);
+            var result2 = new Dictionary<string, object?>();
+            foreach (var property in doc2.RootElement.EnumerateObject())
+            {
+                result2[property.Name] = ConvertJsonValue(property.Value);
+            }
+            return result2;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static object? ConvertJsonValue(JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.String => element.GetString(),
+            JsonValueKind.Number => element.GetDouble(),
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Null => null,
+            JsonValueKind.Array => element.EnumerateArray().Select(e => ConvertJsonValue(e)).ToList(),
+            JsonValueKind.Object => element.ToString(),
+            _ => null
+        };
+    }
+
+    private static void ExtractToolSettings(
+        Dictionary<string, object?> settings,
+        List<string> allowedTools,
+        List<string> disallowedTools)
+    {
+        // Extract allowedTools/allowed-tools
+        if (settings.TryGetValue("allowedTools", out var allowed) && allowed is List<object?> allowedList)
+        {
+            allowedTools.AddRange(allowedList.OfType<string>());
+        }
+        else if (settings.TryGetValue("allowed-tools", out var allowed2) && allowed2 is List<object?> allowedList2)
+        {
+            allowedTools.AddRange(allowedList2.OfType<string>());
+        }
+
+        // Extract disallowedTools/disallowed-tools
+        if (settings.TryGetValue("disallowedTools", out var disallowed) && disallowed is List<object?> disallowedList)
+        {
+            disallowedTools.AddRange(disallowedList.OfType<string>());
+        }
+        else if (settings.TryGetValue("disallowed-tools", out var disallowed2) && disallowed2 is List<object?> disallowedList2)
+        {
+            disallowedTools.AddRange(disallowedList2.OfType<string>());
+        }
+
+        // Extract base tools allowlist
+        if (settings.TryGetValue("tools", out var tools) && tools is List<object?> toolsList)
+        {
+            allowedTools.AddRange(toolsList.OfType<string>());
+        }
+    }
+
+    private static IReadOnlyCollection<string>? MergeToolLists(
+        IReadOnlyCollection<string>? explicitList,
+        IReadOnlyCollection<string>? settingsList)
+    {
+        if (explicitList is not null && explicitList.Count > 0)
+        {
+            // Explicit flags win over settings
+            return explicitList;
+        }
+
+        if (settingsList is not null && settingsList.Count > 0)
+        {
+            return settingsList;
+        }
+
+        return null;
+    }
+
+    private static string? ComposeSystemPrompt(string? explicitPrompt, string? memoryContent)
+    {
+        if (string.IsNullOrWhiteSpace(explicitPrompt) && string.IsNullOrWhiteSpace(memoryContent))
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(memoryContent))
+        {
+            return explicitPrompt;
+        }
+
+        if (string.IsNullOrWhiteSpace(explicitPrompt))
+        {
+            return memoryContent;
+        }
+
+        // Combine explicit prompt with memory content
+        return $"{explicitPrompt}\n\n---\n\n{memoryContent}";
     }
 
     private static AskOptions Parse(string[] args)
