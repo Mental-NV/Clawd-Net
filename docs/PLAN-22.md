@@ -193,14 +193,14 @@ dotnet run --project ClawdNet.App --
 
 ## Exit Criteria
 
-- [ ] `--fork-session` flag works with `--continue` and `--resume`
-- [ ] `--name` / `-n` flag works at root level
-- [ ] `session rename <id> <new-name>` works
-- [ ] `/rename` works in REPL (already works in TUI)
-- [ ] Session model has `Tags` field
-- [ ] `session tag <id> <tag>` works (toggle behavior)
-- [ ] `/tag` works in TUI and REPL
-- [ ] `dotnet build` passes
-- [ ] `dotnet test` passes
-- [ ] `PARITY.md` updated for session rows
-- [ ] `PLAN.md` milestone status updated
+- [x] `--fork-session` flag works with `--continue` and `--resume`
+- [x] `--name` / `-n` flag works at root level
+- [x] `session rename <id> <new-name>` works
+- [x] `/rename` works in REPL (already works in TUI)
+- [x] Session model has `Tags` field
+- [x] `session tag <id> <tag>` works (toggle behavior)
+- [x] `/tag` works in TUI and REPL
+- [x] `dotnet build` passes
+- [x] `dotnet test` passes (260 tests, 0 failed)
+- [x] `PARITY.md` updated for session rows
+- [x] `PLAN.md` milestone status updated
