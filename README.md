@@ -28,6 +28,8 @@ dotnet run --project ClawdNet.App -- --session <session-id>
 dotnet run --project ClawdNet.App -- --continue
 dotnet run --project ClawdNet.App -- --resume
 dotnet run --project ClawdNet.App -- --resume "session-name-or-id"
+dotnet run --project ClawdNet.App -- --continue --fork-session
+dotnet run --project ClawdNet.App -- --name "Focused Session"
 dotnet run --project ClawdNet.App -- --model claude-sonnet-4-5
 dotnet run --project ClawdNet.App -- --permission-mode accept-edits
 dotnet run --project ClawdNet.App -- "Summarize this project"
@@ -36,6 +38,8 @@ dotnet run --project ClawdNet.App -- ask "Explain this project"
 dotnet run --project ClawdNet.App -- ask --provider openai --model gpt-4o-mini "Explain this project"
 dotnet run --project ClawdNet.App -- ask --permission-mode bypass-permissions "Inspect this repo"
 dotnet run --project ClawdNet.App -- ask --json "Summarize the current milestone"
+dotnet run --project ClawdNet.App -- ask --settings '{"allowedTools":["echo"]}' "Use only echo"
+dotnet run --project ClawdNet.App -- ask --effort high --thinking enabled "Reason carefully"
 dotnet run --project ClawdNet.App -- ask --session <session-id> "Continue"
 dotnet run --project ClawdNet.App -- provider list
 dotnet run --project ClawdNet.App -- provider show anthropic
@@ -44,19 +48,32 @@ dotnet run --project ClawdNet.App -- platform browse https://example.com
 dotnet run --project ClawdNet.App -- session new "First Slice"
 dotnet run --project ClawdNet.App -- session list
 dotnet run --project ClawdNet.App -- session show <session-id>
+dotnet run --project ClawdNet.App -- session rename <session-id> "Renamed Session"
+dotnet run --project ClawdNet.App -- session tag <session-id> work
+dotnet run --project ClawdNet.App -- session fork <session-id> "Branch Session"
 dotnet run --project ClawdNet.App -- task list
 dotnet run --project ClawdNet.App -- task show <task-id>
 dotnet run --project ClawdNet.App -- task cancel <task-id>
 dotnet run --project ClawdNet.App -- plugin list
 dotnet run --project ClawdNet.App -- plugin show demo
+dotnet run --project ClawdNet.App -- plugin status demo
+dotnet run --project ClawdNet.App -- plugin install /absolute/path/to/plugin
+dotnet run --project ClawdNet.App -- plugin enable demo
 dotnet run --project ClawdNet.App -- plugin reload
 dotnet run --project ClawdNet.App -- mcp list
 dotnet run --project ClawdNet.App -- mcp ping <server-name>
 dotnet run --project ClawdNet.App -- mcp tools
 dotnet run --project ClawdNet.App -- mcp tools <server-name>
+dotnet run --project ClawdNet.App -- mcp get <server-name>
+dotnet run --project ClawdNet.App -- mcp add demo python3 /path/to/server.py
+dotnet run --project ClawdNet.App -- mcp remove demo
 dotnet run --project ClawdNet.App -- lsp list
 dotnet run --project ClawdNet.App -- lsp ping <server-name>
 dotnet run --project ClawdNet.App -- lsp diagnostics <path>
+dotnet run --project ClawdNet.App -- doctor
+dotnet run --project ClawdNet.App -- status
+dotnet run --project ClawdNet.App -- stats
+dotnet run --project ClawdNet.App -- usage
 dotnet run --project ClawdNet.App -- tool echo "hello world"
 ```
 
@@ -77,6 +94,8 @@ export OPENAI_API_KEY=your_key_here
 - `clawdnet --session <id>`
 - `clawdnet --continue`, `clawdnet -c` (resume most recent session)
 - `clawdnet --resume [query]`, `clawdnet -r [query]` (resume by ID/name search)
+- `clawdnet --continue --fork-session`
+- `clawdnet --name <title>`, `clawdnet -n <title>`
 - `clawdnet --provider <name>`
 - `clawdnet --model <name>`
 - `clawdnet --permission-mode <mode>`
@@ -95,6 +114,11 @@ export OPENAI_API_KEY=your_key_here
 - `ask --disallowed-tools <tools...> <prompt>`
 - `ask --system-prompt <text> <prompt>`
 - `ask --system-prompt-file <path> <prompt>`
+- `ask --settings <file-or-json> <prompt>` (app-native settings only)
+- `ask --effort <low|medium|high> <prompt>`
+- `ask --thinking <adaptive|enabled|disabled> <prompt>`
+- `ask --max-turns <N> <prompt>`
+- `ask --max-budget-usd <amount> <prompt>`
 - `auth status`
 - `auth login` (env-var auth guidance)
 - `auth logout` (env-var auth guidance)
@@ -105,15 +129,27 @@ export OPENAI_API_KEY=your_key_here
 - `session new [title]`
 - `session list`
 - `session show <id>`
+- `session rename <id> <new-name>`
+- `session tag <id> <tag>`
+- `session fork <id> [new-title]`
 - `task list`
 - `task show <id>`
 - `task cancel <id>`
 - `plugin list`
 - `plugin show <name>`
+- `plugin status <name>`
+- `plugin install <path>`
+- `plugin uninstall <name>`
+- `plugin enable <name>`
+- `plugin disable <name>`
 - `plugin reload`
 - `mcp list`
 - `mcp ping <server>`
 - `mcp tools [server]`
+- `mcp get <server>`
+- `mcp add <name> <command> [args...]`
+- `mcp remove <name>`
+- `mcp add-json <name> <json>`
 - `lsp list`
 - `lsp ping <server>`
 - `lsp diagnostics <path>`
@@ -132,6 +168,12 @@ Common interactive commands:
 - `/session`
 - `/provider`
 - `/provider <name> [model]`
+- `/permissions`
+- `/config`
+- `/rename <name>`
+- `/tag <tag>`
+- `/effort [level]`
+- `/thinking [mode]`
 - `/tasks`
 - `/pty`
 - `/open <path> [line] [column]`
@@ -145,10 +187,35 @@ Common interactive commands:
 TUI-only extended commands:
 
 - `/tasks <id>`
+- `/status`
+- `/context`
 - `/pty <id>`
+- `/pty status <id>`
+- `/pty attach <id>`
+- `/pty detach`
 - `/pty close <id>`
+- `/pty close-all`
 - `/pty close-exited`
+- `/pty fullscreen [id]`
 - `/activity`
+
+## Configuration Contract
+
+`ClawdNet` supports only its own configuration and state layout under
+`<LocalApplicationData>/ClawdNet`.
+
+Supported configuration lives in:
+
+- `config/providers.json`
+- `config/platform.json`
+- `config/mcp.json`
+- `config/lsp.json`
+
+Legacy TypeScript config and memory surfaces such as `~/.claude`,
+`.claude/settings*.json`, `CLAUDE.md`, `CLAUDE_CONFIG_DIR`, and project
+`.mcp.json` are not part of the supported `.NET` configuration contract. Any
+remaining compatibility code in the implementation should be treated as
+transitional and subject to removal.
 
 ## Provider Configuration
 

@@ -360,6 +360,8 @@ The .NET CLI currently has a much smaller entry surface:
   - `clawdnet --session <id> --provider <name> --model <name> --permission-mode <mode>`
   - `clawdnet --continue`
   - `clawdnet --resume [query]`
+  - `clawdnet --continue --fork-session`
+  - `clawdnet --name <title>`
 - Root shorthand headless flows:
   - `clawdnet [prompt]`
   - `clawdnet -p [prompt]`
@@ -377,15 +379,19 @@ The .NET CLI currently has a much smaller entry surface:
 | --- | --- | --- |
 | `--help`, `-h` | no subcommand | Root help and `<command> --help` are supported |
 | `--version`, `-v`, `-V` | no subcommand | Returns `<version> (ClawdNet)` |
-| `ask` | `ask [--session <id>] [--provider <name>] [--model <name>] [--permission-mode <mode>] [--json] [--output-format <text|json|stream-json>] [--input-format <text|stream-json>] [--allowed-tools <tools...>] [--disallowed-tools <tools...>] [--system-prompt <text>|--system-prompt-file <path>] [--settings <file-or-json>] [--add-dir <paths...>] <prompt>` | Main headless query entry; `--settings` is parsed but not applied; `--add-dir` is parsed but not wired into query-time config loading |
+| `ask` | `ask [--session <id>] [--provider <name>] [--model <name>] [--permission-mode <mode>] [--json] [--output-format <text|json|stream-json>] [--input-format <text|stream-json>] [--allowed-tools <tools...>] [--disallowed-tools <tools...>] [--system-prompt <text>|--system-prompt-file <path>] [--settings <file-or-json>] [--add-dir <paths...>] [--effort <level>] [--thinking <mode>] [--max-turns <N>] [--max-budget-usd <amount>] <prompt>` | Main headless query entry; `--settings` is the app-owned explicit settings input; `--add-dir` still exists in the implementation as transitional legacy scanning and is slated for removal from the supported contract |
 | `auth` | `status`, `login`, `logout` | Env-var auth inspection plus guidance; no OAuth/keychain flow |
 | `provider` | `list`, `show <name>` | Additive .NET provider surface |
 | `platform` | `open <path> [--line N] [--column N]`, `browse <url>` | Additive .NET platform surface |
 | `task` | `list`, `show <id>`, `cancel <id>` | Task inspection and control only |
-| `plugin` | `list`, `show <name-or-id>`, `reload` | No install / marketplace lifecycle yet |
-| `mcp` | `list`, `ping <server>`, `tools [server]` | Inspection only |
+| `plugin` | `list`, `show <name-or-id>`, `status <name>`, `install <path>`, `uninstall <name>`, `enable <name>`, `disable <name>`, `reload` | Local plugin lifecycle exists; marketplace, validate, and update flows are still missing |
+| `mcp` | `list`, `ping <server>`, `tools [server]`, `get <server>`, `add <name> <command> [args...]`, `remove <name>`, `add-json <name> <json>` | Inspection plus local config management |
 | `lsp` | `list`, `ping <server>`, `diagnostics <path>` | Inspection / diagnostics only |
-| `session` | `new [title]`, `list`, `show <id>` | Includes read-only session inspection; interactive resume still centers on root flags/TUI |
+| `session` | `new [title]`, `list`, `show <id>`, `rename <id> <new-name>`, `tag <id> <tag-name>`, `fork <id> [new-title]` | Session inspection plus metadata and branch management |
+| `doctor` | no subcommand | System diagnostics for runtime, providers, config, sessions, plugins, MCP, and LSP |
+| `status` | `[--session <id>]` | Session-oriented status summary |
+| `stats` | `[--session <id>]` | Aggregate or per-session usage statistics |
+| `usage` | `[--session <id>]` | Message-count-based usage surface with graceful degradation for token/cost tracking |
 | `tool` | `tool <toolName> [args...]` | Passes joined args as raw text and `{"text": "..."}` |
 
 #### Current Top-Level Aliases
@@ -440,6 +446,12 @@ REPL slash commands in `ReplHost.cs`:
 - `/session`
 - `/provider`
 - `/provider <name> [model]`
+- `/permissions`
+- `/config`
+- `/rename <name>`
+- `/tag <tag>`
+- `/effort [level]`
+- `/thinking [mode]`
 - `/clear`
 - `/pty`
 - `/tasks`
@@ -456,12 +468,25 @@ TUI slash commands in `TuiHost.cs`:
 - `/session`
 - `/provider`
 - `/provider <name> [model]`
+- `/status`
+- `/context`
+- `/permissions`
+- `/config`
+- `/rename <name>`
+- `/tag <tag>`
+- `/effort [level]`
+- `/thinking [mode]`
 - `/tasks`
 - `/tasks <id>`
 - `/pty`
 - `/pty <id>`
+- `/pty status <id>`
+- `/pty attach <id>`
+- `/pty detach`
 - `/pty close <id>`
+- `/pty close-all`
 - `/pty close-exited`
+- `/pty fullscreen [id]`
 - `/activity`
 - `/clear`
 - `/bottom`
@@ -514,7 +539,12 @@ Current active `.NET` state and config are rooted under the app data directory:
   - `tasks.json`
   - `pty-transcripts/<session-id>.jsonl`
 
-The repo also contains staged legacy-compatibility readers for `.claude` settings, `CLAUDE.md`, `.mcp.json`, and legacy JSONL transcripts, but those are not currently wired into the live ask/TUI/session-resume flow.
+The codebase still contains legacy settings and transcript helpers for
+`.claude`, `CLAUDE.md`, `.mcp.json`, and legacy JSONL transcripts.
+
+Those helpers are transitional implementation detail only. They are not part of
+the supported `.NET` configuration contract, which is limited to the app-data
+configuration files under `config/` plus persisted session/task state.
 
 #### Relevant Environment Variables
 
@@ -544,7 +574,10 @@ The current .NET implementation visibly depends on:
 - `$VISUAL`
 - `$EDITOR`
 
-`CLAUDE_CONFIG_DIR` and `CLAUDE_CODE_DISABLE_AUTO_MEMORY` are referenced by staged compatibility helpers, but not by the active query/session flow yet.
+The source tree still references `CLAUDE_CONFIG_DIR` and
+`CLAUDE_CODE_DISABLE_AUTO_MEMORY` in transitional compatibility code. They are
+not part of the supported `.NET` configuration contract and should disappear as
+legacy settings compatibility is removed.
 
 #### Output and Report Formats
 
@@ -580,7 +613,9 @@ Current .NET file and integration surface includes:
 - PTY subprocess sessions
 - Anthropic, OpenAI, Bedrock, Vertex AI, and Foundry provider clients
 
-Legacy compatibility parser classes for `.claude` settings, memory files, `.mcp.json`, and JSONL transcripts exist, but they are not part of the active runtime path yet.
+Legacy settings compatibility helpers still exist in the codebase, but they are
+not part of the supported product contract and are scheduled for removal from
+the active runtime.
 
 #### Error / Exit Behavior
 
@@ -623,13 +658,13 @@ This matrix compares the legacy TypeScript CLI behavior against the desired or c
 | Model / runtime | Effort / thinking / budgets / max turns | Legacy exposes `--effort`, `--thinking`, turn and budget controls | Add runtime controls for migration parity | P1 | Implemented | `.NET` now supports `--effort` (low/medium/high), `--thinking` (adaptive/enabled/disabled), `--max-turns` (default 8), and `--max-budget-usd` on the `ask` command; effort/thinking are passed through to provider clients; Anthropic provider supports thinking parameter with budget_tokens; `/effort` and `/thinking` slash commands added to REPL and TUI for interactive selection; budget enforcement stops query when cumulative cost exceeds limit; other providers gracefully ignore unsupported thinking parameter | `ask --effort`, `ask --thinking`, `ask --max-turns`, `ask --max-budget-usd`, `/effort`, `/thinking` slash commands |
 | Permissions | Permission mode | Legacy supports `--permission-mode` and dangerous skip variants | Preserve `default`, `accept-edits`, `bypass-permissions` semantics | P0 | Implemented | `.NET` covers these three modes; dangerous-skip variants are not exposed separately | `ask --permission-mode`, interactive launch flags |
 | Permissions | Tool allow / deny lists | Legacy supports `--allowed-tools`, `--tools`, `--disallowed-tools` | Add explicit CLI control if required for migration | P0 | Implemented | `.NET` now supports `--allowed-tools` and `--disallowed-tools` on the ask command; tools are filtered from the model-visible tool list; comma or space-separated lists accepted; `--tools` (base tools allowlist) is deferred | `ask --allowed-tools`, `ask --disallowed-tools` handler tests |
-| Context | System prompt / settings injection | Legacy supports `--settings`, `--system-prompt`, prompt files, append prompt files | Add explicit context injection or document a replacement strategy | P0 | Verified | `.NET` now supports `--system-prompt`, `--system-prompt-file`, and `--settings` (file or inline JSON); `--settings` loads tool allow/deny lists and merges with explicit flags; CLAUDE.md memory files auto-load and append to system prompt; append variants are deferred | `ask --system-prompt`, `ask --system-prompt-file`, `ask --settings` handler tests |
-| Context | `--add-dir`, trust / workspace expansion | Legacy supports explicit extra directories for tool access | `.NET` should either honor `--add-dir` in the query path or stop advertising it as supported | P1 | Verified | `--add-dir` now loads settings, memory files, and MCP config from each directory's `.claude/` subdirectory; tool allow/deny lists merge with base settings; CLAUDE.md content from added dirs injects into system prompt | parser tests + end-to-end smoke |
+| Context | System prompt / settings injection | Legacy supports `--settings`, `--system-prompt`, prompt files, append prompt files | Keep explicit `.NET` prompt and settings injection; do not promise legacy settings compatibility | P0 | Implemented | `.NET` supports `--system-prompt`, `--system-prompt-file`, and `--settings` (file or inline JSON); `--settings` should remain an app-owned input surface only; legacy append prompt variants are still deferred | `ask --system-prompt`, `ask --system-prompt-file`, `ask --settings` handler tests |
+| Context | `--add-dir`, trust / workspace expansion | Legacy supports explicit extra directories for tool access | Remove legacy directory scanning and rely on app-owned settings only | P0 | Changed | current implementation still scans additional `.claude` directories through `--add-dir`; that behavior is now a non-goal and should be removed from the supported surface | parser tests + end-to-end smoke after refactor |
 | Integrations | MCP inspection | Legacy has list/get/add/remove/serve/reset flows | Current minimum preserves list/ping/tools; management commands added | P0 | Verified | `.NET` now supports `mcp list`, `mcp ping`, `mcp tools`, `mcp get`, `mcp add`, `mcp remove`, `mcp add-json`; config loader supports read/write with file locking; McpServerDefinition includes Transport, Url, Headers fields | `mcp list`, `mcp get`, `mcp add`, `mcp remove`, `mcp add-json` |
 | Integrations | MCP management | Legacy can add/remove/get/reset project choices and import desktop config | Management commands implemented; reset/import/deferred | P1 | Implemented | `.NET` now supports `mcp add/remove/get/add-json`; `mcp serve`, `mcp add-from-claude-desktop`, `mcp reset-project-choices`, and `mcp xaa` are deferred; scope model limited to user-scope (app-data config) | Fixture-based config file checks |
 | Integrations | LSP inspection / diagnostics | Legacy has IDE-oriented flows rather than a dedicated public `lsp` CLI | Keep current `.NET` `lsp list/ping/diagnostics` as minimum inspection surface | P1 | Changed | .NET surface is additive rather than parity-shaped | `lsp list`, `lsp ping`, `lsp diagnostics` |
 | Plugins | Plugin inspect / reload | Legacy has plugin UI plus CLI lifecycle commands | Preserve `list/show/reload` and keep dynamic command/tool registration stable | P0 | Implemented | `.NET` covers inspect and reload, but not marketplace/install lifecycle | `plugin list`, `plugin show`, `plugin reload` |
-| Plugins | Plugin install / uninstall / enable / disable / update / validate / marketplace | Legacy has full lifecycle and marketplace commands plus `plugin validate <path>` | Add install/enable/disable/update/validate/marketplace parity or document a new plugin distribution model | P1 | Not Started | Current .NET expects local plugin manifests under app data | CLI smoke once added |
+| Plugins | Plugin install / uninstall / enable / disable / update / validate / marketplace | Legacy has full lifecycle and marketplace commands plus `plugin validate <path>` | Add install/enable/disable/update/validate/marketplace parity or document a new plugin distribution model | P1 | In Progress | `.NET` now supports local install, uninstall, enable, disable, and status flows for app-data plugins; validate, update, and marketplace flows are still missing | CLI smoke for install/uninstall/enable/disable/status plus fixture checks |
 | Plugins | Plugin commands / hooks / tools | Legacy dynamic command surface comes from plugins, skills, workflows | Keep plugin-contributed commands/hooks/tools working in `.NET` | P1 | Implemented | `.NET` is ahead in some areas, but not via legacy-compatible marketplace flow | Plugin fixture tests + reload smoke |
 | Auth | `auth login/status/logout` | Legacy has dedicated auth command group and token helpers | `.NET` has `auth status` showing provider auth state; `auth login`/`logout` return helpful guidance for env-var auth | P0 | Implemented | `.NET` uses env-var-only auth; OAuth/keychain from legacy CLI is documented as an intentional deviation; `auth login`/`logout` now provide setup/teardown guidance with env var examples for all providers | `auth status`, `auth login`, `auth logout` smoke tests |
 | Install / update | `install`, `update`, `setup-token`, completion | Legacy includes bootstrap/update surfaces | Add if the `.NET` CLI is intended to be standalone-distributed | P1 | Not Started | Not needed for inner-loop dev, but important for user migration | Installer smoke tests |
@@ -644,7 +679,8 @@ This matrix compares the legacy TypeScript CLI behavior against the desired or c
 | Productivity UI | `/skills`, `/memory`, `/agents`, `/passes`, `/plan` | Legacy has many management UIs in Ink | Decide which remain first-party vs plugin/skill surfaces in `.NET` | P1 | Deferred | Useful, but not all are necessarily core migration blockers | TUI/workflow acceptance tests |
 | External surfaces | `chrome`, `desktop`, `mobile`, `ide`, GitHub/Slack app install flows | Legacy integrates with companion tools and external apps | Keep only the surfaces that are still product-relevant; defer the rest explicitly | P2 | Deferred | High scope; not required for core CLI migration | Manual only |
 | Remote / distributed | daemon, ps/logs/attach/kill, remote-control, bridge, server, `ssh`, `open <cc-url>` | Legacy has substantial remote/runtime infrastructure | Re-scope deliberately; do not accidentally promise parity here | P2 | Deferred | Large separate program; not present in current .NET CLI | Dedicated design and manual smoke |
-| Config compatibility | `~/.claude`, `.claude/settings*.json`, `.mcp.json`, JSONL transcripts | Legacy uses user and project-local layout | `.NET` should eventually decide between true compatibility and explicit migration/import behavior | P0 | Verified | Compatibility loaders are now wired into the active ask query path: `--settings` loads and applies tool filters from file/JSON; `--add-dir` loads settings, memory, and MCP config from additional directories; CLAUDE.md auto-injects into system prompt; legacy JSONL transcript resume/import remains deferred | usage search + end-to-end compatibility smoke |
+| Config compatibility | `~/.claude`, `.claude/settings*.json`, `CLAUDE.md`, `.mcp.json` | Legacy uses user and project-local layout | `.NET` uses only its own config and state layout under the app data root; legacy settings compatibility is not a migration goal | P0 | Changed | current implementation still contains transitional compatibility code and some legacy scanning behavior; the supported contract is now app-owned settings only | docs review + smoke after refactor |
+| Session transcript compatibility | legacy JSONL transcripts under `~/.claude/projects/...` | Legacy uses JSONL transcripts for resume and project state | Decide separately whether legacy transcript import or resume is needed; it is not part of the settings model | P1 | Not Started | transcript compatibility is now a separate decision from configuration ownership | session import decision + fixture-based checks |
 | Secrets / auth assumptions | OAuth + keychain + env in legacy, env/config in `.NET` | Legacy auth model is richer than plain env vars | `.NET` remains env/config only; OAuth/keychain is an accepted deviation | P0 | Changed | Decision documented: env-var auth covers all providers (Anthropic, OpenAI, Bedrock, Vertex, Foundry); OAuth/keychain primarily serves claude.ai subscriber experience which is out of scope; `auth login`/`logout` provide setup/teardown guidance | Provider smoke with and without config |
 | Additive .NET surface | `provider` command family | No direct legacy root equivalent | Keep as additive if provider abstraction stays first-class | P2 | Implemented | New surface should not block parity work | `provider list`, `provider show` |
 | Additive .NET surface | `platform open` / `platform browse`, `/open`, `/browse` | No direct legacy root equivalent | Keep as additive lightweight platform integration | P2 | Implemented | Useful operator feature; not legacy parity | `platform open`, `platform browse` |
@@ -662,7 +698,7 @@ This section tracks the legacy UI-style terminal flows that were implemented wit
 | Help UI | Rich help / shortcut / command browsing | Preserve as interactive overlay or drawer | P1 | Low |
 | Model / effort / settings pickers | Interactive selection of model, effort, config-related toggles | Preserve as interactive drawer for high-value settings; simplify lower-value toggles if needed | P1 | Medium |
 | Permissions / hooks / privacy settings screens | Browse or edit policy-related settings | Preserve as interactive UI for core safety settings; defer niche settings if necessary | P1 | Medium | `/permissions` overlay provides view-only access to current mode and tool category counts; hook config views remain deferred |
-| Plugin manager / marketplace UI | Discover, install, update, enable, disable plugins | Defer or simplify until plugin distribution model is settled | P1 | High: current `.NET` has reload/inspection only |
+| Plugin manager / marketplace UI | Discover, install, update, enable, disable plugins | Defer or simplify until plugin distribution model is settled | P1 | High: current `.NET` has local install/enable/disable/status flows, but no marketplace or update UI |
 | MCP management UI | Browse configured MCP servers and manage config choices | Preserve as interactive UI for list/inspect first; prompt-based or file-based management is acceptable interim behavior | P1 | Medium |
 | Tasks / plan / passes UI | Inspect background work, plan flows, task state | Preserve in TUI drawers and detail views; widen only as orchestration scope firms up | P1 | Medium |
 | Skills / memory / agents UI | Browse or manage higher-level workflow helpers | Defer or simplify to plain text until product ownership is clearer | P1 | Medium |
@@ -678,29 +714,27 @@ This section documents the current compatibility position between the legacy CLI
 
 | Surface | Legacy TypeScript CLI | Current .NET CLI | Compatibility decision / current position |
 | --- | --- | --- | --- |
-| Global config root | `CLAUDE_CONFIG_DIR` or `~/.claude` | `<LocalApplicationData>/ClawdNet` or fallback `.clawdnet` next to app | Changed; `CLAUDE_CONFIG_DIR` is only referenced by inactive compatibility helpers today |
-| User settings | `~/.claude/settings.json` | App-data config is active; `LegacySettingsLoader` exists but is unused by current query flow | Not currently compatible |
-| User memory | `~/.claude/CLAUDE.md` | `MemoryFileLoader` exists but is unused by current query flow | Not currently compatible |
-| Project settings | `.claude/settings.json` | App-data config is active; `LegacySettingsLoader` exists but is unused by current query flow | Not currently compatible |
-| Project-local overrides | `.claude/settings.local.json` | App-data config is active; `LegacySettingsLoader` exists but is unused by current query flow | Not currently compatible |
-| MCP config | project `.mcp.json` plus CLI `--mcp-config` | `config/mcp.json` under app data; project `.mcp.json` parser exists but is inactive | Changed; no active `.mcp.json` or `--mcp-config` parity yet |
+| Global config root | `CLAUDE_CONFIG_DIR` or `~/.claude` | `<LocalApplicationData>/ClawdNet` or fallback `.clawdnet` next to app | Changed; app-data config is authoritative and legacy config roots are not a supported contract |
+| User settings | `~/.claude/settings.json` | App-data config is primary; explicit `--settings` is the supported input surface | Not a goal; any current legacy settings helpers are transitional and slated for removal |
+| User memory | `~/.claude/CLAUDE.md` | App-data config is primary; no supported legacy memory surface | Not a goal; any current memory compatibility behavior is transitional and slated for removal |
+| Project settings | `.claude/settings.json` | App-data config is primary | Not a goal; project `.claude` settings are not part of the supported `.NET` config contract |
+| Project-local overrides | `.claude/settings.local.json` | App-data config is primary | Not a goal; project `.claude` overrides are not part of the supported `.NET` config contract |
+| MCP config | project `.mcp.json` plus CLI `--mcp-config` | `config/mcp.json` under app data | Changed; project `.mcp.json` and `--mcp-config` are not supported config surfaces |
 | LSP config | legacy IDE/LSP settings flow | `config/lsp.json` under app data | Changed; not legacy-compatible |
 | Provider config | Anthropic-first, plus provider env toggles | `config/providers.json` and explicit provider catalog | Changed; new abstraction |
 | Platform config | Mostly implicit legacy shell/editor behavior | `config/platform.json` | Additive .NET behavior |
-| Plugins | `~/.claude/plugins`, marketplace, `--plugin-dir` | `plugins/<plugin-id>/plugin.json` under app data | Changed; no marketplace or plugin-dir parity |
-| Sessions | JSONL transcripts under `~/.claude/projects/...` | `sessions.json` store; `LegacyTranscriptReader` exists but is unused by current resume flow | Changed; no active legacy resume/import path yet |
+| Plugins | `~/.claude/plugins`, marketplace, `--plugin-dir` | `plugins/<plugin-id>/plugin.json` under app data plus local install/enable/disable commands | Changed; local lifecycle exists, but marketplace and `--plugin-dir` parity do not |
+| Sessions | JSONL transcripts under `~/.claude/projects/...` | `sessions.json` store; `LegacyTranscriptReader` exists but is unused by current resume flow | Changed; no active legacy resume/import path yet, and this remains a separate migration decision from settings ownership |
 | Worker / task state | legacy task-related project files and UI flows | `tasks.json` store | Changed |
-| Secrets / auth | env, OAuth, keychain, setup/login flows | provider env vars and config files | Changed; auth UX missing |
+| Secrets / auth | env, OAuth, keychain, setup/login flows | provider env vars and config files | Changed; `auth login` and `auth logout` provide env-var guidance, but OAuth and keychain remain intentionally absent |
 | Editor launch assumptions | legacy CLI uses shell/editor flows implicitly in several UIs | `.NET` uses configured launcher, `$VISUAL`, `$EDITOR`, `code -g`, then OS fallback | Changed, but currently explicit and additive |
 
 ### Migration-Sensitive Assumptions
 
-Agents should treat the following assumptions as unresolved migration work until explicit compatibility decisions are made:
+Agents should treat the following assumptions as unresolved migration work until explicit decisions are made:
 
-- whether `.NET` should read any legacy `~/.claude` or project-local `.claude` state directly
 - whether legacy JSONL transcripts must be importable or resumable through the live `--resume` flow
 - whether auth parity requires OAuth/keychain support, or whether env/config-only auth is acceptable
-- whether `.mcp.json` and `--mcp-config` must be preserved as-is instead of treated as import-only compatibility
 - whether plugin install/update workflows should remain marketplace-driven or move to a different distribution story
 
 ## F. Intentional Deviations
@@ -709,6 +743,7 @@ The following behavior differences from the legacy CLI are explicitly accepted:
 
 | Area | Legacy Behavior | .NET Behavior | Rationale |
 | --- | --- | --- | --- |
+| Configuration and memory | Legacy CLI uses `~/.claude`, project `.claude/settings*.json`, `CLAUDE.md`, `CLAUDE_CONFIG_DIR`, and project `.mcp.json` as active settings and memory surfaces | `ClawdNet` uses only its own app-data config and state layout; legacy settings compatibility is not a goal | Keeping configuration app-owned avoids hidden precedence, cross-project leakage, and partial legacy behavior that is hard to reason about; any remaining legacy loaders are transitional implementation debt and should be removed |
 | Auth | OAuth/keychain-based auth with interactive login dialogs, macOS keychain storage, token refresh | Env-var-only auth; `auth login`/`logout` provide setup/teardown guidance | OAuth/keychain primarily serves claude.ai subscriber experience (web billing, feature flags, MCP marketplace) which is out of scope; env-var auth covers all providers (Anthropic, OpenAI, Bedrock, Vertex, Foundry); matches legacy `--bare` mode; simpler and more CI-friendly |
 
 Use this section only after a behavior difference from the legacy CLI is explicitly accepted. Until then, record differences in Section C or Section E as `Changed` and treat them as unresolved parity work.
@@ -755,10 +790,18 @@ dotnet run --project ./ClawdNet.App -- auth status
 dotnet run --project ./ClawdNet.App -- provider list
 dotnet run --project ./ClawdNet.App -- session list
 dotnet run --project ./ClawdNet.App -- session show <session-id>
+dotnet run --project ./ClawdNet.App -- session rename <session-id> "Renamed Session"
+dotnet run --project ./ClawdNet.App -- session tag <session-id> work
 dotnet run --project ./ClawdNet.App -- task list
 dotnet run --project ./ClawdNet.App -- plugin list
+dotnet run --project ./ClawdNet.App -- plugin status <plugin-name>
 dotnet run --project ./ClawdNet.App -- mcp list
+dotnet run --project ./ClawdNet.App -- mcp get <server-name>
 dotnet run --project ./ClawdNet.App -- lsp list
+dotnet run --project ./ClawdNet.App -- doctor
+dotnet run --project ./ClawdNet.App -- status
+dotnet run --project ./ClawdNet.App -- stats
+dotnet run --project ./ClawdNet.App -- usage
 dotnet run --project ./ClawdNet.App -- tool echo hello
 ```
 
@@ -767,6 +810,7 @@ Headless ask flow:
 ```bash
 dotnet run --project ./ClawdNet.App -- ask --json "hello"
 dotnet run --project ./ClawdNet.App -- ask --output-format stream-json "hello"
+dotnet run --project ./ClawdNet.App -- ask --settings '{"allowedTools":["echo"]}' "hello"
 echo '{"type":"user","message":{"role":"user","content":"hello"}}' | dotnet run --project ./ClawdNet.App -- ask --input-format stream-json --output-format stream-json
 ```
 
@@ -783,7 +827,7 @@ Run manually when changing TUI / REPL behavior:
 
 - `dotnet run --project ./ClawdNet.App --` opens the TUI
 - `dotnet run --project ./ClawdNet.App -- --session <id>` opens the requested session interactively
-- `/help`, `/session`, `/provider`, `/tasks`, `/pty`, `/activity`, `/open`, `/browse`, `/clear`, `/bottom`, `/exit` all work in the TUI
+- `/help`, `/session`, `/provider`, `/status`, `/context`, `/permissions`, `/config`, `/rename`, `/tag`, `/effort`, `/thinking`, `/tasks`, `/pty`, `/activity`, `/open`, `/browse`, `/clear`, `/bottom`, `/exit` all work in the TUI
 - `exit` and `quit` still close the interactive shell
 - TUI drawers and overlays are still reachable via `F1` through `F8`, `Tab`, `Shift+Tab`, `PageUp`, `PageDown`, `End`, and `Esc`
 - `Ctrl+C` still interrupts PTY first, then active turn, then exits only when idle
@@ -792,7 +836,7 @@ Run manually when changing TUI / REPL behavior:
 
 Use fixtures or temporary directories for migration-sensitive state:
 
-- legacy-style config roots:
+- legacy-style config roots that should be ignored or explicitly unsupported after the refactor:
   - `~/.claude/settings.json`
   - `.claude/settings.json`
   - `.claude/settings.local.json`
@@ -806,7 +850,7 @@ Use fixtures or temporary directories for migration-sensitive state:
 
 Check explicitly whether:
 
-- the `.NET` CLI reads or ignores legacy layout
+- the `.NET` CLI uses only its app-owned config layout and ignores legacy settings surfaces
 - providers fall back as expected when `providers.json` is absent
 - platform launcher fallbacks behave as expected for configured command, env, and OS fallback
 - plugin reload adds and removes plugin commands/tools/hooks as expected

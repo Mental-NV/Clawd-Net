@@ -25,112 +25,128 @@ Use this file to decide what to build next. Use [ARCHITECTURE.md](./ARCHITECTURE
 - The roadmap is now driven by unresolved `P0` and then `P1` gaps in [PARITY.md](./PARITY.md).
 - Finish one milestone at a time, in order, unless the user explicitly redirects.
 
-## Active Milestone
+## Roadmap
 
-### [v] Legacy Context and Config Compatibility v1
+### [/] Own Settings Only Refactor v1
 
 - Priority: P0
-- Why now: this is the largest cluster of currently documented parity drift in the live runtime. `--settings` and `--add-dir` are advertised but not functionally wired, and the staged legacy `.claude` / `.mcp.json` / JSONL compatibility helpers are not part of the active ask, TUI, or resume flow.
+- Why now: the architecture and parity decision is now explicit: legacy settings compatibility is not a goal. The runtime still contains transitional `.claude` / `CLAUDE.md` / `CLAUDE_CONFIG_DIR` / project `.mcp.json` compatibility paths that should be removed so the app has only its own settings model.
 - Deliverables:
-  - wire `--settings` into the active query path or stop exposing it as supported
-  - wire `--add-dir` into the active settings / memory / MCP compatibility path or remove the surface
-  - decide and implement the active compatibility behavior for legacy `.claude` settings, `CLAUDE.md`, project `.mcp.json`, and legacy JSONL transcript resume/import
-  - update `README.md`, `ARCHITECTURE.md`, and `PARITY.md` to match the real compatibility contract
+  - remove legacy settings, memory, and project `.mcp.json` compatibility from the active ask and interactive runtime paths
+  - narrow `--settings` to app-owned explicit settings input only
+  - remove or retire `--add-dir` as a legacy settings compatibility surface
+  - remove transitional references to legacy settings env vars from the supported runtime path
+  - update tests and docs so the supported contract is unambiguously app-owned configuration only
 - Main risks:
-  - accidentally over-merging legacy config into the new runtime
-  - changing model behavior in ways that are hard to observe without targeted regression tests
-  - expanding compatibility semantics without a clean precedence model
+  - leaving dead compatibility code connected to the runtime in subtle ways
+  - breaking explicit `.NET` settings injection while removing legacy-scanning behavior
+  - doc and help-text drift if parser surfaces remain after behavior changes
 - Exit criteria:
-  - no advertised context/config compatibility flag is parser-only
-  - active runtime compatibility behavior is verified end-to-end and documented consistently
-  - `PARITY.md` no longer describes this area as parser-only or inactive helper-only behavior
+  - the live runtime no longer depends on legacy settings compatibility helpers
+  - `ARCHITECTURE.md` and `PARITY.md` describe app-owned configuration as the only supported contract
+  - `PARITY.md` no longer treats legacy settings compatibility as an unresolved migration target
 
-## Next Milestones
-
-### [v] Safety and Approval UX Parity v1
+### [ ] Edit Workflow Parity Decision v1
 
 - Priority: P0
-- Depends on: Legacy Context and Config Compatibility v1
+- Depends on: Own Settings Only Refactor v1
+- Why next: edit review is still marked as a `Changed` P0 area in [PARITY.md](./PARITY.md). The current patch-first workflow is deliberate, but the migration ledger still treats it as unresolved.
 - Deliverables:
-  - broaden TUI safety surfaces beyond the current approval/edit overlays
-  - add visible trust / permissions / hook-config flows where parity requires them
-  - reconcile the current stronger `.NET` edit-review flow with legacy user expectations, documenting any accepted deviation
-- Main risks: TUI scope creep and unclear boundary between parity vs additive UX improvement
-- Exit criteria: `PARITY.md` no longer lists safety UI as only partially implemented
+  - compare legacy edit/review expectations with the current patch-batch approval model
+  - close any remaining approval/review UX gaps that are necessary for migration acceptance
+  - if the patch-first model is the accepted replacement, record it as an intentional deviation
+- Main risks:
+  - conflating product improvement with strict parity
+  - over-expanding the edit surface beyond current runtime needs
+- Exit criteria:
+  - the edit workflow row in [PARITY.md](./PARITY.md) is either verified or moved to intentional deviations with rationale
 
-## Next Milestones
-
-### [v] Session Branching and Resume Parity v2
-
-- Priority: P0
-- Depends on: Legacy Context and Config Compatibility v1
-- Deliverables:
-  - `--fork-session` flag implemented: creates new session with copied history when used with `--continue` or `--resume`
-  - `--name` / `-n` root flag implemented: sets session title at launch
-  - `session rename <id> <new-name>` CLI subcommand added
-  - `session tag <id> <tag-name>` CLI subcommand added (toggle behavior)
-  - `session fork <id> [title]` CLI subcommand added
-  - `/rename` slash command added to REPL (already existed in TUI)
-  - `/tag` slash command added to TUI and REPL
-  - `Tags` field added to `ConversationSession` model
-  - `session show` now displays tags
-- Main risks: session-history mutation semantics and compatibility with persisted transcripts
-- Exit criteria: unresolved P0 session parity rows are either implemented and verified or moved to intentional deviations
-
-### [v] MCP Parity v2
-
-- Priority: P0/P1
-- Depends on: Legacy Context and Config Compatibility v1
-- Deliverables:
-  - `mcp get <server>` shows detailed server info (transport, command, args, env, headers, runtime state)
-  - `mcp add <name> <command> [args...]` adds stdio MCP servers with `-e/--env` and `--read-only-tools` flags
-  - `mcp remove <name>` removes servers from config
-  - `mcp add-json <name> <json>` adds servers from JSON string
-  - `McpServerDefinition` model extended with `Transport`, `Url`, `Headers` fields
-  - `McpConfigurationLoader` supports read/write with file locking
-  - `IMcpClient` extended with `GetServerDefinitionsAsync`, `AddServerAsync`, `RemoveServerAsync`
-- Main risks: config precedence conflicts between app-data config and project-local config
-- Exit criteria: `PARITY.md` MCP rows are either verified or intentionally deviated
-  - Deferred: `mcp serve`, `mcp add-from-claude-desktop`, `mcp reset-project-choices`, `mcp xaa`, `--mcp-config` root flag, `/mcp` slash command
-
-### [v] Auth and Migration Compatibility Decision
-
-- Priority: P0
-- Depends on: Legacy Context and Config Compatibility v1
-- Deliverables:
-  - Decision: `.NET` remains env-var auth only; OAuth/keychain is documented as an accepted deviation
-  - `auth login` now returns helpful setup guidance with env var examples for all providers
-  - `auth logout` now returns helpful teardown guidance
-  - `auth --help` documents all supported provider environment variables
-  - `PARITY.md` updated with intentional deviation for auth
-  - Secrets/auth assumptions row updated with decision rationale
-- Main risks: opening a large auth surface without full product intent
-- Exit criteria: auth is no longer an unresolved P0 changed area
-
-### [v] Runtime Controls and Settings UI v1
+### [ ] Plugin Lifecycle Parity v2
 
 - Priority: P1
-- Depends on: Safety and Approval UX Parity v1
+- Depends on: Edit Workflow Parity Decision v1
+- Why next: plugin inspect/reload and local lifecycle flows exist, but `PARITY.md` still shows plugin lifecycle parity as partial because validate, update, and marketplace behavior are unresolved.
 - Deliverables:
-  - add missing high-value runtime controls such as effort/thinking/budget surfaces where migration requires them
-  - add the first high-value config/model/settings interactive pickers in TUI
-- Exit criteria: the highest-value `P1` model/runtime/config UI gaps are no longer not-started
+  - decide the supported local plugin lifecycle contract for install, uninstall, enable, disable, status, reload, and validation
+  - either implement missing local lifecycle commands or explicitly document them as out of scope
+  - decide the migration position for marketplace and update behavior
+- Main risks:
+  - opening a large distribution surface accidentally
+  - mixing local-dev plugin workflows with end-user marketplace expectations
+- Exit criteria:
+  - plugin lifecycle parity rows are no longer `In Progress` or `Not Started` without an explicit reason
 
-### [v] Reporting and Workflow Surface Recovery
+### [ ] Legacy Transcript Import Decision v1
 
 - Priority: P1
-- Depends on: Safety and Approval UX Parity v1
+- Depends on: Own Settings Only Refactor v1
+- Why next: legacy settings compatibility is no longer a goal, but legacy JSONL transcript import or resume is still a separate open question in [PARITY.md](./PARITY.md).
 - Deliverables:
-  - `doctor` command: system diagnostics (version, runtime, config, providers, sessions, plugins, MCP, LSP)
-  - `status` command: current session status (provider, model, message count, session info)
-  - `stats` command: usage statistics (session counts, message counts, provider/tag distribution)
-  - `usage` command: token/cost usage with graceful degradation (message counts per session)
-  - `cost` and `insights` deferred (require billing API and analytics infrastructure)
-  - workflow commands remain deferred to separate workflow milestone
-- Main risks: large surface area with mixed product ownership
-- Exit criteria: the major reporting/workflow parity rows are either implemented, deferred with rationale, or explicitly deviated
+  - decide whether legacy transcript import or resume is needed at all
+  - if yes, design it as an explicit import or migration surface rather than implicit settings compatibility
+  - if no, record the decision as a documented non-goal or intentional deviation
+- Main risks:
+  - conflating session import with configuration compatibility
+  - keeping dead transcript compatibility code without a product outcome
+- Exit criteria:
+  - transcript compatibility is either implemented as an explicit workflow or removed from the open migration ledger
 
-## Execution Notes
+### [ ] Config UI and Interactive Settings Parity v1
 
-- Keep completed execution-slice detail in the corresponding `docs/PLAN-XX.md` files, not here.
-- When a milestone is completed, mark it `[v]`, promote the next highest-priority unresolved item to `[/]`, and keep the ordering aligned with unresolved `P0` then `P1` rows in [PARITY.md](./PARITY.md).
+- Priority: P1
+- Depends on: Edit Workflow Parity Decision v1
+- Why next: the TUI and REPL now expose `/config`, `/permissions`, `/effort`, and `/thinking`, but settings-picker parity is still incomplete.
+- Deliverables:
+  - promote the highest-value remaining interactive settings flows into TUI drawers or overlays
+  - decide which legacy picker-style flows are worth preserving vs simplifying to plain text
+  - keep slash-command help and TUI help overlays aligned with the actual interactive surface
+- Main risks:
+  - TUI scope creep
+  - implementing visually richer settings flows without clear parity value
+- Exit criteria:
+  - config and settings picker rows in [PARITY.md](./PARITY.md) are either implemented, deferred with rationale, or intentionally changed
+
+### [ ] PTY and Task Workflow Parity v1
+
+- Priority: P1
+- Depends on: Config UI and Interactive Settings Parity v1
+- Why next: PTY and task orchestration are both ahead of the legacy CLI in some ways, but [PARITY.md](./PARITY.md) still marks them as changed because the mapping from legacy terminal/task workflows is unresolved.
+- Deliverables:
+  - decide which legacy `/tasks` and terminal workflows must map onto current PTY and worker-task features
+  - close the highest-value UX and inspection gaps that block migration acceptance
+  - document any accepted deviations where the `.NET` model intentionally replaces the legacy flow
+- Main risks:
+  - trying to force old task semantics onto the new orchestration model
+  - broadening PTY scope into a separate terminal product
+- Exit criteria:
+  - PTY and task parity rows are either verified or explicitly deviated with rationale
+
+### [ ] Workflow Command Recovery v1
+
+- Priority: P1
+- Depends on: PTY and Task Workflow Parity v1
+- Why next: legacy workflow commands such as `/review`, `/init`, `/commit`, `/branch`, and `/diff` are still absent from the first-party `.NET` surface.
+- Deliverables:
+  - decide which workflow commands remain first-party migration targets
+  - implement the smallest high-value workflow set or move them to explicit defer/deviation status
+  - keep any remaining workflow scope aligned with plugins and skills instead of ad hoc built-ins
+- Main risks:
+  - importing too much product-specific workflow behavior without clear ownership
+  - overlapping built-ins with plugin or skill territory
+- Exit criteria:
+  - workflow UI rows in [PARITY.md](./PARITY.md) no longer remain untriaged
+
+### [ ] Distribution and Bootstrap Surface Decision v1
+
+- Priority: P1
+- Depends on: Workflow Command Recovery v1
+- Why next: legacy `install`, `update`, `setup-token`, and shell-completion surfaces still have no `.NET` migration decision.
+- Deliverables:
+  - decide whether ClawdNet will ship first-party install and update commands
+  - decide the migration position for token/bootstrap helpers and shell completion
+  - document accepted non-goals if distribution remains external to the CLI
+- Main risks:
+  - tying runtime migration work to packaging/distribution choices prematurely
+  - documenting end-user promises that the repo does not actually support
+- Exit criteria:
+  - distribution and bootstrap parity rows are either implemented, deferred with rationale, or intentionally dropped

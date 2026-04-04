@@ -16,6 +16,7 @@ This document captures the architectural decisions, assumptions, defaults, and r
 `ClawdNet` is no longer a thin CLI prototype. The following core capabilities are now ported:
 
 - session-backed conversations
+- session resume, fork, rename, and tagging flows
 - buffered and streaming query execution
 - a headless `ask` surface
 - a fallback REPL
@@ -26,8 +27,10 @@ This document captures the architectural decisions, assumptions, defaults, and r
 - worker tasks and task inspection
 - MCP and LSP integration
 - plugin commands, hooks, and plugin-defined tools
+- local plugin lifecycle commands
 - multi-provider model support
 - lightweight platform launching for editor and browser actions
+- doctor, status, stats, and usage reporting commands
 
 The remaining gaps are now mostly in deeper workflow parity, orchestration depth, and higher-end product polish.
 
@@ -202,11 +205,13 @@ The plugin platform is local, manifest-driven, and subprocess-based.
 
 - Plugins are discovered from the local filesystem.
 - Plugins can currently contribute MCP servers, LSP servers, commands, hooks, and tools.
+- The built-in plugin lifecycle supports local install, uninstall, enable, disable, inspect, status, and reload flows.
 - Plugin execution is subprocess-only.
 - No in-process plugin loading is supported.
 - Invalid plugin extensions invalidate only that extension entry, not the whole plugin.
 - Built-in command and tool names are reserved and cannot be overridden by plugins.
 - Plugin reload must add, update, and remove plugin contributions cleanly without requiring app restart.
+- Marketplace-style discovery, validation, and update flows are still outside the current implementation scope.
 
 Hook behavior is intentionally conservative:
 
@@ -296,31 +301,36 @@ When configuration files are absent, the project prefers sane defaults or in-mem
 
 ### Legacy Config Compatibility
 
-The codebase currently contains staged compatibility helpers for the legacy TypeScript CLI configuration layout, but they are not yet wired into the active query, TUI, or session-resume path.
+Legacy TypeScript settings compatibility is not a product goal for `ClawdNet`.
 
-What exists today:
+The supported configuration contract is the `.NET` app-owned layout under the
+app data root:
 
-- `LegacyConfigPaths` mirrors `CLAUDE_CONFIG_DIR` and the legacy `~/.claude` path layout
-- `LegacySettingsLoader` can parse and merge `settings.json` and `settings.local.json`
-- `MemoryFileLoader` can read `CLAUDE.md` and `rules/*.md`
-- `ProjectMcpConfigLoader` can parse project `.mcp.json` files
-- `LegacyTranscriptReader` can parse legacy JSONL transcript files
+- `config/providers.json`
+- `config/platform.json`
+- `config/mcp.json`
+- `config/lsp.json`
+- `sessions.json`
+- `tasks.json`
 
-Current limitation:
+Implications of this decision:
 
-- active runtime behavior still uses `config/providers.json`, `config/platform.json`, `config/mcp.json`, `config/lsp.json`, `sessions.json`, and `tasks.json` under the `.NET` app-data root
-- `ask --settings` is parsed but not applied to the current query path
-- `ask --add-dir` is parsed but not currently connected to settings, memory, or MCP loading
-- legacy JSONL transcripts are not yet part of the live `--resume` or `--continue` flow
+- legacy `~/.claude`, project `.claude/settings*.json`, `CLAUDE.md`, `CLAUDE_CONFIG_DIR`, and project `.mcp.json` are not supported settings surfaces
+- `--settings` is only an explicit `.NET` settings input, not a promise of legacy settings compatibility
+- any remaining legacy settings and memory loaders in the codebase are transitional migration code and should be removed from the active runtime
+- legacy JSONL transcript import or resume, if kept at all, is a separate migration decision and not part of the settings model
 
-This is an explicit migration gap, not an accepted compatibility result.
+Current implementation note:
+
+- the codebase still contains helper classes such as `LegacyConfigPaths`, `LegacySettingsLoader`, `MemoryFileLoader`, `ProjectMcpConfigLoader`, and `LegacyTranscriptReader`
+- those helpers should be treated as implementation debt pending removal or isolation, not as part of the supported architecture
 
 ## Rollout and Compatibility Decisions
 
 Several rollout choices have been consistent across milestones:
 
 - new features should land in the shared runtime before getting specialized UI behavior
-- compatibility paths are retained during transitions when they materially reduce migration risk
+- compatibility paths are retained during transitions when they materially reduce migration risk, unless they are explicitly declared non-goals
 - headless and non-interactive flows should not regress to support richer interactive features
 - new metadata fields should be normalized on load rather than requiring destructive upgrades
 - partial or live-only UI state should not be persisted unless there is a clear durable contract for it
