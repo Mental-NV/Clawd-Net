@@ -123,21 +123,21 @@ Use this file to decide what to build next. Use [ARCHITECTURE.md](./ARCHITECTURE
   - [x] provider selection remains explicit, with smoother defaults documented and tested
   - [x] `auth login`, `auth status`, and `auth logout` reflect the supported auth contract
 
-### [ ] Config UI and Interactive Settings Parity v1
+### [v] Config UI and Interactive Settings Parity v1
 
 - Priority: P1
 - Depends on: Auth Parity and Provider Defaults v1
 - Why next: the TUI and REPL now expose `/config`, `/permissions`, `/effort`, and `/thinking`, but only the highest-value remaining picker flows should be migrated.
 - Deliverables:
-  - promote only the highest-value remaining interactive settings flows into TUI drawers or overlays
-  - focus picker work on provider/model, runtime controls, and closely related safety/config surfaces
-  - leave lower-value theme/color/output-style parity as plain-text or deferred unless strong migration value emerges
-  - keep slash-command help and TUI help overlays aligned with the actual interactive surface
+  - [x] promote only the highest-value remaining interactive settings flows into TUI drawers or overlays
+  - [x] focus picker work on provider/model, runtime controls, and closely related safety/config surfaces
+  - [x] leave lower-value theme/color/output-style parity as plain-text or deferred unless strong migration value emerges
+  - [x] keep slash-command help and TUI help overlays aligned with the actual interactive surface
 - Main risks:
   - TUI scope creep
   - implementing visually richer settings flows without clear parity value
 - Exit criteria:
-  - config and settings picker rows in [PARITY.md](./PARITY.md) are either implemented, deferred with rationale, or intentionally changed
+  - [x] config and settings picker rows in [PARITY.md](./PARITY.md) are either implemented, deferred with rationale, or intentionally changed
 
 ### [ ] PTY and Task Workflow Parity v1
 
