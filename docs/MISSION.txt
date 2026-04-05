@@ -57,3 +57,5 @@ Definition of done for each milestone:
 - docs/backlog.json reflects the updated roadmap status
 - docs/PLAN-XX.md records what was done, what changed, validation results, and any remaining follow-ups
 - the slice is committed on the current branch
+
+Note: Ralph Loop is now a standalone tool. It is installed globally and invoked with the `ralph` command.

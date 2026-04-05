@@ -8,6 +8,24 @@ headless CLI surface, the fallback REPL, and the full-screen TUI. It is not at
 full parity with the legacy app yet, but most of the core execution model is
 now in place.
 
+## Ralph Loop Dependency
+
+This project uses Ralph Loop for autonomous milestone execution.
+
+**Install Ralph Loop:**
+
+```bash
+pipx install ~/projects/ralph-loop
+```
+
+**Run Ralph Loop:**
+
+```bash
+ralph
+```
+
+Ralph Loop will automatically discover `docs/backlog.json` in the current directory and execute the next milestone. See `docs/MISSION.txt` for details on the autonomous execution workflow.
+
 ## Commands
 
 From the repository root:

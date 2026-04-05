@@ -28,8 +28,5 @@ TestResults/
 **/.clawdnet/
 logs/
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-ralph/__pycache__/
+# Ralph Loop logs
+logs/ralph/
