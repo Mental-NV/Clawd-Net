@@ -27,3 +27,9 @@ TestResults/
 *.snupkg
 **/.clawdnet/
 logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+ralph/__pycache__/
