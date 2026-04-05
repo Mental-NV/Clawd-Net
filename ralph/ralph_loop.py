@@ -3,6 +3,7 @@
 Ralph Loop - JSON-driven orchestration for ClawdNet execution backlog.
 
 Replaces ralph-loop.sh with deterministic, validated JSON-based orchestration.
+Supports multiple agent providers: Qwen, Claude Code, Codex.
 """
 
 import argparse
@@ -15,16 +16,46 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from providers import get_provider, list_available_providers
+
 
 class BacklogOrchestrator:
     """Orchestrates execution of backlog items."""
 
-    def __init__(self, repo_root: Path, auto_push: bool = False, dry_run: bool = False):
+    def __init__(
+        self,
+        repo_root: Path,
+        provider: str = "qwen",
+        yolo: bool = False,
+        auto_push: bool = False,
+        dry_run: bool = False
+    ):
         self.repo_root = repo_root
+        self.provider_name = provider
+        self.yolo = yolo
         self.auto_push = auto_push
         self.dry_run = dry_run
         self.backlog_path = repo_root / "docs" / "backlog.json"
         self.lock_path = repo_root / ".ralph-loop.lock"
+
+        # Initialize provider
+        try:
+            self.provider = get_provider(provider)
+        except ValueError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            available = list_available_providers()
+            if available:
+                print(f"Available providers: {', '.join(available)}", file=sys.stderr)
+            else:
+                print("No providers are available on this system", file=sys.stderr)
+            sys.exit(1)
+
+        if not self.provider.is_available():
+            print(f"Error: Provider '{provider}' is not available", file=sys.stderr)
+            available = list_available_providers()
+            if available:
+                print(f"Available providers: {', '.join(available)}", file=sys.stderr)
+            sys.exit(1)
 
     def load_backlog(self) -> Dict[str, Any]:
         """Load and parse backlog.json."""
@@ -237,7 +268,7 @@ class BacklogOrchestrator:
 
     def execute_item(self, item: Dict[str, Any]) -> bool:
         """
-        Execute a backlog item by invoking clawdnet with appropriate prompt.
+        Execute a backlog item by invoking agent provider with appropriate prompt.
         Returns True if execution succeeded.
         """
         item_id = item['id']
@@ -247,6 +278,7 @@ class BacklogOrchestrator:
         print(f"Executing: {title}")
         print(f"ID: {item_id}")
         print(f"Priority: {item['priority']}")
+        print(f"Provider: {self.provider_name}")
         print(f"{'='*80}\n")
 
         # Build execution prompt
@@ -255,14 +287,66 @@ class BacklogOrchestrator:
         if self.dry_run:
             print("[DRY RUN] Would execute with prompt:")
             print(prompt[:500] + "..." if len(prompt) > 500 else prompt)
+            print(f"\n[DRY RUN] Provider: {self.provider_name}")
+            print(f"[DRY RUN] YOLO mode: {self.yolo}")
             return True
 
-        # Invoke clawdnet (or qwen for now during transition)
-        # TODO: Replace with actual clawdnet invocation once integrated
-        print("Execution would invoke clawdnet here")
-        print("For now, this is a placeholder")
+        # Build command
+        cmd = self.provider.build_command(prompt, self.repo_root, self.yolo)
 
-        return True
+        # Get progress renderer if available
+        renderer_cmd = self.provider.get_progress_renderer(self.repo_root)
+
+        try:
+            if renderer_cmd:
+                # Pipe through renderer
+                agent_proc = subprocess.Popen(
+                    cmd,
+                    cwd=self.repo_root,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+
+                renderer_proc = subprocess.Popen(
+                    renderer_cmd,
+                    stdin=agent_proc.stdout,
+                    cwd=self.repo_root
+                )
+
+                # Close agent stdout in parent to allow agent to receive SIGPIPE
+                if agent_proc.stdout:
+                    agent_proc.stdout.close()
+
+                # Wait for renderer to complete
+                renderer_proc.wait()
+
+                # Check agent exit code
+                agent_proc.wait()
+                if agent_proc.returncode != 0:
+                    stderr = agent_proc.stderr.read() if agent_proc.stderr else ""
+                    if stderr:
+                        print(f"\nAgent error output:\n{stderr}", file=sys.stderr)
+                    return False
+
+            else:
+                # No renderer, run directly
+                result = subprocess.run(
+                    cmd,
+                    cwd=self.repo_root,
+                    text=True
+                )
+                if result.returncode != 0:
+                    return False
+
+            return True
+
+        except KeyboardInterrupt:
+            print("\n\nExecution interrupted by user", file=sys.stderr)
+            return False
+        except Exception as e:
+            print(f"\nExecution failed: {e}", file=sys.stderr)
+            return False
 
     def build_execution_prompt(self, item: Dict[str, Any]) -> str:
         """Build execution prompt for item."""
@@ -394,6 +478,18 @@ def main():
         description="Ralph Loop - JSON-driven orchestration for ClawdNet backlog"
     )
     parser.add_argument(
+        '--provider',
+        type=str,
+        default='qwen',
+        choices=['qwen', 'claude', 'codex'],
+        help='Agent provider to use (default: qwen)'
+    )
+    parser.add_argument(
+        '--yolo',
+        action='store_true',
+        help='Enable YOLO mode (auto-approve all actions)'
+    )
+    parser.add_argument(
         '--auto-push',
         action='store_true',
         help='Automatically push to remote after each completed item'
@@ -419,14 +515,32 @@ def main():
         action='store_true',
         help='Show next item that would be executed and exit'
     )
+    parser.add_argument(
+        '--list-providers',
+        action='store_true',
+        help='List available providers and exit'
+    )
 
     args = parser.parse_args()
 
     # Find repo root
     repo_root = Path(__file__).parent.parent
 
+    # List providers mode
+    if args.list_providers:
+        available = list_available_providers()
+        if available:
+            print("Available providers:")
+            for provider in available:
+                print(f"  - {provider}")
+        else:
+            print("No providers are available on this system")
+        sys.exit(0)
+
     orchestrator = BacklogOrchestrator(
         repo_root=repo_root,
+        provider=args.provider,
+        yolo=args.yolo,
         auto_push=args.auto_push,
         dry_run=args.dry_run
     )
